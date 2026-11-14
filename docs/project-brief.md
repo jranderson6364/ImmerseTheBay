@@ -10,6 +10,8 @@ HomeCue helps an older adult find familiar objects, remember plans, and recall c
 
 The wearer uses a mixed reality headset at home. A trusted family member can help set up item locations and reminders. The prototype uses fictional people and objects for its demo; it is an assistive concept, not a clinical or safety device.
 
+The product direction is a personal companion: the wearer can ask for help in plain language, get concise answers from saved facts, and receive only useful scheduled prompts. It shows the source and age of a memory (for example, "Keys last marked on the shelf at 2:15 PM") and offers a simple way to correct it. Family notes retain their sender. It does not impersonate a caregiver, infer medical facts, or present uncertain memories as certain.
+
 | Need | XR interaction | Source of truth |
 | --- | --- | --- |
 | "Where are my keys?" | Point toward their saved place in a scanned room. Show "last marked here" and a timestamp. | Item record linked to a spatial anchor. The system cannot know if someone moved the keys afterward. |
@@ -68,3 +70,16 @@ Use fictional demo data. Avoid storing raw camera frames or personal family deta
 - [Meta developer data use policy](https://developers.meta.com/vr/policy/data-use/) (review before building any identity feature)
 
 Decide after device checkout: exact Quest OS/SDK versions, whether voice input is reliable in the demo room, and whether the family note will use a tiny backend or a preloaded demo message. Confirm up to two main tracks on the submission form.
+
+## Equipment preference for this concept
+
+This ranking balances a working hackathon demo with the longer-term companion vision. Reassess immediately if the exact loaner model or available host phone differs.
+
+1. **Quest 3S** — strongest Unity path to a spatial, camera-aware demo; bulky for daily use.
+2. **Snap Spectacles** — best glasses path to camera plus in-view spatial cues; requires Lens Studio and a fast feasibility test.
+3. **Mentra Live** — best all-day audio/camera companion path; no in-lens display or spatial arrow.
+4. **XREAL Air 2 Ultra Kit** — Unity-compatible spatial overlays and anchors; no RGB photo/video camera, needs a compatible host.
+5. **Meta Adventurer** — comfortable camera/audio glasses, but confirm the loaner and developer-toolkit support; no in-lens spatial display.
+6. **PICO 4** — Unity headset with passthrough, but no application access to passthrough images in the current SDK, and less suitable for daily wear.
+7. **Quest 2** — familiar Unity headset with older passthrough; no Quest 3/3S Passthrough Camera API.
+8. **OpenBCI UltraCortex** — EEG accessory, not a standalone XR display or item-finding device.
