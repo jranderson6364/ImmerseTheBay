@@ -1,0 +1,75 @@
+- !<AssetImportMetadata/42df15f0-0e37-4ae7-bb3e-adf386eecc13>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> b06e9e72-b545-49a4-b533-ee98bb8f37e9
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> b06e9e72-b545-49a4-b533-ee98bb8f37e9
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 4ab734ce-b1b7-4d19-9f63-17c73fc9ed6b
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/4ab734ce-b1b7-4d19-9f63-17c73fc9ed6b>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  ComponentUid: d40d9232-b8ee-4a32-bed1-b5ff9caf29d4
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    camera: false
+    collapseSeconds: false
+    defaultScaleCm: false
+    explodeSeconds: false
+    holdSeconds: false
+    labelPrefab: false
+    labelScale: false
+    leaderCm: false
+    leaderWidthCm: false
+    material: false
+    rotateDegPerSec: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - material: !<reference.Material> 00000000-0000-0000-0000-000000000000
+      labelPrefab: !<reference.ObjectPrefab> 00000000-0000-0000-0000-000000000000
+      camera: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      defaultScaleCm: !<float> 50.000000
+      rotateDegPerSec: !<float> 18.000000
+      holdSeconds: 1.400000
+      explodeSeconds: 2.500000
+      collapseSeconds: 1.200000
+      labelScale: 0.250000
+      leaderCm: !<float> 9.000000
+      leaderWidthCm: 0.180000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - '// @ui {"widget":"label", "label":"<span style=\"color: #60A5FA;\">Sightlines Showcase</span><br/><span style=\"color: #94A3B8; font-size: 11px;\">Exploded product models built at runtime from Core/Products.ts.</span>"}'
+    - '// @input Asset.Material material {"hint":"Any material with a Base Color (e.g. Assets/Materials/White.mat). Cloned per colour."}'
+    - "// @input Asset.ObjectPrefab labelPrefab {\"hint\":\"Assets/Prefabs/WorldLabel.prefab. Without it, leader lines show but labels don't.\"}"
+    - '// @input SceneObject camera {"hint":"Camera object for billboarding labels. If empty, labels face the faceToward point passed to show()."}'
+    - '// @input float defaultScaleCm = 50 {"hint":"Default assembled size (cm across) when show() gets no scaleCm"}'
+    - '// @input float rotateDegPerSec = 18 {"hint":"Turntable speed while assembled (deg/s); a third of this once exploded"}'
+    - '// @input float holdSeconds = 1.4 {"hint":"Seconds the assembled model turns before it explodes"}'
+    - '// @input float explodeSeconds = 2.5 {"hint":"Seconds for the full part-by-part explode"}'
+    - '// @input float collapseSeconds = 1.2 {"hint":"Seconds to re-assemble on toggle()"}'
+    - '// @input float labelScale = 0.25 {"hint":"Label size multiplier (world, independent of model scale)"}'
+    - '// @input float leaderCm = 9 {"hint":"Leader line length beyond the part centre (world cm)"}'
+    - '// @input float leaderWidthCm = 0.18 {"hint":"Leader line thickness (world cm)"}'

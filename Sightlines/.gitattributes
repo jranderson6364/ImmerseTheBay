@@ -1,0 +1,2 @@
+# Gateway tokens never leave this machine: blanked on commit (see README "Tokens").
+Assets/Scene.scene filter=striptokens

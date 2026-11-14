@@ -1,0 +1,656 @@
+/**
+ * Sightlines main controller: a Stanford tour guide on a 3D campus map at your feet.
+ *
+ * Flow
+ *  1. CALIBRATE  Face a wall of known direction and pinch a point on its LEFT, then its RIGHT. The wall's compass
+ *                bearing comes from the building's OSM footprint (Huang's walls run at 15/105/195/285 deg), and
+ *                `facingHint` picks which face you're looking at. Two-hand twist nudges the yaw afterwards.
+ *  2. TOUR       The map unfolds on the floor, centred on you. Right pinch = "tell me about what I'm looking at"
+ *                (real building or one on the map). Left pinch = ask by voice. Say "lift" / "floor".
+ *  3. GUESS      After each building: "Point to where you think X is, then pinch." Scored in degrees; the true
+ *                direction arcs out on the map and a sightline pillar appears in the room; a new fact unlocks.
+ *
+ * Editor Preview: tap = calibrate (camera forward as the wall facing), then tap = right pinch.
+ */
+import {SIK} from "SpectaclesInteractionKit.lspkg/SIK"
+import {ASRController} from "../../Scripts/ASRController"
+import {WorldLabel} from "../../Scripts/WorldLabel"
+import {LANDMARKS} from "../Data/CampusData"
+import {CARDS, cardById, factById} from "../Core/Cards"
+import {EN, V3, angleDiff, facingFromWallPinches, latLonToEN, mapYawFor, snapFacingBearing, worldDirToBearing} from "../Core/Geo"
+import {ValidatedAnswer, founderConstellation, guessPrompt, nextFact, nextGuessTarget, scoreGuess, themesFromProfile, yourStanford} from "../Core/Guide"
+import {SightlinesGuide} from "./SightlinesGuide"
+import {SightlinesMap} from "./SightlinesMap"
+import {LocateResult, SightlinesLocator} from "./SightlinesLocator"
+import {SightlinesOverlay} from "./SightlinesOverlay"
+import {SightlinesMoney} from "./SightlinesMoney"
+import {SightlinesShowcase} from "./SightlinesShowcase"
+
+type Mode = "calibrate" | "tour" | "guess"
+
+const STORE_KEY = "sightlines.v1"
+
+@component
+export class SightlinesController extends BaseScriptComponent {
+  @ui.label('<span style="color: #60A5FA;">Sightlines Controller</span>')
+  @input camera: SceneObject
+  @input map: SightlinesMap
+  @input guide: SightlinesGuide
+  @input @allowUndefined asr: ASRController
+
+  @ui.group_start("Where you stand (survey)")
+  @input @hint("Latitude of the spot the wearer stands on. Default: Huang Engineering Center.") surveyLat: number = 37.427884
+  @input surveyLon: number = -122.17433
+  @input @hint("Compass bearing of the calibration wall's direction (mod 90). Huang = 15.") wallBearing: number = 15
+  @input @hint("Roughly which way you face when looking at the calibration wall (deg). Snapped to the nearest wall face. Measure once at the venue.") facingHint: number = 105
+  @ui.group_end
+
+  @ui.group_start("Placement")
+  @input @hint("Head height above the floor when standing (cm)") eyeHeightCm: number = 160
+  @input @hint("How far in front of you the floor map's centre sits (cm)") floorForwardCm: number = 140
+  @input @hint("Map height above the floor in table mode (cm)") tableHeightCm: number = 85
+  @input @hint("How far in front of you the table-mode map sits (cm)") tableForwardCm: number = 55
+  @input startLifted: boolean = false
+  @ui.group_end
+
+  @ui.group_start("Optional")
+  @input @allowUndefined statusText: Text
+  @input showStatusLabel: boolean = true
+  @input autoQuiz: boolean = true
+  @input @hint("Keep heard facts across launches. Leave OFF for judging so every relaunch starts fresh.") persistProgress: boolean = false
+  @ui.group_end
+
+  @ui.group_start("Real-world visuals")
+  @input @allowUndefined @hint("GPS + Gemini: which real building am I looking at? Long right pinch or say \"what's that\".") locator: SightlinesLocator
+  @input @allowUndefined @hint("Nametag + roofline outline on the real building") overlay: SightlinesOverlay
+  @input @allowUndefined @hint("Life-size pile of $1 bills for the building's gift") money: SightlinesMoney
+  @input @hint("Indoor demo: put the money pile on the map instead of life-size in the room") moneyOnMap: boolean = true
+  @input @hint("Extra scale for the on-map pile (1 = true map scale)") moneyMapExaggeration: number = 3
+  @input @allowUndefined @hint("Exploded product models shown while a fact is spoken") showcase: SightlinesShowcase
+  @input @hint("Exploded model size (cm) and distance in front of you (cm)") showcaseScaleCm: number = 40
+  @input showcaseForwardCm: number = 75
+  @input @hint("Hold a right pinch this long (s) to identify the real building instead") longPinchSec: number = 0.6
+  @ui.group_end
+
+  private mode: Mode = "calibrate"
+  private me: EN = {e: 0, n: 0}
+  private mapYaw = 0
+  private floorY = 0
+  private lifted = false
+  private wallPoints: V3[] = []
+  private focus = ""
+  private guessTarget = ""
+  private unfoldT = -1
+  private twist: {lastYaw: number} = null
+  private positions: Record<string, EN> = {}
+  private isEditor = global.deviceInfoSystem.isEditor()
+  private statusHolder: SceneObject = null
+  private statusLabel: Text = null
+  private state = {heard: [] as string[], seen: [] as string[], guessed: [] as string[], profile: "", bestErr: 999}
+
+  onAwake() {
+    this.createEvent("OnStartEvent").bind(() => this.onStart())
+    this.createEvent("UpdateEvent").bind(() => this.onUpdate())
+  }
+
+  private onStart() {
+    this.me = latLonToEN(this.surveyLat, this.surveyLon)
+    for (const l of LANDMARKS) this.positions[l.id] = {e: l.east, n: l.north}
+    for (const c of CARDS) if (c.offMap) this.positions[c.id] = latLonToEN(c.offMap.lat, c.offMap.lon)
+    if (this.locator) this.locator.setSurvey(this.me)
+    this.load()
+    this.bindHands()
+    if (this.asr) {
+      this.asr.onFinalVoiceEvent.add((t) => this.handleUtterance(t))
+      this.asr.onPartialVoiceEvent.add((t) => this.setStatus("“" + t + "”"))
+      // onErrorEvent exists only in the patched ASRController; the stock 5.15.4 one doesn't have it.
+      const errEvent = (this.asr as any).onErrorEvent
+      if (errEvent && errEvent.add) errEvent.add((e: string) => this.setStatus("Voice error: " + e))
+    }
+    if (this.isEditor) this.createEvent("TapEvent").bind(() => this.onEditorTap())
+    this.makeStatusLabel()
+    this.setStatus(this.isEditor ? "Preview: tap to calibrate (uses the camera's facing)." : "Face the wall. Pinch a point on its LEFT, then its RIGHT.")
+  }
+
+  // -------------------------------------------------------------------------
+  // Input
+
+  private bindHands() {
+    try {
+      const right = SIK.HandInputData.getHand("right")
+      const left = SIK.HandInputData.getHand("left")
+      right.onPinchDown.add(() => this.onPinch("right"))
+      left.onPinchDown.add(() => this.onPinch("left"))
+      right.onPinchUp.add(() => this.onRightPinchUp())
+    } catch (e) {
+      print("[Sightlines] hand input unavailable: " + e)
+    }
+  }
+
+  private rightDownAt = -1
+
+  private onPinch(which: "left" | "right") {
+    const hand = SIK.HandInputData.getHand(which)
+    if (!hand || !hand.isTracked()) return
+    const other = SIK.HandInputData.getHand(which === "left" ? "right" : "left")
+    if (other && other.isTracked() && other.isPinching()) return // two-hand twist, handled in update
+    if (this.mode === "calibrate") return this.addWallPoint(toV3(hand.indexTip.position))
+    // Left pinch always means "listen", so a question is never blocked by a pending quiz.
+    if (which === "left" && this.asr) return this.listen()
+    if (this.mode === "guess") return this.lockGuess(toV3(hand.indexKnuckle.position))
+    // Tour, right hand: decide on release. Short = tell about gaze, long = identify the real building.
+    if (which === "right" && this.locator) {
+      this.rightDownAt = getTime()
+      return
+    }
+    this.tellAboutGaze()
+  }
+
+  private onRightPinchUp() {
+    if (this.rightDownAt < 0) return
+    const held = getTime() - this.rightDownAt
+    this.rightDownAt = -1
+    if (this.mode !== "tour") return
+    if (this.twist) return // it was a two-hand twist
+    if (held >= this.longPinchSec) this.identifyReal()
+    else this.tellAboutGaze()
+  }
+
+  private onEditorTap() {
+    if (this.mode === "calibrate") {
+      this.finishCalibration(this.viewHorizontal())
+      return
+    }
+    if (this.mode === "guess") {
+      // Preview: "point" where the camera looks.
+      const cam = this.camera.getTransform().getWorldPosition()
+      const f = this.viewHorizontal()
+      return this.lockGuess({x: cam.x + f.x * 60, y: cam.y, z: cam.z + f.z * 60})
+    }
+    this.tellAboutGaze()
+  }
+
+  listen() {
+    if (!this.asr) return
+    this.guide.stopSpeaking()
+    this.setStatus("Listening…")
+    this.asr.startListening()
+  }
+
+  // -------------------------------------------------------------------------
+  // Calibration
+
+  private addWallPoint(p: V3) {
+    this.wallPoints.push(p)
+    if (this.wallPoints.length === 1) {
+      this.setStatus("Now pinch a point on the wall's RIGHT side.")
+      return
+    }
+    const facing = facingFromWallPinches(this.wallPoints[0], this.wallPoints[1])
+    this.wallPoints = []
+    if (!facing) {
+      this.setStatus("Those were too close together. Pinch LEFT, then RIGHT, at least 30 cm apart.")
+      return
+    }
+    // Sanity check: the facing should roughly agree with where the wearer is looking.
+    const view = this.viewHorizontal()
+    const agree = facing.x * view.x + facing.z * view.z
+    this.finishCalibration(agree < 0 ? {x: -facing.x, y: 0, z: -facing.z} : facing)
+  }
+
+  private finishCalibration(facingWorld: V3) {
+    const bearing = snapFacingBearing(this.wallBearing, this.facingHint)
+    this.mapYaw = mapYawFor(facingWorld, bearing)
+    const cam = this.camera.getTransform().getWorldPosition()
+    this.floorY = cam.y - this.eyeHeightCm
+    if (this.locator) {
+      // Outdoors with a good GPS fix (or a saved standing spot), centre the map on it; otherwise keep the survey spot.
+      const w = this.locator.wearer()
+      print(`[Sightlines] wearer position: ${w.source}${w.spotId ? " " + w.spotId : ""} (${w.reason})`)
+      if (w.source !== "survey") this.me = w.en
+    }
+    this.hideExtras()
+    this.map.build(this.me, this.camera)
+    if (this.overlay) this.overlay.setCenter(this.map.center)
+    this.lifted = this.startLifted
+    this.placeMap(true)
+    this.mode = "tour"
+    this.unfoldT = 0
+    const here = this.nearestLandmark(this.me)
+    print(`[Sightlines] calibrated: facing bearing ${bearing}, map yaw ${(this.mapYaw * 180 / Math.PI).toFixed(1)}°`)
+    this.resetLights()
+    if (here) this.map.setState(here, "focus")
+    const hereName = here ? cardById(here).name : "Stanford"
+    this.say(`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, `You're at ${hereName}. Look at a building and pinch. Left pinch to ask.`)
+  }
+
+  /** Puts the map on the floor centred on the wearer, or at table height in front of them. */
+  private placeMap(resetCenter: boolean) {
+    if (!this.map.root) return
+    const camT = this.camera.getTransform()
+    const cam = camT.getWorldPosition()
+    const rot = quat.angleAxis(this.mapYaw, vec3.up())
+    let pos: vec3
+    if (this.lifted) {
+      const f = this.viewHorizontal()
+      pos = new vec3(cam.x + f.x * this.tableForwardCm, this.floorY + this.tableHeightCm, cam.z + f.z * this.tableForwardCm)
+    } else {
+      const f = this.viewHorizontal()
+      pos = new vec3(cam.x + f.x * this.floorForwardCm, this.floorY + 1, cam.z + f.z * this.floorForwardCm)
+    }
+    const t = this.map.root.getTransform()
+    if (resetCenter || this.lifted) t.setWorldPosition(pos)
+    else t.setWorldPosition(new vec3(t.getWorldPosition().x, pos.y, t.getWorldPosition().z))
+    t.setWorldRotation(rot)
+    // World-space sightlines stay anchored at the wearer's floor position.
+    const w = this.map.worldRoot.getTransform()
+    w.setWorldPosition(new vec3(cam.x, this.floorY, cam.z))
+    w.setWorldRotation(rot)
+  }
+
+  private setLifted(on: boolean) {
+    this.lifted = on
+    this.placeMap(true)
+    this.setStatus(on ? "Map lifted. Say “floor” to put it back." : "Map on the floor around you.")
+  }
+
+  // -------------------------------------------------------------------------
+  // Tour
+
+  /** Which landmark is the wearer looking at? Looking down = on the map; looking out = the real direction. */
+  private gazedLandmark(): string {
+    const camT = this.camera.getTransform()
+    const cam = camT.getWorldPosition()
+    const dir = camT.getWorldRotation().multiplyVec3(new vec3(0, 0, -1))
+    const mapY = this.map.root.getTransform().getWorldPosition().y
+    if (dir.y < -0.3) {
+      const t = (mapY - cam.y) / dir.y
+      if (t > 0) {
+        const hit = cam.add(dir.uniformScale(t))
+        const local = this.map.root.getTransform().getInvertedWorldTransform().multiplyPoint(hit)
+        const id = this.map.pickAtMapPoint(local, 5)
+        if (id) return id
+      }
+    }
+    const bearing = worldDirToBearing(toV3(dir), this.mapYaw)
+    let best = ""
+    let bestScore = 1e9
+    for (const id of Object.keys(this.map.landmarks)) {
+      const d = this.map.distanceTo(id)
+      if (d < 25) continue // you're standing in it
+      const err = Math.abs(angleDiff(this.map.bearingTo(id), bearing))
+      const score = err + d / 200 // prefer nearer when angles are close
+      if (err < 14 && score < bestScore) {
+        bestScore = score
+        best = id
+      }
+    }
+    return best
+  }
+
+  tellAboutGaze() {
+    const id = this.gazedLandmark() || this.focus || this.nearestLandmark(this.me)
+    if (!id) return this.setStatus("Look at a building, on the map or out there, and pinch.")
+    this.tellAbout(id)
+  }
+
+  private tellAbout(id: string) {
+    const fact = nextFact(id, this.state.heard, themesFromProfile(this.state.profile))
+    const card = cardById(id)
+    this.focusOn(id)
+    if (!fact) {
+      if (this.showcase) this.showcase.hide()
+      this.say(`That's all my notes on ${card.name}. Let's try another one.`, `${card.label}: all facts heard`, this.quizAfterSpeech(id))
+      return
+    }
+    this.markHeard(fact.id)
+    this.showModelFor(fact.id)
+    this.say(`${card.name}. ${fact.text}`, `${card.label}\n${fact.text}`, this.quizAfterSpeech(id))
+  }
+
+  private focusOn(id: string, withMoney = true) {
+    this.resetLights()
+    this.focus = id
+    this.map.setState(id, "focus")
+    if (this.state.seen.indexOf(id) < 0) this.state.seen.push(id)
+    this.map.drawSightline(id)
+    if (withMoney && this.money) this.money.showForLandmark(id, this.map, this.moneyOnMap, {mapExaggeration: this.moneyMapExaggeration})
+    this.save()
+  }
+
+  /** Exploded product model for the fact being spoken, floating in front of the wearer (or hidden if none). */
+  private showModelFor(factId: string) {
+    if (!this.showcase) return
+    const mid = this.showcase.modelForFact(factId)
+    if (!mid) return this.showcase.hide()
+    const cam = this.camera.getTransform().getWorldPosition()
+    const f = this.viewHorizontal()
+    this.showcase.show(mid, new vec3(cam.x + f.x * this.showcaseForwardCm, cam.y - 10, cam.z + f.z * this.showcaseForwardCm), cam, this.showcaseScaleCm)
+  }
+
+  /** Long right pinch / "what's that": GPS + Gemini picks the real building in view, then tag it and stack its gift beside it. */
+  private identifyReal() {
+    if (!this.locator) return this.setStatus("Building finder not wired (controller → locator).")
+    if (this.mode === "calibrate") return this.setStatus("Calibrate first: pinch the wall's left, then right.")
+    this.setStatus("Looking…")
+    this.locator
+      .identify()
+      .then((r: LocateResult | null) => {
+        if (!r) return this.setStatus("I can't tell which building that is. Face it squarely and try again.")
+        print(`[Sightlines] identified ${r.id} (${r.source}, conf ${r.confidence.toFixed(2)}, ${Math.round(r.distanceM)} m)`)
+        const tag = this.overlay ? this.overlay.showBuilding(r, this.map.worldRoot, this.map.center) : null
+        const card = r.landmark ? cardById(r.id) : null
+        if (card) {
+          this.focusOn(r.id, false)
+          if (this.money && this.money.hasGift(r.id)) {
+            if (this.moneyOnMap) this.money.showForLandmark(r.id, this.map, true, {mapExaggeration: this.moneyMapExaggeration})
+            else this.money.show(r.id, this.pileSpot(r), this.camera.getTransform().getWorldPosition())
+          }
+          const fact = nextFact(r.id, this.state.heard, themesFromProfile(this.state.profile))
+          const lead = `That's ${card.name}${r.estimated ? ", I think" : ""}, ${Math.round(r.distanceM)} metres away.`
+          if (fact) {
+            this.markHeard(fact.id)
+            this.showModelFor(fact.id)
+            this.say(`${lead} ${fact.text}`, `${card.label}${r.estimated ? " (estimated)" : ""} · ${Math.round(r.distanceM)} m`, this.quizAfterSpeech(r.id))
+          } else this.say(lead, `${card.label} · ${Math.round(r.distanceM)} m`)
+        } else {
+          this.setStatus(`${r.name}${r.estimated ? " (estimated)" : ""} · ${Math.round(r.distanceM)} m`)
+        }
+        void tag
+      })
+      .catch((e) => {
+        print("[Sightlines] identify failed: " + e)
+        this.setStatus("Couldn't identify that building. Try again.")
+      })
+  }
+
+  /** Floor point for a life-size pile: toward the building, 8° to the right, 6–15 m out and 3 m short of it. */
+  private pileSpot(r: LocateResult): vec3 {
+    const cam = this.camera.getTransform().getWorldPosition()
+    const to = r.worldPos.sub(cam)
+    const yaw = Math.atan2(to.x, to.z) - (8 * Math.PI) / 180
+    const dist = Math.max(600, Math.min(1500, r.distanceM * 100 - 300))
+    return new vec3(cam.x + Math.sin(yaw) * dist, this.floorY, cam.z + Math.cos(yaw) * dist)
+  }
+
+  private hideExtras() {
+    if (this.money) this.money.hide()
+    if (this.showcase) this.showcase.hide()
+    if (this.overlay) this.overlay.hide()
+  }
+
+  /** Starts the next quiz 1.5 s after the current narration finishes (if nothing else happened meanwhile). */
+  private quizAfterSpeech(fromId: string): () => void {
+    return () => {
+      if (!this.autoQuiz) return
+      const ev = this.createEvent("DelayedCallbackEvent")
+      ev.bind(() => {
+        if (this.mode === "tour" && this.focus === fromId && !this.guide.isSpeaking()) this.startGuess(fromId)
+      })
+      ev.reset(1.5)
+    }
+  }
+
+  startGuess(exclude: string) {
+    const target = nextGuessTarget(this.me, this.positions, this.state.guessed, exclude)
+    if (!target) {
+      this.say("You've found every building on my list. Nice work!", "Tour complete")
+      return
+    }
+    this.guessTarget = target
+    this.mode = "guess"
+    if (this.showcase) this.showcase.hide() // keep the pointing arm clear
+    this.say(guessPrompt(target), `Point to ${cardById(target).label}, then pinch`)
+  }
+
+  private lockGuess(pointAt: V3) {
+    const cam = this.camera.getTransform().getWorldPosition()
+    const dir = {x: pointAt.x - cam.x, y: 0, z: pointAt.z - cam.z}
+    if (Math.hypot(dir.x, dir.z) < 5) return this.setStatus("Stretch your arm out toward it, then pinch.")
+    const pointed = worldDirToBearing(dir, this.mapYaw)
+    const target = this.guessTarget
+    const r = scoreGuess(target, this.me, this.positions[target], pointed)
+    this.mode = "tour"
+    this.state.guessed.push(target)
+    this.state.bestErr = Math.min(this.state.bestErr, r.errorDeg)
+    this.focusOn(target)
+    // Your guess (orange) vs the truth (green), on the map and in the room.
+    const radiusCm = this.map.radiusM * this.map.cmPerM
+    this.map.drawBearingArc(pointed, radiusCm * 0.8, this.map.colors.guess)
+    this.map.drawArcToLandmark(target, this.map.colors.truth)
+    this.map.drawWorldBearing(pointed, this.map.colors.guess)
+    this.map.drawWorldBearing(r.trueBearing, this.map.colors.truth)
+    const fact = nextFact(target, this.state.heard, themesFromProfile(this.state.profile))
+    if (fact) this.markHeard(fact.id)
+    const line = fact ? `${r.verdict} Here's something new: ${fact.text}` : r.verdict
+    this.say(line, `${Math.round(r.errorDeg)}° off · best ${Math.round(this.state.bestErr)}°`, this.quizAfterSpeech(target))
+  }
+
+  // -------------------------------------------------------------------------
+  // Voice
+
+  handleUtterance(raw: string) {
+    const t = (raw || "").toLowerCase().trim()
+    if (!t) return
+    if (this.mode === "calibrate") {
+      if (/\b(skip|ready|done)\b/.test(t)) this.finishCalibration(this.viewHorizontal())
+      return
+    }
+    if (/\b(lift|raise|table)\b/.test(t)) return this.setLifted(true)
+    if (/\b(floor|lower|put it down)\b/.test(t)) return this.setLifted(false)
+    if (/\b(recalibrate|calibrate)\b/.test(t)) return this.recalibrate()
+    if (/\bwhat('?s| is) (that|this)\b|\bwhat am i looking at\b/.test(t)) return this.identifyReal()
+    if (/\b(explode|take it apart|show me again)\b/.test(t) && this.showcase && this.showcase.isShowing()) return this.showcase.toggle()
+    if (/^(close|hide|clear)( it| that| the model| everything)?\.?$/.test(t)) return this.hideExtras()
+    if (/\breset (the )?tour\b/.test(t)) return this.resetTour()
+    if (/\b(quiz|guess|test me)\b/.test(t)) return this.startGuess(this.focus)
+    if (/\b(something new|tell me more|another (one|fact))\b/.test(t) && this.focus) return this.tellAbout(this.focus)
+    if (/^(i'?m|i am|i like|i love|i want|i study|my )/.test(t)) return this.setProfile(raw)
+    this.askGuide(raw)
+  }
+
+  private askGuide(question: string) {
+    const focus = this.gazedLandmark() || this.focus
+    this.setStatus("Thinking…")
+    if (focus) this.map.setState(focus, "focus")
+    this.guide
+      .ask(question, focus, this.state.profile, this.state.heard)
+      .then((a) => this.applyAnswer(a))
+      .catch((e) => {
+        print("[Sightlines] guide failed (" + e + "), using local answer")
+        if (/\b(founder|founders|tech|companies|named after)\b/.test(question.toLowerCase())) return this.showFounders()
+        if (focus) return this.tellAbout(focus)
+        this.setStatus("Couldn't reach the guide. Pinch a building instead.")
+      })
+  }
+
+  private applyAnswer(a: ValidatedAnswer) {
+    this.resetLights()
+    for (const id of a.lights) this.map.setState(id, "lit")
+    for (const th of a.threads) this.map.drawThread(th.from, th.to)
+    if (a.focus) {
+      this.focus = a.focus
+      this.map.setState(a.focus, "focus")
+      this.map.drawSightline(a.focus)
+    }
+    for (const id of a.fact_ids) this.markHeard(id)
+    for (const id of a.lights) if (this.state.seen.indexOf(id) < 0) this.state.seen.push(id)
+    this.save()
+    const caption = a.fact_ids.length ? a.fact_ids.map((id) => factById(id).card.label).join(" · ") : "Not in my notes"
+    this.say(a.speech, caption + (a.rejected.length ? `  (dropped ${a.rejected.length})` : ""))
+  }
+
+  private showFounders() {
+    const c = founderConstellation()
+    this.resetLights()
+    for (const id of c.lights) this.map.setState(id, "lit")
+    for (const th of c.threads) this.map.drawThread(th.from, th.to)
+    this.say("These buildings are named for tech founders: NVIDIA, Microsoft, HP, Yahoo, and the GPS pioneer behind Spilker.", "Named for tech founders")
+  }
+
+  private setProfile(sentence: string) {
+    this.state.profile = sentence
+    this.save()
+    const ids = yourStanford(sentence)
+    this.resetLights()
+    for (const id of ids) this.map.setState(id, "lit")
+    for (let i = 0; i + 1 < ids.length; i++) this.map.drawThread(ids[i], ids[i + 1])
+    const names = ids.map((id) => cardById(id).label)
+    this.say(names.length ? `Got it. Here's your Stanford: ${names.join(", ")}. Look at one and pinch.` : "Got it. I'll keep that in mind.", "Your Stanford: " + names.join(" · "))
+  }
+
+  // -------------------------------------------------------------------------
+  // Frame
+
+  private onUpdate() {
+    if (this.unfoldT >= 0 && this.map.root) {
+      this.unfoldT += getDeltaTime()
+      const k = Math.min(1, this.unfoldT / 1.4)
+      const e = 1 - Math.pow(1 - k, 3)
+      this.map.root.getTransform().setLocalScale(new vec3(e, Math.max(0.05, e * e), e))
+      if (k >= 1) this.unfoldT = -1
+    }
+    this.followStatusLabel()
+    if (this.mode !== "calibrate") this.updateTwist()
+  }
+
+  /** Two-hand pinch and twist nudges the map yaw (calibration correction). */
+  private updateTwist() {
+    let left, right
+    try {
+      left = SIK.HandInputData.getHand("left")
+      right = SIK.HandInputData.getHand("right")
+    } catch (e) {
+      return
+    }
+    const both = left && right && left.isTracked() && right.isTracked() && left.isPinching() && right.isPinching()
+    if (!both) {
+      if (this.twist) this.setStatus(`Map turned. Yaw ${(this.mapYaw * 180 / Math.PI).toFixed(0)}°`)
+      this.twist = null
+      return
+    }
+    this.rightDownAt = -1 // a two-hand twist is not a long pinch
+    const d = right.indexTip.position.sub(left.indexTip.position)
+    const yaw = Math.atan2(d.x, d.z)
+    if (!this.twist) {
+      this.twist = {lastYaw: yaw}
+      return
+    }
+    let dy = yaw - this.twist.lastYaw
+    if (dy > Math.PI) dy -= 2 * Math.PI
+    if (dy < -Math.PI) dy += 2 * Math.PI
+    if (Math.abs(dy) < 0.3) {
+      this.mapYaw += dy * 0.5 // half-rate for fine control
+      this.placeMap(false)
+    }
+    this.twist.lastYaw = yaw
+  }
+
+  // -------------------------------------------------------------------------
+  // Helpers
+
+  private recalibrate() {
+    this.mode = "calibrate"
+    this.wallPoints = []
+    this.hideExtras()
+    this.setStatus("Face the wall. Pinch a point on its LEFT, then its RIGHT.")
+  }
+
+  private resetTour() {
+    this.state = {heard: [], seen: [], guessed: [], profile: "", bestErr: 999}
+    this.save()
+    this.hideExtras()
+    this.resetLights()
+    this.say("Tour reset. Look at a building and pinch.", "Tour reset")
+  }
+
+  private resetLights() {
+    this.map.resetLights(this.state.seen)
+    if (this.money) this.money.hide()
+    if (this.showcase) this.showcase.hide()
+  }
+
+  private markHeard(id: string) {
+    if (this.state.heard.indexOf(id) < 0) this.state.heard.push(id)
+    this.save()
+  }
+
+  private nearestLandmark(p: EN): string {
+    let best = ""
+    let bestD = 1e9
+    for (const id of Object.keys(this.positions)) {
+      const q = this.positions[id]
+      const d = Math.hypot(q.e - p.e, q.n - p.n)
+      if (d < bestD) {
+        bestD = d
+        best = id
+      }
+    }
+    return bestD < 80 ? best : ""
+  }
+
+  private viewHorizontal(): V3 {
+    const camT = this.camera.getTransform()
+    const v = vec3.up().cross(camT.right).normalize()
+    return {x: v.x, y: 0, z: v.z}
+  }
+
+  private say(speech: string, caption: string, onDone?: () => void) {
+    this.setStatus(caption)
+    this.guide.speak(speech, onDone)
+  }
+
+  private setStatus(s: string) {
+    if (this.statusText) this.statusText.text = s
+    if (this.statusLabel) this.statusLabel.text = s
+    print("[Sightlines] " + s)
+  }
+
+  private makeStatusLabel() {
+    if (!this.showStatusLabel || !this.map.labelPrefab) return
+    this.statusHolder = global.scene.createSceneObject("SightlinesStatus")
+    this.statusHolder.getTransform().setLocalScale(vec3.one().uniformScale(0.6))
+    const inner = this.map.labelPrefab.instantiate(this.statusHolder)
+    inner.getTransform().setLocalPosition(vec3.zero()) // prefab root is saved at x = -100
+    const wl = inner.getComponent(WorldLabel.getTypeName()) as WorldLabel
+    if (wl && wl.textComp) this.statusLabel = wl.textComp
+  }
+
+  /** Keeps the caption low in the field of view, lagging slightly so it doesn't feel glued to the head. */
+  private followStatusLabel() {
+    if (!this.statusHolder) return
+    const camT = this.camera.getTransform()
+    const cam = camT.getWorldPosition()
+    const f = this.viewHorizontal()
+    const target = new vec3(cam.x + f.x * 70, cam.y - 22, cam.z + f.z * 70)
+    const t = this.statusHolder.getTransform()
+    t.setWorldPosition(vec3.lerp(t.getWorldPosition(), target, Math.min(1, getDeltaTime() * 4)))
+    t.setWorldRotation(quat.angleAxis(Math.atan2(-f.x, -f.z), vec3.up()))
+  }
+
+  private load() {
+    if (!this.persistProgress) return
+    try {
+      const s = global.persistentStorageSystem.store.getString(STORE_KEY)
+      if (s) {
+        const o = JSON.parse(s)
+        this.state = {heard: o.heard || [], seen: o.seen || [], guessed: [], profile: o.profile || "", bestErr: o.bestErr || 999}
+      }
+    } catch (e) {
+      print("[Sightlines] could not load progress: " + e)
+    }
+  }
+
+  private save() {
+    if (!this.persistProgress) return
+    try {
+      global.persistentStorageSystem.store.putString(STORE_KEY, JSON.stringify(this.state))
+    } catch (e) {
+      // Storage unavailable in some previews.
+    }
+  }
+}
+
+function toV3(v: vec3): V3 {
+  return {x: v.x, y: v.y, z: v.z}
+}
