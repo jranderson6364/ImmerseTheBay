@@ -1,0 +1,25 @@
+# Local secrets and configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Editor and operating system files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Generated dependencies and outputs
+node_modules/
+dist/
+build/
+out/
+coverage/
+*.log
+
+# Large media and captured demos (store intentionally when needed)
+*.mp4
+*.mov
+*.zip
