@@ -26,8 +26,14 @@
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
+    backgroundDim: false
+    backgroundScale: false
     bikeLaneWidthCm: false
     bikeWidthCm: false
+    focusInSec: false
+    focusLiftCm: false
+    focusOutSec: false
+    focusScale: false
     footWidthCm: false
     labelPrefab: false
     labelScale: false
@@ -38,6 +44,7 @@
     scaleDenominator: false
     showBikePaths: false
     showCornerLines: false
+    showFocusHalo: false
     showFootpaths: false
     showOutlines: false
     showRoads: false
@@ -71,6 +78,13 @@
       bikeLaneWidthCm: 0.400000
       labelScale: 0.350000
       sightlineLabelPerCm: 0.009000
+      focusScale: 1.800000
+      focusLiftCm: 1.200000
+      backgroundScale: 0.350000
+      backgroundDim: 0.350000
+      focusInSec: 0.600000
+      focusOutSec: 0.600000
+      showFocusHalo: true
   ScriptTypes:
     -
       {}
@@ -94,3 +108,12 @@
     - '// @input float bikeLaneWidthCm = 0.4 {"hint":"Width of the dashed bike-lane stripe down roads, map cm"}'
     - '// @input float labelScale = 1.2 {"hint":"Map label size. The status caption is 0.6 at 70 cm; map labels are 1.5-3 m away."}'
     - '// @input float sightlineLabelPerCm = 0.009 {"hint":"Real-direction beacon label size per cm of distance (0.009 matches the status caption)"}'
+    - '// @ui {"widget":"group_start", "label":"Focus mode (a selected building)"}'
+    - "// @input float focusScale = 1.8 {\"hint\":\"Focused building's scale (1.6-2 reads well)\"}"
+    - '// @input float focusLiftCm = 1.2 {"hint":"Extra lift of the focused building (map cm)"}'
+    - '// @input float backgroundScale = 0.35 {"hint":"Height scale of every other building while focused. Smaller, not gone."}'
+    - '// @input float backgroundDim = 0.35 {"hint":"Brightness of everything else while focused (additive display: lower = more see-through)"}'
+    - '// @input float focusInSec = 0.6 {"hint":"Seconds to go into focus"}'
+    - '// @input float focusOutSec = 0.6 {"hint":"Seconds to come back out"}'
+    - "// @input bool showFocusHalo = true {\"hint\":\"Soft ring at the focused building's base\"}"
+    - '// @ui {"widget":"group_end"}'

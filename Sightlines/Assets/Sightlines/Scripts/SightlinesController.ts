@@ -27,6 +27,9 @@ import {LocateResult, SightlinesLocator} from "./SightlinesLocator"
 import {SightlinesOverlay} from "./SightlinesOverlay"
 import {SightlinesMoney} from "./SightlinesMoney"
 import {SightlinesShowcase} from "./SightlinesShowcase"
+import {SightlinesInfoPanel} from "./SightlinesInfoPanel"
+import {Fact} from "../Core/Cards"
+import {FocusLayout, focusLayout, idleExpired} from "../Core/Focus"
 
 type Mode = "calibrate" | "tour" | "guess"
 
@@ -88,6 +91,18 @@ export class SightlinesController extends BaseScriptComponent {
   @input @hint("Hold a right pinch this long (s) to identify the real building instead") longPinchSec: number = 0.6
   @ui.group_end
 
+  @ui.group_start("Focus mode (selected building)")
+  @input @allowUndefined @hint("Floating card above the selected building: name, namesake, the fact, a number graphic") infoPanel: SightlinesInfoPanel
+  // HOOK for the per-building 3D experiences (Scripts/SightlinesExperiences.ts, another session's class). Typed as a
+  // plain script component and called through `any`: show(id, anchorWorldPos: vec3, faceToward: vec3, scaleCm) and
+  // hide(), if present.
+  @input @allowUndefined @hint("Per-building 3D experience (SightlinesExperiences). Shown to the wearer's left of the card.") experiences: ScriptComponent
+  @input @hint("Experience size (world cm)") experienceScaleCm: number = 30
+  @input @hint("Leave focus this many seconds after the guide stops talking (0 = never)") focusIdleSec: number = 25
+  @input @hint("ON: exploded model floats beside the focused building, right of the card. OFF: in front of you as before.") showcaseNearBuilding: boolean = true
+  @input @hint("Gap between the card and the side objects (world cm)") focusSideGapCm: number = 4
+  @ui.group_end
+
   private mode: Mode = "calibrate"
   private me: EN = {e: 0, n: 0}
   private mapYaw = 0
@@ -103,6 +118,9 @@ export class SightlinesController extends BaseScriptComponent {
   private statusHolder: SceneObject = null
   private statusLabel: Text = null
   private state = {heard: [] as string[], seen: [] as string[], guessed: [] as string[], profile: "", bestErr: 999}
+  /** Focus mode: the selected building ("" = none) and when the guide last spoke during it. */
+  private focusMode = ""
+  private focusActiveAt = 0
 
   onAwake() {
     this.createEvent("OnStartEvent").bind(() => this.onStart())
@@ -125,6 +143,7 @@ export class SightlinesController extends BaseScriptComponent {
     }
     if (this.isEditor) this.createEvent("TapEvent").bind(() => this.onEditorTap())
     this.makeStatusLabel()
+    this.setupInfoPanel()
     this.prefetchStartup()
     this.setStatus(this.calibrateInstruction())
   }
@@ -326,6 +345,7 @@ export class SightlinesController extends BaseScriptComponent {
     const fact = nextFact(id, this.state.heard, themesFromProfile(this.state.profile))
     const card = cardById(id)
     this.focusOn(id)
+    this.enterFocus(id, fact)
     if (!fact) {
       if (this.showcase) this.showcase.hide()
       this.say(`That's all my notes on ${card.name}. Let's try another one.`, `${card.label}: all facts heard`, this.quizAfterSpeech(id))
@@ -343,18 +363,112 @@ export class SightlinesController extends BaseScriptComponent {
     this.map.setState(id, "focus")
     if (this.state.seen.indexOf(id) < 0) this.state.seen.push(id)
     this.map.drawSightline(id)
-    if (withMoney && this.money) this.money.showForLandmark(id, this.map, this.moneyOnMap, {mapExaggeration: this.moneyMapExaggeration})
+    if (withMoney && this.money) this.money.showForLandmark(id, this.map, this.moneyOnMap, {mapExaggeration: this.moneyMapExaggeration, mapOffsetCm: this.moneyClearanceCm(id)})
     this.save()
   }
 
-  /** Exploded product model for the fact being spoken, floating in front of the wearer (or hidden if none). */
+  /** On-map money pile offset: just outside the focused building's grown footprint, on the wearer's side. */
+  private moneyClearanceCm(id: string): number {
+    return Math.max(4, this.map.focusClearanceCm(id) + 2.5)
+  }
+
+  /** Exploded product model for the fact being spoken: beside the focused building, or in front of the wearer. */
   private showModelFor(factId: string) {
     if (!this.showcase) return
     const mid = this.showcase.modelForFact(factId)
     if (!mid) return this.showcase.hide()
     const cam = this.camera.getTransform().getWorldPosition()
+    const layout = this.showcaseNearBuilding && this.focusMode ? this.focusLayoutFor(this.focusMode) : null
+    if (layout) {
+      this.showcase.show(mid, new vec3(layout.showcase.x, layout.showcase.y, layout.showcase.z), cam, this.showcaseScaleCm)
+      return
+    }
     const f = this.viewHorizontal()
     this.showcase.show(mid, new vec3(cam.x + f.x * this.showcaseForwardCm, cam.y - 10, cam.z + f.z * this.showcaseForwardCm), cam, this.showcaseScaleCm)
+  }
+
+  // -------------------------------------------------------------------------
+  // Focus mode: the selected building grows, everything else shrinks back, and a card rises out of it.
+
+  /** Focus card: uses the wired `infoPanel`, or adds one to this object so no scene wiring is needed. */
+  private setupInfoPanel() {
+    try {
+      if (!this.infoPanel) this.infoPanel = this.getSceneObject().createComponent(SightlinesInfoPanel.getTypeName()) as SightlinesInfoPanel
+      if (!this.infoPanel) return
+      if (!this.infoPanel.material && this.map) this.infoPanel.material = this.map.material
+      if (!this.infoPanel.camera) this.infoPanel.camera = this.camera
+    } catch (e) {
+      print("[Sightlines] info panel unavailable: " + e)
+    }
+  }
+
+  /** Enters (or moves) focus to `id`, with `fact` on the card (null: name and namesake only). */
+  private enterFocus(id: string, fact: Fact | null) {
+    const card = cardById(id)
+    if (!card || !this.map.root || !this.map.landmarks[id]) return
+    this.focusMode = id
+    this.focusActiveAt = getTime()
+    this.map.setFocus(id)
+    const frame = this.map.focusFrame(id)
+    const cam = this.camera.getTransform().getWorldPosition()
+    if (this.infoPanel && frame) this.infoPanel.show(card, fact, frame.top, cam)
+    const exp = this.experiences as any
+    if (exp) {
+      const layout = this.focusLayoutFor(id)
+      try {
+        if (exp.hide) exp.hide()
+        // Experiences treat the anchor as their base and rise ~1.1x scale above it; the layout gives a centre.
+        if (layout && exp.show) exp.show(id, new vec3(layout.experience.x, layout.experience.y - this.experienceScaleCm * 0.55, layout.experience.z), cam, this.experienceScaleCm)
+      } catch (e) {
+        print("[Sightlines] experiences hook failed: " + e)
+      }
+    }
+  }
+
+  /** Smoothly restores the whole map and puts the card away. Extras (money, model) are left to the caller. */
+  private exitFocus() {
+    if (!this.focusMode) return
+    this.focusMode = ""
+    this.map.setFocus(null)
+    if (this.infoPanel) this.infoPanel.hide()
+    const exp = this.experiences as any
+    if (exp && exp.hide) {
+      try {
+        exp.hide()
+      } catch (e) {
+        print("[Sightlines] experiences hide failed: " + e)
+      }
+    }
+  }
+
+  /** Card above the building; exploded model to the wearer's right of it; the experience to the left. */
+  private focusLayoutFor(id: string): FocusLayout | null {
+    const frame = this.map.focusFrame(id)
+    if (!frame) return null
+    const cam = this.camera.getTransform().getWorldPosition()
+    const p = this.infoPanel
+    return focusLayout(frame.base, frame.top, cam, {
+      panelWidthCm: p ? p.panelWidthCm : 30,
+      panelHeightCm: p ? p.panelHeightCm : 24,
+      panelGapCm: p ? p.panelGapCm : 6,
+      sideObjectCm: Math.max(this.showcaseScaleCm, this.experienceScaleCm),
+      sideGapCm: this.focusSideGapCm
+    })
+  }
+
+  /** Keeps the card on its building while the map moves, and leaves focus after the idle time. */
+  private updateFocusMode() {
+    if (!this.focusMode) return
+    if (this.mode === "calibrate" || !this.map.root) return this.exitFocus()
+    const now = getTime()
+    if (this.guide.isSpeaking()) this.focusActiveAt = now
+    if (idleExpired(now, this.focusActiveAt, this.focusIdleSec)) {
+      print("[Sightlines] focus idle, restoring the map")
+      this.hideExtras()
+      return
+    }
+    const frame = this.map.focusFrame(this.focusMode)
+    if (frame && this.infoPanel) this.infoPanel.setAnchor(frame.top)
   }
 
   /** Long right pinch / "what's that": GPS + Gemini picks the real building in view, then tag it and stack its gift beside it. */
@@ -372,10 +486,11 @@ export class SightlinesController extends BaseScriptComponent {
         if (card) {
           this.focusOn(r.id, false)
           if (this.money && this.money.hasGift(r.id)) {
-            if (this.moneyOnMap) this.money.showForLandmark(r.id, this.map, true, {mapExaggeration: this.moneyMapExaggeration})
+            if (this.moneyOnMap) this.money.showForLandmark(r.id, this.map, true, {mapExaggeration: this.moneyMapExaggeration, mapOffsetCm: this.moneyClearanceCm(r.id)})
             else this.money.show(r.id, this.pileSpot(r), this.camera.getTransform().getWorldPosition())
           }
           const fact = nextFact(r.id, this.state.heard, themesFromProfile(this.state.profile))
+          this.enterFocus(r.id, fact)
           const lead = `That's ${card.name}${r.estimated ? ", I think" : ""}, ${Math.round(r.distanceM)} metres away.`
           if (fact) {
             this.markHeard(fact.id)
@@ -467,7 +582,9 @@ export class SightlinesController extends BaseScriptComponent {
     return this.useStartPoint ? this.startInstruction : "Face the wall. Pinch a point on its LEFT, then its RIGHT."
   }
 
+  /** Clears the money pile, model and tags, and leaves focus mode. */
   private hideExtras() {
+    this.exitFocus()
     if (this.money) this.money.hide()
     if (this.showcase) this.showcase.hide()
     if (this.overlay) this.overlay.hide()
@@ -493,6 +610,7 @@ export class SightlinesController extends BaseScriptComponent {
     }
     this.guessTarget = target
     this.mode = "guess"
+    this.exitFocus() // the whole map comes back so you can think about where it is
     if (this.showcase) this.showcase.hide() // keep the pointing arm clear
     this.say(guessPrompt(target), `Point to ${cardById(target).label}, then pinch`)
   }
@@ -516,6 +634,7 @@ export class SightlinesController extends BaseScriptComponent {
     this.map.drawWorldBearing(r.trueBearing, this.map.colors.truth)
     const fact = nextFact(target, this.state.heard, themesFromProfile(this.state.profile))
     if (fact) this.markHeard(fact.id)
+    this.enterFocus(target, fact)
     const line = fact ? [r.verdict, "Here's something new.", fact.text] : [r.verdict]
     this.say(line, `${Math.round(r.errorDeg)}° off · best ${Math.round(this.state.bestErr)}°`, this.quizAfterSpeech(target))
   }
@@ -539,6 +658,11 @@ export class SightlinesController extends BaseScriptComponent {
     if (/\bwhat('?s| is) (that|this)\b|\bwhat am i looking at\b/.test(t)) return this.identifyReal()
     if (/\b(explode|take it apart|show me again)\b/.test(t) && this.showcase && this.showcase.isShowing()) return this.showcase.toggle()
     if (/^(close|hide|clear)( it| that| the model| everything)?\.?$/.test(t)) return this.hideExtras()
+    // Leave focus mode: "back", "go back", "close", "exit", "zoom out of it"...
+    if (/^(go |take me )?back( out)?\.?$|^(close|exit)( focus| the (card|panel)| this)?\.?$/.test(t)) {
+      if (this.focusMode) this.setStatus("Back to the whole map.")
+      return this.hideExtras()
+    }
     if (/\breset (the )?tour\b/.test(t)) return this.resetTour()
     if (/\b(quiz|guess|test me)\b/.test(t)) return this.startGuess(this.focus)
     if (/\b(something new|tell me more|another (one|fact))\b/.test(t) && this.focus) return this.tellAbout(this.focus)
@@ -563,6 +687,7 @@ export class SightlinesController extends BaseScriptComponent {
   }
 
   private applyAnswer(a: ValidatedAnswer) {
+    this.exitFocus() // answers light several buildings at once, so the whole map comes back
     this.resetLights()
     for (const id of a.lights) this.map.setState(id, "lit")
     for (const th of a.threads) this.map.drawThread(th.from, th.to)
@@ -581,6 +706,7 @@ export class SightlinesController extends BaseScriptComponent {
 
   private showFounders() {
     const c = founderConstellation()
+    this.exitFocus()
     this.resetLights()
     for (const id of c.lights) this.map.setState(id, "lit")
     for (const th of c.threads) this.map.drawThread(th.from, th.to)
@@ -591,6 +717,7 @@ export class SightlinesController extends BaseScriptComponent {
     this.state.profile = sentence
     this.save()
     const ids = yourStanford(sentence)
+    this.exitFocus()
     this.resetLights()
     for (const id of ids) this.map.setState(id, "lit")
     for (let i = 0; i + 1 < ids.length; i++) this.map.drawThread(ids[i], ids[i + 1])
@@ -610,6 +737,7 @@ export class SightlinesController extends BaseScriptComponent {
       if (k >= 1) this.unfoldT = -1
     }
     this.followStatusLabel()
+    this.updateFocusMode()
     this.updateYouAreHere()
     this.updateHandle()
     if (this.mode !== "calibrate") this.updateTwist()

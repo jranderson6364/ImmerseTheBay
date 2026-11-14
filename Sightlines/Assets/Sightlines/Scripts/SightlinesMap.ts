@@ -10,6 +10,7 @@
 import {BUILDINGS, LANDMARKS, BakedLandmark} from "../Data/CampusData"
 import {PATHS} from "../Data/PathsData"
 import {tidyLabel} from "./LabelStyle"
+import {buildLandmarkModel} from "../Core/LandmarkModels"
 import {CARDS, cardById} from "../Core/Cards"
 import {EN, V3, bearingDeg, bearingToMapDir, distanceM, enToMap, formatDistance, latLonToEN} from "../Core/Geo"
 import {
@@ -17,6 +18,7 @@ import {
   landmarkMapPlacement, vertexCount
 } from "../Core/MapMesh"
 import {WorldLabel} from "../../Scripts/WorldLabel"
+import {FocusTuning, backgroundLook, easeInOut, footprintRadiusM, landmarkLook, stepBlend} from "../Core/Focus"
 
 export type LandmarkState = "dim" | "seen" | "lit" | "focus"
 
@@ -34,6 +36,24 @@ interface LandmarkView {
   state: LandmarkState
   /** True for off-map cards and for landmarks beyond radiusM: pinned to the disc edge in their true direction. */
   offMap: boolean
+  /** Focus mode: parent of `obj` at the footprint centre (floor level), so the body scales about its base. */
+  pivot: SceneObject | null
+  /** Footprint radius in map cm (before focus scaling). */
+  footprintCm: number
+  /** Focus blend, linear 0..1 (1 = this is the focused building). */
+  focusT: number
+  /** Soft ring at the base while focused (created on first focus). */
+  halo: SceneObject | null
+  haloMaterial: Material | null
+  outlineMaterial: Material | null
+}
+
+interface BackgroundPart {
+  obj: SceneObject
+  material: Material
+  rgba: number[]
+  /** Buildings shrink in height; flat things (roads, disc) only dim. */
+  scalesY: boolean
 }
 
 // Additive display: black is invisible, brightness is opacity. Background buildings use a cool blue-to-violet ramp
@@ -57,6 +77,8 @@ const COLORS: Record<string, [number, number, number, number]> = {
   wallHighAlt: [0.56, 0.43, 0.34, 1],
   outline: [1.0, 0.93, 0.8, 1], // background roof edges: warm cream
   landmarkOutline: [1.0, 0.98, 0.9, 1], // landmark roof edges: near white, marks them as touchable
+  landmarkRoof: [0.94, 0.52, 0.38, 1], // modelled landmarks: clay-tile roofs and Hoover's dome
+  landmarkTrim: [0.3, 0.42, 0.5, 1], // modelled landmarks: arch recesses, windows, glass (dim = reads as depth)
   base: [0.07, 0.07, 0.04, 1], // map disc: dark earth, almost see-through
   edge: [0.86, 0.74, 0.48, 1], // disc rim: sandstone gold
   // Paths lie flat under the buildings, so they stay dimmer than roofs and outlines.
@@ -147,7 +169,19 @@ export class SightlinesMap extends BaseScriptComponent {
 
   @input @hint("Map label size. The status caption is 0.6 at 70 cm; map labels are 1.5-3 m away.") labelScale: number = 1.2
 
+  @input @hint("Draw recognisable models for key landmarks (Hoover, Memorial Church, Main Quad, Huang...) instead of plain extrusions") useLandmarkModels: boolean = true
+
   @input @hint("Real-direction beacon label size per cm of distance (0.009 matches the status caption)") sightlineLabelPerCm: number = 0.009
+
+  @ui.group_start("Focus mode (a selected building)")
+  @input @hint("Focused building's scale (1.6-2 reads well)") focusScale: number = 1.8
+  @input @hint("Extra lift of the focused building (map cm)") focusLiftCm: number = 1.2
+  @input @hint("Height scale of every other building while focused. Smaller, not gone.") backgroundScale: number = 0.35
+  @input @hint("Brightness of everything else while focused (additive display: lower = more see-through)") backgroundDim: number = 0.35
+  @input @hint("Seconds to go into focus") focusInSec: number = 0.6
+  @input @hint("Seconds to come back out") focusOutSec: number = 0.6
+  @input @hint("Soft ring at the focused building's base") showFocusHalo: boolean = true
+  @ui.group_end
 
   root: SceneObject
   worldRoot: SceneObject
@@ -159,6 +193,11 @@ export class SightlinesMap extends BaseScriptComponent {
   private worldTemp: SceneObject[] = []
   private camera: SceneObject = null
   private pulseT = 0
+  private bgParts: BackgroundPart[] = []
+  /** Focused landmark id ("" = none) and the background blend, linear 0..1. */
+  focusId = ""
+  private bgT = 0
+  private focusDirty = false
 
   onAwake() {
     this.createEvent("UpdateEvent").bind(() => this.onUpdate())
@@ -174,14 +213,18 @@ export class SightlinesMap extends BaseScriptComponent {
     this.root = global.scene.createSceneObject("SightlinesMapRoot")
     this.worldRoot = global.scene.createSceneObject("SightlinesWorldRoot")
     this.landmarks = {}
+    this.bgParts = []
+    this.focusId = ""
+    this.bgT = 0
+    this.focusDirty = false
 
     const opts: MapMeshOptions = {...this.meshStyle(), cmPerM: this.cmPerM, verticalExaggeration: this.verticalExaggeration, center, radiusM: this.radiusM, minHeightCm: 0.35}
     const started = getTime()
 
     // Base disc + glowing edge ring.
     const radiusCm = this.radiusM * this.cmPerM
-    this.meshObject(this.root, "base", buildDisc(radiusCm + 1.5), COLORS.base)
-    this.meshObject(this.root, "edge", buildRing(radiusCm + 1.5, 0.6, 128, 0.02), COLORS.edge)
+    this.trackBackground(this.meshObject(this.root, "base", buildDisc(radiusCm + 1.5), COLORS.base), COLORS.base, false)
+    this.trackBackground(this.meshObject(this.root, "edge", buildRing(radiusCm + 1.5, 0.6, 128, 0.02), COLORS.edge), COLORS.edge, false)
 
     // Roads, bike paths and foot paths: flat ribbons just above the base, drawn before the buildings.
     const paths = buildPathRibbons(PATHS, {
@@ -195,7 +238,7 @@ export class SightlinesMap extends BaseScriptComponent {
     })
     let pathChunks = 0
     const drawPaths = (cs: MeshChunk[], kind: string) => cs.forEach((c, i) => {
-      this.meshObject(this.root, `path_${kind}_${i}`, c, COLORS[kind])
+      this.trackBackground(this.meshObject(this.root, `path_${kind}_${i}`, c, COLORS[kind]), COLORS[kind], false)
       pathChunks++
     })
     drawPaths(paths.roads, "road")
@@ -212,14 +255,14 @@ export class SightlinesMap extends BaseScriptComponent {
     const draw = (bands: MeshChunk[][][], kind: string) => {
       bands.forEach((tones, band) => tones.forEach((cs, tone) => cs.forEach((c, i) => {
         const key = kind + bandNames[Math.min(band, bandNames.length - 1)] + (tone ? "Alt" : "")
-        this.meshObject(this.root, `${kind}_${band}_${tone}_${i}`, c, COLORS[key])
+        this.trackBackground(this.meshObject(this.root, `${kind}_${band}_${tone}_${i}`, c, COLORS[key]), COLORS[key], true)
         chunks++
       })))
     }
     draw(campus.roofBands, "roof")
     draw(campus.wallBands, "wall")
     campus.outlines.forEach((c, i) => {
-      this.meshObject(this.root, "outlines" + i, c, COLORS.outline)
+      this.trackBackground(this.meshObject(this.root, "outlines" + i, c, COLORS.outline), COLORS.outline, true)
       chunks++
     })
     const verts = vertexCount(campus.roofs) + vertexCount(campus.walls) + vertexCount(campus.outlines)
@@ -252,19 +295,36 @@ export class SightlinesMap extends BaseScriptComponent {
     let obj: SceneObject = null
     let material: Material = null
     let outline: SceneObject = null
+    let outlineMaterial: Material = null
+    let footprintCm = 1.5
     const opts: MapMeshOptions = {...this.meshStyle(), cmPerM: this.cmPerM, verticalExaggeration: this.verticalExaggeration, center: this.center, radiusM: 1e9, minHeightCm: 0.5}
+    // Recognisable procedural model (Hoover, MemChu, Main Quad, Huang, ...) where one exists; else the extrusion.
+    const model = !offMap && baked && this.useLandmarkModels ? buildLandmarkModel(id, baked.building >= 0 ? BUILDINGS[baked.building] : null, {x: map.x, z: map.z}, opts) : null
     if (offMap) {
       // Pinned marker is built below.
+    } else if (model) {
+      const r = this.meshObject(this.root, "lm_" + id, model.body, COLORS.dim)
+      obj = r.obj
+      material = r.material
+      if (model.accent && model.accent.idx.length) this.meshObject(r.obj, "lm_" + id + "_roof", model.accent, COLORS.landmarkRoof)
+      if (model.trim && model.trim.idx.length) this.meshObject(r.obj, "lm_" + id + "_trim", model.trim, COLORS.landmarkTrim)
+      topCm = model.topCm
+      footprintCm = baked.building >= 0 ? Math.max(0.8, footprintRadiusM(BUILDINGS[baked.building][3], baked.east, baked.north) * this.cmPerM) : 30 * this.cmPerM
     } else if (baked && baked.building >= 0) {
       const b = BUILDINGS[baked.building]
       topCm = buildingHeightCm(b, opts)
+      footprintCm = Math.max(0.8, footprintRadiusM(b[3], baked.east, baked.north) * this.cmPerM)
       const r = this.meshObject(this.root, "lm_" + id, buildSingleBuilding(b, opts), COLORS.dim)
       obj = r.obj
       material = r.material
       // A slightly wider outline than the background so landmarks stand out. Own object and material, so
       // setState() recolours only the body.
       const edge = buildBuildingOutline(b, {...opts, outlineWidthCm: opts.outlineWidthCm * 1.25})
-      if (edge.idx.length) outline = this.meshObject(r.obj, "lm_" + id + "_edge", edge, COLORS.landmarkOutline).obj
+      if (edge.idx.length) {
+        const e = this.meshObject(r.obj, "lm_" + id + "_edge", edge, COLORS.landmarkOutline)
+        outline = e.obj
+        outlineMaterial = e.material
+      }
     } else if (baked) {
       // Point landmark (Memorial Church): a small glowing post.
       topCm = Math.max(2, baked.heightM * this.cmPerM * this.verticalExaggeration)
@@ -280,8 +340,21 @@ export class SightlinesMap extends BaseScriptComponent {
       material = m.material
       topCm = 5
     }
+    // Focus pivot at the footprint centre on the floor; the body keeps its placement under it, so it scales
+    // about its own base.
+    let pivot: SceneObject = null
+    if (obj) {
+      pivot = global.scene.createSceneObject("lm_pivot_" + id)
+      pivot.setParent(this.root)
+      pivot.getTransform().setLocalPosition(new vec3(placed.x, 0, placed.z))
+      obj.setParent(pivot)
+      obj.getTransform().setLocalPosition(new vec3(-placed.x, 0, -placed.z))
+    }
     const label = this.makeLabel(this.root, card ? card.label : id, new vec3(placed.x, topCm + 2.5, placed.z))
-    return {id, en, map: placed, topCm, obj, material, outline, label: label.holder, labelText: label.text, state: "dim", offMap}
+    return {
+      id, en, map: placed, topCm, obj, material, outline, label: label.holder, labelText: label.text, state: "dim", offMap,
+      pivot, footprintCm, focusT: 0, halo: null, haloMaterial: null, outlineMaterial
+    }
   }
 
   /** Outline and wall options shared by the background map and the landmarks. */
@@ -312,7 +385,136 @@ export class SightlinesMap extends BaseScriptComponent {
     const l = this.landmarks[id]
     if (!l) return
     l.state = state
-    if (l.material) this.setColor(l.material, COLORS[state])
+    if (l.material) this.setColor(l.material, this.dimmed(COLORS[state], this.landmarkDim(l)))
+  }
+
+  // -------------------------------------------------------------------------
+  // Focus mode: the selected building grows and lifts; everything else shrinks in height and dims.
+
+  /** Starts the smooth move into focus on `id`, or back out with null or "". Safe to call repeatedly. */
+  setFocus(id: string | null) {
+    const next = id && this.landmarks[id] ? id : ""
+    if (next === this.focusId) return
+    this.focusId = next
+    this.focusDirty = true
+  }
+
+  /** True while any part of the map is still moving into or out of focus. */
+  isFocusAnimating(): boolean {
+    return this.focusDirty
+  }
+
+  /** Focused building's footprint radius at full focus, map cm. Use it to keep extras off the grown building. */
+  focusClearanceCm(id: string): number {
+    const l = this.landmarks[id]
+    return l ? l.footprintCm * Math.max(1, this.tuning().focusScale) : 0
+  }
+
+  /**
+   * World-space frame of a landmark at FULL focus, so layouts are stable from the first frame of the
+   * transition: footprint centre on the map surface, top of the grown building, grown footprint radius (world cm).
+   */
+  focusFrame(id: string): {base: vec3; top: vec3; radiusWorldCm: number} | null {
+    const l = this.landmarks[id]
+    if (!l || !this.root) return null
+    const t = this.root.getTransform()
+    const w = t.getWorldTransform()
+    const tune = this.tuning()
+    const top = l.topCm * tune.focusScale + tune.focusLiftCm
+    return {
+      base: w.multiplyPoint(new vec3(l.map.x, 0, l.map.z)),
+      top: w.multiplyPoint(new vec3(l.map.x, top, l.map.z)),
+      radiusWorldCm: l.footprintCm * tune.focusScale * Math.abs(t.getWorldScale().x)
+    }
+  }
+
+  private tuning(): FocusTuning {
+    return {
+      focusScale: Math.max(0.1, this.focusScale),
+      focusLiftCm: this.focusLiftCm,
+      backgroundScale: Math.max(0.02, Math.min(1, this.backgroundScale)),
+      backgroundDim: Math.max(0, Math.min(1, this.backgroundDim))
+    }
+  }
+
+  private trackBackground(r: {obj: SceneObject; material: Material}, rgba: number[], scalesY: boolean) {
+    this.bgParts.push({obj: r.obj, material: r.material, rgba, scalesY})
+  }
+
+  private landmarkDim(l: LandmarkView): number {
+    return landmarkLook(easeInOut(this.bgT), easeInOut(l.focusT), this.tuning()).dim
+  }
+
+  private dimmed(rgba: number[], k: number): number[] {
+    return k >= 1 ? rgba : [rgba[0] * k, rgba[1] * k, rgba[2] * k, rgba[3]]
+  }
+
+  /** Advances the focus blends and applies them. Touches only transforms and material colours, never meshes. */
+  private updateFocus(dt: number) {
+    if (!this.focusDirty) return
+    const tune = this.tuning()
+    const bgTarget = this.focusId ? 1 : 0
+    this.bgT = stepBlend(this.bgT, bgTarget, dt, bgTarget > this.bgT ? this.focusInSec : this.focusOutSec)
+    let moving = this.bgT !== bgTarget
+    const bg = easeInOut(this.bgT)
+
+    const back = backgroundLook(bg, tune)
+    for (const p of this.bgParts) {
+      if (p.scalesY) p.obj.getTransform().setLocalScale(new vec3(1, back.scaleY, 1))
+      this.setColor(p.material, this.dimmed(p.rgba, back.dim))
+    }
+
+    for (const id of Object.keys(this.landmarks)) {
+      const l = this.landmarks[id]
+      const target = id === this.focusId ? 1 : 0
+      l.focusT = stepBlend(l.focusT, target, dt, target > l.focusT ? this.focusInSec : this.focusOutSec)
+      if (l.focusT !== target) moving = true
+      const fb = easeInOut(l.focusT)
+      const look = landmarkLook(bg, fb, tune)
+      if (l.pivot) {
+        const pt = l.pivot.getTransform()
+        pt.setLocalScale(new vec3(look.scaleXZ, look.scaleY, look.scaleXZ))
+        pt.setLocalPosition(new vec3(l.map.x, look.liftCm, l.map.z))
+      }
+      // The pulse in onUpdate owns the colour of a landmark in the "focus" state.
+      if (l.material && l.state !== "focus") this.setColor(l.material, this.dimmed(COLORS[l.state], look.dim))
+      if (l.outlineMaterial) this.setColor(l.outlineMaterial, this.dimmed(COLORS.landmarkOutline, look.dim))
+      if (l.label) {
+        l.label.getTransform().setLocalPosition(new vec3(l.map.x, l.topCm * look.scaleY + look.liftCm + 2.5, l.map.z))
+        // The info panel carries the focused building's name, so its small map label steps aside.
+        l.label.enabled = fb < 0.5
+        if (l.labelText) this.setTextBrightness(l.labelText, look.dim)
+      }
+      this.updateHalo(l, fb)
+    }
+    if (!moving) this.focusDirty = false
+  }
+
+  private updateHalo(l: LandmarkView, fb: number) {
+    if (!this.showFocusHalo || !l.pivot) return
+    if (fb <= 0.001) {
+      if (l.halo) l.halo.enabled = false
+      return
+    }
+    if (!l.halo) {
+      // Unit ring, scaled to the grown footprint below.
+      const r = this.meshObject(this.root, "lm_halo_" + l.id, buildRing(1, 0.12, 64, 0.06), COLORS.landmarkOutline)
+      l.halo = r.obj
+      l.haloMaterial = r.material
+      l.halo.getTransform().setLocalPosition(new vec3(l.map.x, 0, l.map.z))
+    }
+    l.halo.enabled = true
+    const radius = (l.footprintCm * this.tuning().focusScale + 1.2) * Math.max(0.05, fb)
+    l.halo.getTransform().setLocalScale(new vec3(radius, 1, radius))
+    if (l.haloMaterial) this.setColor(l.haloMaterial, this.dimmed(COLORS.landmarkOutline, 0.7 * fb))
+  }
+
+  private setTextBrightness(t: Text, k: number) {
+    try {
+      t.textFill.color = new vec4(k, k, k, 1)
+    } catch (e) {
+      // Text without a fill: leave as is.
+    }
   }
 
   /** Returns every landmark that is `lit` or `focus` to `seen` (or `dim` if never seen). */
@@ -403,6 +605,7 @@ export class SightlinesMap extends BaseScriptComponent {
   private onUpdate() {
     if (!this.root || !this.camera) return
     this.pulseT += getDeltaTime()
+    this.updateFocus(getDeltaTime())
     const camPos = this.camera.getTransform().getWorldPosition()
     // Billboard labels (yaw only) and pulse the focused landmark.
     for (const id of Object.keys(this.landmarks)) {
@@ -414,6 +617,11 @@ export class SightlinesMap extends BaseScriptComponent {
       }
     }
     for (const o of this.worldTemp) if (o.name.indexOf("label") === 0) this.faceCamera(o, camPos)
+    // Gentle breathing glow on the focus halo once it has settled.
+    const f = this.focusId ? this.landmarks[this.focusId] : null
+    if (f && f.haloMaterial && f.halo && f.halo.enabled && !this.focusDirty) {
+      this.setColor(f.haloMaterial, this.dimmed(COLORS.landmarkOutline, 0.55 + 0.2 * Math.sin(this.pulseT * 3)))
+    }
   }
 
   private faceCamera(o: SceneObject, camPos: vec3) {

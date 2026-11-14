@@ -50,6 +50,36 @@ const QUAD = "https://pcad.lib.washington.edu/building/1683/"
 const CANTOR = "https://museum.stanford.edu/about/history"
 const HP_GARAGE = "https://ohp.parks.ca.gov/ListedResources/Detail/976"
 
+// Wider-tour cards, checked Nov 14 2026 by fetching each page and matching the supporting sentence.
+// Kept out (no opened source): Varian Associates and Fairchild founding, Moore's gift year, who Ruth Wattis
+// Mitchell was, Lathrop's namesake, Sequoia's architect, Tresidder's opening year (sources say 1960 and 1962), the bookstore's
+// 1897 founding, Littlefield's current tenants, the Hoover Memorial and Lou Henry Hoover buildings.
+const ACCESS = (facil: string) => `https://maps.stanford.edu/ada/building-ada.cfm?FACIL_ID=${facil}`
+const VARIAN_PCAD = "https://pcad.lib.washington.edu/building/8147/"
+const GINZTON = "https://ginzton.stanford.edu/about-lab/history"
+const MOORE_SR = "https://news.stanford.edu/stories/2023/04/stanford-remembers-gordon-moore"
+const MCCULLOUGH_PCAD = "https://pcad.lib.washington.edu/building/20246/"
+const DURAND_HERO = "https://engineering.stanford.edu/about/history/heroes/2011-heroes/william-f-durand"
+const SEQUOIA_DED = "https://statistics.stanford.edu/events/special-events/dedication-new-sequoia-hall"
+const DOERR_VISIT = "https://sustainability.stanford.edu/visit-us"
+const CECIL_GREEN ="https://library.stanford.edu/news/remembering-cecil-h-green"
+const GILBERT_BIO = "https://seaside.stanford.edu/gilbert"
+const CLARK_BIOX = "https://biox.stanford.edu/about/clark-center"
+const CLARK_GIFT = "https://biox.stanford.edu/highlight/entrepreneur-jim-clark-donate-60-million-interdisciplinary-research-stanford"
+const LKS = "https://med.stanford.edu/news/all-news/2010/09/li-ka-shing-center-dedication-marks-new-era-in-medical-education.html"
+const CODA_SR = "https://news.stanford.edu/stories/2025/02/coda-marks-new-era-for-computing-and-data-science-at-stanford"
+const CODA_LMN = "https://lmnarchitects.com/project/computing-and-data-science-building-stanford-university"
+const BASS_SR = "https://news.stanford.edu/stories/2019/03/bass-biology-provides-new-home-life-sciences-stanford"
+const SAPP_SR = "https://news.stanford.edu/stories/2016/09/old-chemistry-named-sapp-center-science-teaching-learning"
+const SHS_TRIVIA = "https://historicalsociety.stanford.edu/trivia"
+const OLD_UNION = "https://tresidder.stanford.edu/old-union-complex"
+const TRESIDDER_MAG = "https://stanfordmag.org/contents/tresidder"
+const GREEN_DAILY = "https://stanforddaily.com/2019/08/03/100-years-after-opening-green-library-is-still-guided-by-the-vision-of-jane-stanford/"
+const LATHROP_DAILY = "https://stanforddaily.com/2014/08/25/meyer-library-closes-permanently-relocating-services-to-lathrop/"
+const EAST_ASIA_LIB = "https://library.stanford.edu/libraries/east-asia-library"
+const BOOKSTORE_SR = "https://news.stanford.edu/stories/2018/05/campus-community-invited-consider-bookstore-future"
+const LITTLEFIELD_GSB = "https://www.gsb.stanford.edu/experience/news-history/history/littlefield-management-center"
+
 export const CARDS: Card[] = [
   {
     id: "huang", name: "Huang Engineering Center", label: "Huang", namesake: "Jensen Huang, NVIDIA co-founder",
@@ -166,6 +196,172 @@ export const CARDS: Card[] = [
     offMap: {lat: 37.44302, lon: -122.15464},
     facts: [
       {id: "hpgarage.1", theme: "founder", text: "At 367 Addison Avenue, Bill Hewlett and David Packard, encouraged by Stanford professor Frederick Terman, started HP in 1939. It's California Historical Landmark 976: the Birthplace of Silicon Valley.", source: HP_GARAGE}
+    ]
+  },
+
+  // ---- Science and Engineering Quad and its west side ----
+  {
+    id: "varian", name: "Varian Physics Laboratory", label: "Varian Physics", namesake: "Russell H. Varian, klystron co-inventor",
+    tags: ["physics", "inventor"],
+    facts: [
+      {id: "varian.1", theme: "namesake", text: "Its full name is the Russell H. Varian Laboratory of Physics, built in 1962 and 1963 to a design by architect Gardner Dailey.", source: VARIAN_PCAD},
+      {id: "varian.2", theme: "founder", text: "In 1937 Russell and Sigurd Varian, working with William Hansen in the basement of Stanford's old physics building, demonstrated the klystron, the first very-high-frequency source, for radar and direction finding.", source: GINZTON},
+      {id: "varian.3", theme: "inside", text: "It's home to the Physics department and the Hansen Experimental Physics Lab, with the Stanford Institute for Theoretical Physics on the third floor.", source: ACCESS("04-520")}
+    ]
+  },
+  {
+    id: "moore", name: "Gordon and Betty Moore Materials Research Building", label: "Moore", namesake: "Gordon Moore, Intel founder, and Betty Moore",
+    tags: ["tech founder", "materials", "intel"],
+    facts: [
+      {id: "moore.1", theme: "namesake", text: "Intel founder Gordon Moore and his wife Betty made the naming gift for this materials research building.", source: MOORE_SR},
+      {id: "moore.2", theme: "inside", text: "It houses the Geballe Laboratory for Advanced Materials, an independent lab for research on advanced materials across science and engineering.", source: ACCESS("04-480")}
+    ]
+  },
+  {
+    id: "mccullough", name: "McCullough Building", label: "McCullough", namesake: "Jack McCullough, vacuum tube pioneer",
+    tags: ["materials", "inventor"],
+    facts: [
+      {id: "mccullough.1", theme: "namesake", text: "Dedicated in October 1965 as the home of Materials Science, it was made possible by a 1.5 million dollar grant from vacuum tube pioneer Jack McCullough and his wife, and from DARPA.", source: E100_SPACES},
+      {id: "mccullough.2", theme: "inside", text: "It holds the Geballe Lab's equipment for electrical, magnetic and optical measurements of new materials.", source: ACCESS("04-490")},
+      {id: "mccullough.3", theme: "architecture", text: "San Francisco architect Gardner Dailey designed it, the same architect as the Varian physics building.", source: MCCULLOUGH_PCAD}
+    ]
+  },
+  {
+    id: "durand", name: "William F. Durand Building", label: "Durand", namesake: "William F. Durand, aviation pioneer",
+    tags: ["aerospace", "engineering"],
+    facts: [
+      {id: "durand.1", theme: "namesake", text: "It opened in 1969, named for Stanford professor William F. Durand, whose propeller research led to the first variable pitch propeller.", source: E100_SPACES},
+      {id: "durand.2", theme: "inside", text: "It's the home of Aeronautics and Astronautics, along with the Stanford Center for Professional Development.", source: ACCESS("04-540")},
+      {id: "durand.3", theme: "fun", text: "Durand joined the Stanford faculty in 1904 and began studying aviation when it was a brand-new field.", source: DURAND_HERO}
+    ]
+  },
+  {
+    id: "sequoia", name: "Sequoia Hall", label: "Sequoia", namesake: "",
+    tags: ["statistics", "data"],
+    facts: [
+      {id: "sequoia.1", theme: "inside", text: "Sequoia Hall is home to the Statistics department and its Girshick library.", source: ACCESS("04-530")},
+      {id: "sequoia.2", theme: "fun", text: "The new Sequoia Hall was dedicated on January 17, 1998, with remarks from President Gerhard Casper and Provost Condoleezza Rice.", source: SEQUOIA_DED}
+    ]
+  },
+  {
+    id: "greenearth", name: "Green Earth Sciences Building", label: "Green Earth Sciences", namesake: "Cecil and Ida Green, Texas Instruments",
+    tags: ["tech founder", "earth sciences"],
+    facts: [
+      {id: "greenearth.1", theme: "founder", text: "Cecil Green co-founded Texas Instruments in 1951. He never attended Stanford, but he and his wife Ida helped fund its Earth Sciences research building.", source: CECIL_GREEN},
+      {id: "greenearth.2", theme: "inside", text: "It houses departments of the School of Earth Sciences: offices, labs and classrooms.", source: ACCESS("04-460")},
+      {id: "greenearth.3", theme: "namesake", text: "Its full name is the Cecil H. and Ida M. Green Earth Sciences Research Building.", source: DOERR_VISIT}
+    ]
+  },
+  {
+    id: "mitchell", name: "Mitchell Earth Sciences Building", label: "Mitchell", namesake: "Ruth Wattis Mitchell",
+    tags: ["earth sciences", "library"],
+    facts: [
+      {id: "mitchell.1", theme: "inside", text: "Mitchell houses Earth Sciences departments, with the Branner Earth Sciences Library on the second floor.", source: ACCESS("04-560")},
+      {id: "mitchell.2", theme: "namesake", text: "Its full name is the Ruth Wattis Mitchell Earth Sciences Building.", source: DOERR_VISIT}
+    ]
+  },
+  {
+    id: "gilbert", name: "Gilbert Biological Sciences Building", label: "Gilbert", namesake: "Charles Henry Gilbert, zoologist",
+    tags: ["biology"],
+    facts: [
+      {id: "gilbert.1", theme: "inside", text: "Officially the Charles H. Gilbert Biological Sciences Building, it houses the Biology department.", source: ACCESS("07-420")},
+      {id: "gilbert.2", theme: "namesake", text: "Charles Henry Gilbert met David Starr Jordan as his high school teacher and became his close colleague for much of his adult life. His doctorate, earned at 24, was the first Indiana University ever awarded.", source: GILBERT_BIO}
+    ]
+  },
+  {
+    id: "clark", name: "James H. Clark Center", label: "Clark Center", namesake: "Jim Clark, Silicon Graphics and Netscape founder",
+    tags: ["tech founder", "bio-x", "netscape"],
+    facts: [
+      {id: "clark.1", theme: "namesake", text: "Jim Clark, founder of Silicon Graphics and Netscape, made a 90 million dollar lead gift in 1999 that made the building possible. It's the home of Bio-X.", source: CLARK_GIFT},
+      {id: "clark.2", theme: "architecture", text: "Foster and Partners designed it with MBT Architecture. It opened in 2003, with three wings wrapped around a courtyard.", source: CLARK_BIOX},
+      {id: "clark.3", theme: "fun", text: "Under the courtyard's circular stage is a round auditorium with 150 cardinal-red seats.", source: CLARK_BIOX}
+    ]
+  },
+  {
+    id: "likashing", name: "Li Ka Shing Center for Learning and Knowledge", label: "Li Ka Shing", namesake: "Li Ka-shing, Hong Kong business leader",
+    tags: ["medicine", "simulation"],
+    facts: [
+      {id: "likashing.1", theme: "inside", text: "It's the hub of the medical school's teaching. The ground floor holds a 28,000 square foot center for simulation and immersive learning.", source: LKS},
+      {id: "likashing.2", theme: "architecture", text: "Designed by NBBJ, the five-story building welcomed its first students on August 16, 2010.", source: LKS}
+    ]
+  },
+  {
+    id: "coda", name: "Computing and Data Science Building", label: "CoDa", namesake: "",
+    tags: ["computer science", "data"],
+    facts: [
+      {id: "coda.1", theme: "architecture", text: "CoDa's two wings, one rectangular and one oval, stand for the ones and zeros of binary code. LMN Architects designed it.", source: CODA_SR},
+      {id: "coda.2", theme: "inside", text: "At its core is the Hive, a central mixing space wrapped around a cross-directional feature stair.", source: CODA_LMN},
+      {id: "coda.3", theme: "fun", text: "It totals 167,000 square feet, and the whole fourth floor of the west wing is a conference centre for up to 200 people.", source: CODA_SR}
+    ]
+  },
+  {
+    id: "bassbio", name: "Bass Biology Research Building", label: "Bass Biology", namesake: "Anne T. and Robert M. Bass",
+    tags: ["biology"],
+    facts: [
+      {id: "bassbio.1", theme: "namesake", text: "It was made possible by a gift from Anne T. Bass and Robert M. Bass, longtime Stanford volunteers and donors.", source: BASS_SR},
+      {id: "bassbio.2", theme: "inside", text: "Its 133,000 square feet mix wet labs for hands-on research with computational dry labs, all for the Biology department.", source: BASS_SR},
+      {id: "bassbio.3", theme: "architecture", text: "Flad Architects and Ennead Architects designed its two limestone-clad wings, joined by an enclosed bridge.", source: BASS_SR}
+    ]
+  },
+  {
+    id: "sapp", name: "Sapp Center for Science Teaching and Learning", label: "Sapp Center", namesake: "Shari and Rick Sapp",
+    tags: ["chemistry", "history"],
+    facts: [
+      {id: "sapp.1", theme: "fun", text: "This is Old Chem, built from 1900 to 1902. After the 1989 Loma Prieta earthquake it sat behind a hurricane fence for almost 30 years.", source: SAPP_SR},
+      {id: "sapp.2", theme: "namesake", text: "Restored as a science teaching center, it was renamed for Shari and Rick Sapp, Stanford class of 1978, and their family.", source: SAPP_SR},
+      {id: "sapp.3", theme: "inside", text: "Its fourth floor is now a study space overlooking the Oval.", source: SAPP_SR}
+    ]
+  },
+
+  // ---- Central campus ----
+  {
+    id: "oldunion", name: "Old Union", label: "Old Union", namesake: "",
+    tags: ["student life", "history"],
+    facts: [
+      {id: "oldunion.1", theme: "fun", text: "Its three buildings went up between 1915 and 1923 as women's dorms and Stanford's first student union.", source: SHS_TRIVIA},
+      {id: "oldunion.2", theme: "architecture", text: "Bakewell and Brown, who also designed Green Library, gave it its Spanish Colonial look.", source: SHS_TRIVIA},
+      {id: "oldunion.3", theme: "inside", text: "Today it's a central hub for student activities.", source: OLD_UNION}
+    ]
+  },
+  {
+    id: "tresidder", name: "Tresidder Memorial Union", label: "Tresidder", namesake: "Donald Tresidder, Stanford's fourth president",
+    tags: ["student life", "food"],
+    facts: [
+      {id: "tresidder.1", theme: "namesake", text: "It's named for Donald Tresidder, Stanford's fourth president, who earlier ran the Yosemite Park and Curry Company.", source: TRESIDDER_MAG},
+      {id: "tresidder.2", theme: "architecture", text: "Architect Bill Busse gave it a meandering shape to fit around four huge oak trees. Only two survive.", source: TRESIDDER_MAG},
+      {id: "tresidder.3", theme: "fun", text: "Students helped pay for it through an assessment that covered part of its 2.675 million dollar cost.", source: TRESIDDER_MAG}
+    ]
+  },
+  {
+    id: "greenlib", name: "Green Library, Bing Wing", label: "Green Library", namesake: "Cecil Green, and Peter and Helen Bing",
+    tags: ["library", "history"],
+    facts: [
+      {id: "greenlib.1", theme: "fun", text: "This wing is Stanford's original Main Library. When it opened in 1919 it had room for more than 700,000 books.", source: GREEN_DAILY},
+      {id: "greenlib.2", theme: "namesake", text: "After the 1989 earthquake, Stanford rebuilt this wing instead of demolishing it. The work, funded mainly by Peter and Helen Bing, finished in 1999, and it became the Bing Wing.", source: GREEN_DAILY},
+      {id: "greenlib.3", theme: "founder", text: "Texas Instruments co-founder Cecil Green and his wife Ida were the main donors for the library's East Wing, and the whole library now bears his name.", source: CECIL_GREEN}
+    ]
+  },
+  {
+    id: "lathrop", name: "Lathrop Library", label: "Lathrop", namesake: "",
+    tags: ["library", "study"],
+    facts: [
+      {id: "lathrop.1", theme: "inside", text: "Lathrop Library was converted in 2014 from the business school's former South Building. It holds a 24-hour study space and a digital language lab.", source: LATHROP_DAILY},
+      {id: "lathrop.2", theme: "inside", text: "The East Asia Library moved to its second floor when Meyer Library closed in 2014.", source: EAST_ASIA_LIB}
+    ]
+  },
+  {
+    id: "bookstore", name: "Stanford Bookstore", label: "Bookstore", namesake: "",
+    tags: ["student life", "shopping"],
+    facts: [
+      {id: "bookstore.1", theme: "fun", text: "The Stanford Bookstore has stood in White Plaza since 1960.", source: BOOKSTORE_SR}
+    ]
+  },
+  {
+    id: "littlefield", name: "Littlefield Center", label: "Littlefield", namesake: "Edmund W. Littlefield, business executive",
+    tags: ["business", "history"],
+    facts: [
+      {id: "littlefield.1", theme: "namesake", text: "It's named for San Francisco executive Edmund Littlefield, a 1938 Stanford MBA, who gave the lead gift of about 5 million dollars.", source: LITTLEFIELD_GSB},
+      {id: "littlefield.2", theme: "architecture", text: "Kohn Pedersen Fox designed it for the business school. Its 60,000 square feet held offices for most of the school's faculty, plus classrooms.", source: LITTLEFIELD_GSB}
     ]
   }
 ]

@@ -39,9 +39,22 @@ export interface CylinderPrim {
   pos: Vec3
   segments?: number
   rot?: Vec3
+  /** Radius at the +axis end; defaults to `radius`. Set it for a cone or frustum (bells, spires). */
+  radiusTop?: number
 }
 
-export type Primitive = BoxPrim | CylinderPrim
+/** UV sphere centred at `pos` (nodes, globes, bell crowns). */
+export interface SpherePrim {
+  kind: "sphere"
+  radius: number
+  pos: Vec3
+  /** Around the equator; default 14. */
+  segments?: number
+  /** Pole to pole; default 8. */
+  rings?: number
+}
+
+export type Primitive = BoxPrim | CylinderPrim | SpherePrim
 
 /** Bright colour groups. The Spectacles display is additive: dark reads as transparent, so nothing here is dark. */
 export type ColorGroup = "shell" | "frame" | "accent" | "chip" | "board" | "metal" | "glow" | "red" | "violet" | "yellow" | "leader"
@@ -374,8 +387,9 @@ class PartWriter {
   idx: number[] = []
 
   vert(prim: Primitive, local: Vec3, normal: Vec3, origin: Vec3): number {
-    const p = rotate(local, prim.rot)
-    const n = rotate(normal, prim.rot)
+    const rot = prim.kind === "sphere" ? undefined : prim.rot
+    const p = rotate(local, rot)
+    const n = rotate(normal, rot)
     const id = this.verts.length / STRIDE
     this.verts.push(p.x + prim.pos.x - origin.x, p.y + prim.pos.y - origin.y, p.z + prim.pos.z - origin.z, n.x, n.y, n.z, 0, 0)
     return id
@@ -416,14 +430,19 @@ function writeBox(w: PartWriter, b: BoxPrim, origin: Vec3) {
 function writeCylinder(w: PartWriter, c: CylinderPrim, origin: Vec3) {
   const seg = Math.max(3, Math.floor(c.segments || 16))
   const hh = c.height / 2
+  const r0 = c.radius
+  const r1 = c.radiusTop === undefined ? c.radius : c.radiusTop
+  // Side normal of a frustum tilts by the slope; for a plain cylinder ny = 0.
+  const slope = Math.atan2(r0 - r1, c.height)
+  const ny = Math.sin(slope), nr = Math.cos(slope)
   const put = (p: Vec3, n: Vec3) => w.vert(c, toAxis(p, c.axis), toAxis(n, c.axis), origin)
   // side
   const side: number[] = []
   for (let i = 0; i <= seg; i++) {
     const a = (i / seg) * Math.PI * 2
     const cx = Math.cos(a), sz = Math.sin(a)
-    side.push(put(v3(cx * c.radius, -hh, sz * c.radius), v3(cx, 0, sz)))
-    side.push(put(v3(cx * c.radius, hh, sz * c.radius), v3(cx, 0, sz)))
+    side.push(put(v3(cx * r0, -hh, sz * r0), v3(cx * nr, ny, sz * nr)))
+    side.push(put(v3(cx * r1, hh, sz * r1), v3(cx * nr, ny, sz * nr)))
   }
   for (let i = 0; i < seg; i++) {
     const a = side[2 * i], b = side[2 * i + 1], d = side[2 * i + 2], e = side[2 * i + 3]
@@ -432,21 +451,60 @@ function writeCylinder(w: PartWriter, c: CylinderPrim, origin: Vec3) {
   }
   // caps
   for (const sgn of [1, -1]) {
+    const r = sgn > 0 ? r1 : r0
     const center = put(v3(0, sgn * hh, 0), v3(0, sgn, 0))
     const ring: number[] = []
     for (let i = 0; i <= seg; i++) {
       const a = (i / seg) * Math.PI * 2
-      ring.push(put(v3(Math.cos(a) * c.radius, sgn * hh, Math.sin(a) * c.radius), v3(0, sgn, 0)))
+      ring.push(put(v3(Math.cos(a) * r, sgn * hh, Math.sin(a) * r), v3(0, sgn, 0)))
     }
     for (let i = 0; i < seg; i++) w.tri(center, ring[i], ring[i + 1])
   }
 }
 
-/** Exact vertex count a primitive produces (box 24; cylinder 4 * segments + 6). */
+function writeSphere(w: PartWriter, s: SpherePrim, origin: Vec3) {
+  const seg = Math.max(3, Math.floor(s.segments || 14))
+  const rings = Math.max(2, Math.floor(s.rings || 8))
+  const ids: number[] = []
+  for (let j = 0; j <= rings; j++) {
+    const th = (j / rings) * Math.PI
+    const y = Math.cos(th), rr = Math.sin(th)
+    for (let i = 0; i <= seg; i++) {
+      const a = (i / seg) * Math.PI * 2
+      const n = v3(Math.cos(a) * rr, y, Math.sin(a) * rr)
+      ids.push(w.vert(s, v3(n.x * s.radius, n.y * s.radius, n.z * s.radius), n, origin))
+    }
+  }
+  const row = seg + 1
+  for (let j = 0; j < rings; j++) {
+    for (let i = 0; i < seg; i++) {
+      const a = ids[j * row + i], b = ids[j * row + i + 1], c = ids[(j + 1) * row + i], d = ids[(j + 1) * row + i + 1]
+      w.tri(a, c, d)
+      w.tri(a, d, b)
+    }
+  }
+}
+
+/** Exact vertex count a primitive produces (box 24; cylinder 4 * segments + 6; sphere (rings + 1) * (segments + 1)). */
 export function primitiveVertexCount(p: Primitive): number {
   if (p.kind === "box") return 24
+  if (p.kind === "sphere") return (Math.max(2, Math.floor(p.rings || 8)) + 1) * (Math.max(3, Math.floor(p.segments || 14)) + 1)
   const seg = Math.max(3, Math.floor(p.segments || 16))
   return 4 * seg + 6
+}
+
+/** A list of primitives as one mesh chunk, vertices relative to `origin`. Throws past one UInt16 chunk. */
+export function buildPrims(prims: Primitive[], origin: Vec3 = v3(0, 0, 0), name = "prims"): MeshChunk {
+  let n = 0
+  for (const p of prims) n += primitiveVertexCount(p)
+  if (n >= MAX_CHUNK_VERTS) throw new Error(`${name} has ${n} vertices; split it (limit ${MAX_CHUNK_VERTS})`)
+  const w = new PartWriter()
+  for (const p of prims) {
+    if (p.kind === "box") writeBox(w, p, origin)
+    else if (p.kind === "sphere") writeSphere(w, p, origin)
+    else writeCylinder(w, p, origin)
+  }
+  return {verts: w.verts, idx: w.idx}
 }
 
 /**
@@ -454,15 +512,7 @@ export function primitiveVertexCount(p: Primitive): number {
  * passes partCenter(part) so the part can spin about its own centre. Throws if a part would exceed one chunk.
  */
 export function buildPart(part: ProductPart, origin: Vec3 = v3(0, 0, 0)): MeshChunk {
-  let n = 0
-  for (const p of part.prims) n += primitiveVertexCount(p)
-  if (n >= MAX_CHUNK_VERTS) throw new Error(`part ${part.name} has ${n} vertices; split it (limit ${MAX_CHUNK_VERTS})`)
-  const w = new PartWriter()
-  for (const p of part.prims) {
-    if (p.kind === "box") writeBox(w, p, origin)
-    else writeCylinder(w, p, origin)
-  }
-  return {verts: w.verts, idx: w.idx}
+  return buildPrims(part.prims, origin, "part " + part.name)
 }
 
 export interface Bounds {
@@ -471,6 +521,10 @@ export interface Bounds {
 }
 
 function primBounds(p: Primitive): Bounds {
+  if (p.kind === "sphere") {
+    const r = p.radius
+    return {min: v3(p.pos.x - r, p.pos.y - r, p.pos.z - r), max: v3(p.pos.x + r, p.pos.y + r, p.pos.z + r)}
+  }
   // Conservative: use the rotated corners of the primitive's local box.
   const h = p.kind === "box" ? {x: p.size.x / 2, y: p.size.y / 2, z: p.size.z / 2} : toAxisExtent(p)
   const min = v3(Infinity, Infinity, Infinity), max = v3(-Infinity, -Infinity, -Infinity)
@@ -484,7 +538,7 @@ function primBounds(p: Primitive): Bounds {
 }
 
 function toAxisExtent(c: CylinderPrim): Vec3 {
-  const r = c.radius, h = c.height / 2
+  const r = Math.max(c.radius, c.radiusTop === undefined ? c.radius : c.radiusTop), h = c.height / 2
   if (c.axis === "x") return v3(h, r, r)
   if (c.axis === "z") return v3(r, r, h)
   return v3(r, h, r)

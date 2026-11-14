@@ -25,6 +25,8 @@ const OUT = join(HERE, "..", "Assets", "Sightlines", "Data", "CampusData.ts")
 // Origin: Huang Engineering Center (OSM Nominatim, checked Nov 14 2026). The table/judging position is an
 // offset from here, set in the Lens.
 const ORIGIN = {lat: 37.42793, lon: -122.17447}
+/** Default map centre in the Lens (North-South Axis x East-West Axis, just east of Huang). Only used for the report. */
+const MAP_CENTER = {lat: 37.4281869, lon: -122.1735285}
 const RADIUS_M = 1100
 const BBOX = "37.4175,-122.1885,37.4405,-122.1600" // S,W,N,E: covers RADIUS_M around the origin
 const M_PER_DEG_LAT = 110574
@@ -44,8 +46,33 @@ const LANDMARKS: {id: string; name: string; match: RegExp; heightM?: number}[] =
   {id: "hewlett", name: "Hewlett Teaching Center", match: /hewlett teaching/i},
   {id: "hoover", name: "Hoover Tower", match: /hoover tower/i, heightM: 87},
   {id: "mainquad", name: "Main Quad", match: /^main quad$/i},
-  {id: "cantor", name: "Cantor Arts Center", match: /cantor/i}
+  {id: "cantor", name: "Cantor Arts Center", match: /cantor/i},
+  // Wider tour (Nov 14 2026). Matched on the exact OSM name: looser patterns collide with Florence Moore Hall,
+  // Clark Auditorium, the Durand dorm, Green House, Bing Concert Hall, etc.
+  {id: "varian", name: "Varian Physics Laboratory", match: exact("Varian Physics Laboratory")},
+  {id: "moore", name: "Moore Materials Research Building", match: exact("Moore Material Research")},
+  {id: "mccullough", name: "McCullough Building", match: exact("McCullough")},
+  {id: "durand", name: "Durand Building", match: exact("Durand Building")},
+  {id: "sequoia", name: "Sequoia Hall", match: exact("Sequoia Hall")},
+  {id: "greenearth", name: "Green Earth Sciences Building", match: exact("Green Earth Sciences Building")},
+  {id: "mitchell", name: "Mitchell Earth Sciences Building", match: exact("Mitchell Earth Sciences Building")},
+  {id: "gilbert", name: "Gilbert Biological Sciences Building", match: exact("Gilbert Hall")},
+  {id: "clark", name: "James H. Clark Center", match: exact("James H. Clark Center")},
+  {id: "likashing", name: "Li Ka Shing Center", match: exact("Li Ka Shing Center")},
+  {id: "coda", name: "Computing and Data Science Building", match: exact("Computing & Data Science")},
+  {id: "bassbio", name: "Bass Biology Research Building", match: exact("Anne T. and Robert M. Bass Biology Research Building")},
+  {id: "sapp", name: "Sapp Center", match: exact("Sapp Center for Science Teaching and Learning")},
+  {id: "oldunion", name: "Old Union", match: exact("Old Union")},
+  {id: "tresidder", name: "Tresidder Memorial Union", match: exact("Tresidder Memorial Union")},
+  {id: "greenlib", name: "Green Library", match: exact("Bing Wing")},
+  {id: "lathrop", name: "Lathrop Library", match: exact("Lathrop Library")},
+  {id: "bookstore", name: "Stanford Bookstore", match: exact("Stanford Bookstore")},
+  {id: "littlefield", name: "Littlefield Center", match: exact("Littlefield Center")}
 ]
+
+function exact(name: string): RegExp {
+  return new RegExp("^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i")
+}
 
 /** Landmarks with no separate OSM footprint (Memorial Church sits inside the Main Quad polygon). */
 const POINT_LANDMARKS = [{id: "memchu", name: "Memorial Church", lat: 37.42692, lon: -122.17051, heightM: 24}]
@@ -320,9 +347,14 @@ ${rows.join(",\n")}
   writeFileSync(OUT, src)
   console.log(`buildings ${buildings.length}, verts ${vertCount}, roof tris ${triCount}, ${(src.length / 1024).toFixed(0)} KB`)
   console.log(`landmarks found: ${landmarks.length}/${LANDMARKS.length}; missing: ${missing.join(", ") || "none"}`)
+  // Distance from the Lens's default map centre (SightlinesController startLat/startLon), where the 700 m disc sits.
+  const mapE = (MAP_CENTER.lon - ORIGIN.lon) * M_PER_DEG_LON, mapN = (MAP_CENTER.lat - ORIGIN.lat) * M_PER_DEG_LAT
   for (const lm of LANDMARKS) {
     const i = landmarkHits.get(lm.id)
-    if (i !== undefined) console.log(`  ${lm.id.padEnd(8)} <- "${buildings[i].name}" h=${Math.round(buildings[i].h)} year=${buildings[i].year || "?"}`)
+    if (i === undefined) continue
+    const c = centroid(buildings[i].outer)
+    const d = Math.hypot(c[0] - mapE, c[1] - mapN)
+    console.log(`  ${lm.id.padEnd(12)} <- "${buildings[i].name}" (${buildings[i].osm}) ${Math.round(d)} m from map centre, h=${Math.round(buildings[i].h)} year=${buildings[i].year || "?"}`)
   }
   const names = buildings.filter((b) => b.name).map((b) => b.name)
   writeFileSync(join(HERE, "cache", "names.txt"), names.sort().join("\n"))
