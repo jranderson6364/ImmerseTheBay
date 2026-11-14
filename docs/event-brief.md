@@ -55,6 +55,7 @@ Using Codex or other AI to *build* the app is explicitly allowed, but it does no
 
 ## Equipment and practical details
 
+- **Team equipment assignment:** Snap Spectacles, reported by the team Friday evening. Confirm the exact model and developer setup at pickup. The active build should use Lens Studio.
 - Loaner requests open around midday Friday after inventory check-in. Requests made before the 9:30 PM Friday match have equal priority. The equipment portal requires Google sign-in.
 - Team formation forms and equipment requests are due **Friday 9:30 PM**. One equipment request per team; first matching at 9:30 PM. Matching is **not first-come first-served**; rank more equipment choices for better odds.
 - The presentation lists 70+ loaner devices, including Quest 3S, Quest 2, Pico 4, Mentra Live, OpenBCI UltraCortex, XREAL Air 2 Ultra, Meta Adventurer, and Snap Spectacles.

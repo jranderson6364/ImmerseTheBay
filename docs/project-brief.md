@@ -1,6 +1,11 @@
-# HomeCue: XR memory companion
+# XR project concepts and device brief
 
-Draft for team discussion, November 13, 2026.
+Draft for team discussion, November 13, 2026. **Assigned loaner: Snap Spectacles.** The final concept is still open.
+
+## Current concept choices
+
+- **HomeCue:** a memory companion with saved item locations, reminders, family notes, and grounded questions. Details below are a working draft.
+- **How Does This Work?:** point at a real object, identify it, show a prepared exploded 3D model beside it, select parts, and ask questions about function and sourced history. An assembly mode could reverse the animation later. The [Exploded reference project](https://github.com/O-tech477/exploded) uses hand-authored primitive models and has no visible reuse license; treat it as interaction inspiration, not code or asset source.
 
 ## One sentence
 
@@ -30,7 +35,7 @@ These interactions share a small memory data model: `Item(name, anchor, updatedA
 
 ## Working direction and sponsor tradeoff
 
-As of Friday evening, HomeCue is the team's working concept and may change after hardware checkout or a feasibility test. Prioritize a working Quest 3S spatial demo for Virtuous Reality, with AI Horizons if the grounded assistant is live. The Quest supports in-world pointers, room context, and saved anchors; a headset is less suitable for continuous daily wear.
+As of Friday evening, HomeCue is a candidate and may change after a Spectacles feasibility test. The assigned glasses make an in-view, hands-free experience possible, but require Lens Studio rather than Unity. HomeCue would target Virtuous Reality and possibly AI Horizons if the grounded assistant is live. The object-explainer concept would likely target AI Horizons and a second track based on its final experience. Check sponsor criteria after the concept is chosen.
 
 ManageXR judges glasses-native design, responsive AI that sees what the wearer sees, and repeat usefulness. A glasses version could focus on spoken questions, a camera snapshot, reminders, and concise audio replies. It would lose the spatial arrow or need a separate display-capable platform and implementation. Pursue the sponsor track only if a glasses prototype can run on loaner hardware early without jeopardizing the core Quest demo.
 
@@ -38,7 +43,7 @@ Visko requires Orbis to be central to an XR experience, streaming a world live o
 
 ## Buildable demo
 
-1. Scan one room on a Quest 3S and mark a shelf as the last known location of keys.
+1. On Spectacles, place a world-anchored marker at the last known location of keys in one room.
 2. Ask "Where are my keys?" and see an in-world pointer plus the time the location was saved.
 3. Trigger one scheduled reminder and acknowledge it.
 4. If network integration is ready, ask "What do I need today?" and get a short answer from stored reminders. Show a family note with sender and time.
@@ -48,13 +53,13 @@ Visko requires Orbis to be central to an XR experience, streaming a world live o
 
 | Priority | Work |
 | --- | --- |
-| Must | Quest passthrough app, one-room scene setup, one saved item anchor, item query, in-world pointer, one scheduled reminder, device demo. |
+| Must | Spectacles Lens, one world anchor, item query, in-view pointer or marker, one scheduled reminder, device demo. |
 | Next | Grounded LLM query over saved records; family note delivered remotely with authenticated sender. |
 | Stretch | Opt-in person card via marker/explicit selection, multiple rooms, item tags, accessibility polish. |
 
 Keep automatic face recognition, continuous object tracking, medication adherence claims, and hazard detection out of the critical path. A scene scan locates surfaces; it does not inventory movable objects. Remote messages and LLM calls need network access, so keep the item and scheduled-reminder demo local.
 
-Suggested owners for a three-person team: XR/anchors; records/assistant integration; reminders/UI/family note and demo. Pick one integration owner and one submission owner. First milestone: install and launch a passthrough build on the actual loaner device, then create and restore one anchor.
+Suggested owners for a three-person team: Spectacles/Lens Studio and anchors; records/assistant integration; reminders/UI/family note and demo. Pick one integration owner and one submission owner. First milestone for either concept: pair the assigned Spectacles, deploy a basic Lens, then place one visible object in the room. Test camera, microphone, network, and anchor permissions before committing to the final interaction.
 
 ## Assistant behavior
 
@@ -64,22 +69,14 @@ Use fictional demo data. Avoid storing raw camera frames or personal family deta
 
 ## Technical references and open choices
 
-- [Meta Mixed Reality Utility Kit scene data](https://developers.meta.com/vr/documentation/unity/unity-mr-utility-kit-manage-scene-data/)
-- [Meta spatial anchors](https://developers.meta.com/vr/documentation/unity/unity-spatial-anchors-persist-content/)
-- [Meta Passthrough Camera API](https://developers.meta.com/vr/documentation/unity/unity-pca-overview/)
-- [Meta developer data use policy](https://developers.meta.com/vr/policy/data-use/) (review before building any identity feature)
+- [Snap Spectacles and Lens Studio introduction](https://developers.snap.com/spectacles/get-started/introduction)
+- [Snap spatial anchors](https://developers.snap.com/spectacles/about-spectacles-features/apis/spatial-anchors)
+- [Snap camera module](https://developers.snap.com/spectacles/about-spectacles-features/apis/camera-module)
+- [Snap remote service gateway](https://developers.snap.com/spectacles/about-spectacles-features/apis/remoteservice-gateway)
+- [Snap permissions and privacy](https://developers.snap.com/spectacles/permission-privacy/overview)
 
-Decide after device checkout: exact Quest OS/SDK versions, whether voice input is reliable in the demo room, and whether the family note will use a tiny backend or a preloaded demo message. Confirm up to two main tracks on the submission form.
+Decide after device checkout: exact Spectacles model and OS, whether voice input is reliable in the demo room, and whether the team chooses HomeCue or the object explainer. Confirm up to two main tracks on the submission form.
 
-## Equipment preference for this concept
+## Assigned hardware
 
-This ranking balances a working hackathon demo with the longer-term companion vision. Reassess immediately if the exact loaner model or available host phone differs.
-
-1. **Quest 3S** — strongest Unity path to a spatial, camera-aware demo; bulky for daily use.
-2. **Snap Spectacles** — best glasses path to camera plus in-view spatial cues; requires Lens Studio and a fast feasibility test.
-3. **Mentra Live** — best all-day audio/camera companion path; no in-lens display or spatial arrow.
-4. **XREAL Air 2 Ultra Kit** — Unity-compatible spatial overlays and anchors; no RGB photo/video camera, needs a compatible host.
-5. **Meta Adventurer** — comfortable camera/audio glasses, but confirm the loaner and developer-toolkit support; no in-lens spatial display.
-6. **PICO 4** — Unity headset with passthrough, but no application access to passthrough images in the current SDK, and less suitable for daily wear.
-7. **Quest 2** — familiar Unity headset with older passthrough; no Quest 3/3S Passthrough Camera API.
-8. **OpenBCI UltraCortex** — EEG accessory, not a standalone XR display or item-finding device.
+The team was assigned Snap Spectacles. Confirm the exact model, OS version, paired phone, and developer access at pickup. Unity Quest plans and earlier equipment rankings are superseded for the active build.
