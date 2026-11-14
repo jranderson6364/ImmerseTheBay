@@ -26,6 +26,14 @@ These interactions share a small memory data model: `Item(name, anchor, updatedA
 - Possible second: **AI Horizons** if a live assistant makes grounded queries in XR; otherwise **Creative Zenith** if the interaction and visual craft are strongest.
 - ManageXR sponsor track is relevant only if the team builds a useful responsive smart glasses implementation that meets its criteria.
 
+## Working direction and sponsor tradeoff
+
+As of Friday evening, HomeCue is the team's working concept and may change after hardware checkout or a feasibility test. Prioritize a working Quest 3S spatial demo for Virtuous Reality, with AI Horizons if the grounded assistant is live. The Quest supports in-world pointers, room context, and saved anchors; a headset is less suitable for continuous daily wear.
+
+ManageXR judges glasses-native design, responsive AI that sees what the wearer sees, and repeat usefulness. A glasses version could focus on spoken questions, a camera snapshot, reminders, and concise audio replies. It would lose the spatial arrow or need a separate display-capable platform and implementation. Pursue the sponsor track only if a glasses prototype can run on loaner hardware early without jeopardizing the core Quest demo.
+
+Visko requires Orbis to be central to an XR experience, streaming a world live on Sunday while the user steers it. A possible related concept is a caregiver practice environment: the user steers a simulated home visit and practices responding to memory difficulties. That is a separate product direction. An Orbis video stream would not provide reliable factual memory cues for the real home. Do not add Visko to HomeCue solely for track entry.
+
 ## Buildable demo
 
 1. Scan one room on a Quest 3S and mark a shelf as the last known location of keys.
