@@ -18,6 +18,7 @@
  * runtime fix there applies here too.
  */
 import {MeshChunk, buildTube} from "../Core/MapMesh"
+import {tidyLabel} from "./LabelStyle"
 import {
   PRODUCT_COLORS, ColorGroup, ProductModel, ProductPart, Vec3, buildPart, explodedPosition, labelDirection, labelledParts, modelBounds,
   modelForFact, modelSpan, modelsForLandmark as productsForLandmark, partCenter, partProgress, productById
@@ -249,8 +250,7 @@ export class SightlinesShowcase extends BaseScriptComponent {
     holder.getTransform().setLocalScale(vec3.one().uniformScale(0.0001))
     // Instantiated now (not when the part lands) so WorldLabel's own random pop-in delay runs during the hold.
     const inner = this.labelPrefab.instantiate(holder)
-    const wl = inner.getComponent(WorldLabel.getTypeName()) as WorldLabel
-    if (wl && wl.textComp) wl.textComp.text = v.part.label
+    tidyLabel(inner, v.part.label)
     v.label = holder
   }
 

@@ -12,6 +12,7 @@
  * per tower per frame.
  */
 import {MeshChunk} from "../Core/MapMesh"
+import {tidyLabel} from "./LabelStyle"
 import {
   MONEY_COLORS, MONEY_GROUPS, MoneyGroup, PALLET_Z_CM, billsToStack, buildMoneyPile, buildScaleFigure, captionFor,
   giftFor, pileDistanceCm, pileDrawCalls, towerGrow
@@ -198,8 +199,7 @@ export class SightlinesMoney extends BaseScriptComponent {
       cap.getTransform().setLocalPosition(new vec3(0, stack.footprint.heightCm * scaleY + captionGapCm, 0))
       cap.getTransform().setLocalScale(vec3.one().uniformScale(captionScale))
       const inner = this.labelPrefab.instantiate(cap)
-      const wl = inner.getComponent(WorldLabel.getTypeName()) as WorldLabel
-      if (wl && wl.textComp) wl.textComp.text = text
+      tidyLabel(inner, text)
       this.caption = cap
     }
     this.t = 0

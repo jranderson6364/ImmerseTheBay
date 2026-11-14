@@ -8,10 +8,12 @@
  * with the same yaw as the map, so bearings agree everywhere.
  */
 import {BUILDINGS, LANDMARKS, BakedLandmark} from "../Data/CampusData"
+import {PATHS} from "../Data/PathsData"
+import {tidyLabel} from "./LabelStyle"
 import {CARDS, cardById} from "../Core/Cards"
 import {EN, V3, bearingDeg, bearingToMapDir, distanceM, enToMap, formatDistance, latLonToEN} from "../Core/Geo"
 import {
-  MeshChunk, MapMeshOptions, arcPoints, buildBuildingOutline, buildCampusMesh, buildDisc, buildRing, buildSingleBuilding, buildTube, buildingHeightCm,
+  MeshChunk, MapMeshOptions, arcPoints, buildBuildingOutline, buildCampusMesh, buildDisc, buildPathRibbons, buildRing, buildSingleBuilding, buildTube, buildingHeightCm,
   landmarkMapPlacement, vertexCount
 } from "../Core/MapMesh"
 import {WorldLabel} from "../../Scripts/WorldLabel"
@@ -37,33 +39,39 @@ interface LandmarkView {
 // Additive display: black is invisible, brightness is opacity. Background buildings use a cool blue-to-violet ramp
 // (brighter = taller); landmarks use warm amber/gold and cyan/white states, so they never read as background.
 const COLORS: Record<string, [number, number, number, number]> = {
+  // Warm campus palette: Stanford red-tile roofs and sandstone, not neon. Additive display: dark = see-through,
+  // so everything that should read as solid stays fairly bright.
   // Background roofs by height band, two tones each (neighbouring buildings alternate tone).
-  roofLow: [0.32, 0.48, 0.82, 1], // < 8 m: steel blue
-  roofLowAlt: [0.42, 0.58, 0.9, 1],
-  roofMid: [0.46, 0.52, 0.98, 1], // 8-15 m (most of campus): periwinkle
-  roofMidAlt: [0.6, 0.66, 1.0, 1],
-  roofHigh: [0.72, 0.58, 1.0, 1], // > 15 m: lavender
-  roofHighAlt: [0.82, 0.7, 1.0, 1],
-  // Walls at roughly half the roof brightness, so roofs pop and walls read as sides.
-  wallLow: [0.16, 0.24, 0.42, 1],
-  wallLowAlt: [0.2, 0.29, 0.46, 1],
-  wallMid: [0.22, 0.25, 0.5, 1],
-  wallMidAlt: [0.28, 0.31, 0.54, 1],
-  wallHigh: [0.36, 0.28, 0.54, 1],
-  wallHighAlt: [0.42, 0.34, 0.58, 1],
-  outline: [0.85, 0.93, 1.0, 1], // background roof edges: pale ice, the brightest thing in the background
-  landmarkOutline: [1.0, 0.92, 0.7, 1], // landmark roof edges: warm white, marks them as touchable
-  base: [0.04, 0.09, 0.16, 1], // map disc: nearly black, so it is almost see-through
-  edge: [0.3, 0.95, 1.0, 1], // disc rim
-  // Landmark states (body colour).
-  dim: [0.85, 0.58, 0.22, 1],
-  seen: [0.95, 0.72, 0.28, 1],
-  lit: [0.3, 0.9, 1.0, 1],
+  roofLow: [0.88, 0.56, 0.4, 1], // < 8 m: light clay
+  roofLowAlt: [0.94, 0.64, 0.48, 1],
+  roofMid: [0.84, 0.44, 0.32, 1], // 8-15 m (most of campus): red tile
+  roofMidAlt: [0.92, 0.53, 0.38, 1],
+  roofHigh: [0.9, 0.5, 0.46, 1], // > 15 m: rosy tile
+  roofHighAlt: [0.96, 0.6, 0.54, 1],
+  // Walls: sandstone at about half brightness, so roofs pop and walls read as sides.
+  wallLow: [0.5, 0.4, 0.27, 1],
+  wallLowAlt: [0.55, 0.44, 0.3, 1],
+  wallMid: [0.46, 0.36, 0.24, 1],
+  wallMidAlt: [0.52, 0.41, 0.28, 1],
+  wallHigh: [0.5, 0.38, 0.3, 1],
+  wallHighAlt: [0.56, 0.43, 0.34, 1],
+  outline: [1.0, 0.93, 0.8, 1], // background roof edges: warm cream
+  landmarkOutline: [1.0, 0.98, 0.9, 1], // landmark roof edges: near white, marks them as touchable
+  base: [0.07, 0.07, 0.04, 1], // map disc: dark earth, almost see-through
+  edge: [0.86, 0.74, 0.48, 1], // disc rim: sandstone gold
+  // Paths lie flat under the buildings, so they stay dimmer than roofs and outlines.
+  road: [0.56, 0.53, 0.47, 1], // roads: pale stone
+  bike: [0.5, 0.74, 0.38, 1], // bike paths and bike-lane dashes: sage green
+  foot: [0.26, 0.24, 0.2, 1], // foot paths: faint
+  // Landmark states (body colour): honey sandstone, warmer once heard, glowing cream when lit.
+  dim: [1.0, 0.84, 0.52, 1],
+  seen: [1.0, 0.74, 0.3, 1],
+  lit: [1.0, 0.95, 0.72, 1],
   focus: [1.0, 1.0, 1.0, 1],
-  you: [1.0, 0.35, 0.55, 1],
-  thread: [0.45, 0.95, 1.0, 1],
+  you: [1.0, 0.45, 0.55, 1],
+  thread: [1.0, 0.86, 0.48, 1],
   guess: [1.0, 0.55, 0.2, 1],
-  truth: [0.35, 1.0, 0.55, 1]
+  truth: [0.55, 0.92, 0.5, 1]
 }
 
 const MESH_VERTEX_STRIDE = 8
@@ -109,6 +117,34 @@ export class SightlinesMap extends BaseScriptComponent {
   @hint("Pull walls this far (cm) inside the roof edge so roofs and outlines overhang them")
   wallInsetCm: number = 0.04
 
+  @input
+  @hint("Roads (OSM, Data/PathsData.ts) as flat ribbons under the buildings")
+  showRoads: boolean = true
+
+  @input
+  @hint("Bike paths, plus dashed stripes on roads with painted bike lanes")
+  showBikePaths: boolean = true
+
+  @input
+  @hint("Foot paths and sidewalks (dense; faint)")
+  showFootpaths: boolean = false
+
+  @input
+  @hint("Road width in map cm (8 m at 1:600 is about 1.3)")
+  roadWidthCm: number = 1.3
+
+  @input
+  @hint("Bike path width in map cm (4 m at 1:600 is about 0.65)")
+  bikeWidthCm: number = 0.65
+
+  @input
+  @hint("Foot path width in map cm (2.5 m at 1:600 is about 0.4)")
+  footWidthCm: number = 0.4
+
+  @input
+  @hint("Width of the dashed bike-lane stripe down roads, map cm")
+  bikeLaneWidthCm: number = 0.4
+
   @input @hint("Map label size. The status caption is 0.6 at 70 cm; map labels are 1.5-3 m away.") labelScale: number = 1.2
 
   @input @hint("Real-direction beacon label size per cm of distance (0.009 matches the status caption)") sightlineLabelPerCm: number = 0.009
@@ -147,6 +183,26 @@ export class SightlinesMap extends BaseScriptComponent {
     this.meshObject(this.root, "base", buildDisc(radiusCm + 1.5), COLORS.base)
     this.meshObject(this.root, "edge", buildRing(radiusCm + 1.5, 0.6, 128, 0.02), COLORS.edge)
 
+    // Roads, bike paths and foot paths: flat ribbons just above the base, drawn before the buildings.
+    const paths = buildPathRibbons(PATHS, {
+      cmPerM: this.cmPerM,
+      center,
+      radiusM: this.radiusM,
+      roadWidthCm: this.showRoads ? this.roadWidthCm : 0,
+      bikeWidthCm: this.showBikePaths ? this.bikeWidthCm : 0,
+      footWidthCm: this.showFootpaths ? this.footWidthCm : 0,
+      bikeLaneWidthCm: Math.max(0, this.bikeLaneWidthCm)
+    })
+    let pathChunks = 0
+    const drawPaths = (cs: MeshChunk[], kind: string) => cs.forEach((c, i) => {
+      this.meshObject(this.root, `path_${kind}_${i}`, c, COLORS[kind])
+      pathChunks++
+    })
+    drawPaths(paths.roads, "road")
+    drawPaths(paths.bike, "bike")
+    drawPaths(paths.foot, "foot")
+    const pathVerts = {road: vertexCount(paths.roads), bike: vertexCount(paths.bike), foot: vertexCount(paths.foot)}
+
     // Background buildings (landmark footprints excluded; they get their own meshes).
     const exclude = new Set<number>()
     for (const l of LANDMARKS) if (l.building >= 0) exclude.add(l.building)
@@ -183,7 +239,7 @@ export class SightlinesMap extends BaseScriptComponent {
     this.meshObject(this.root, "you_ring", buildRing(2.2, 0.6, 48, 0.05), COLORS.you)
     this.meshObject(this.root, "you_pillar", buildTube([{x: 0, y: 0, z: 0}, {x: 0, y: 6, z: 0}], 0.5), COLORS.you)
 
-    print(`[Sightlines] map built in ${(getTime() - started).toFixed(2)} s: ${chunks} chunks, ${verts} background verts, ${Object.keys(this.landmarks).length} landmarks`)
+    print(`[Sightlines] map built in ${(getTime() - started).toFixed(2)} s: ${chunks} chunks, ${verts} background verts, ${Object.keys(this.landmarks).length} landmarks; paths ${pathChunks} chunks, verts road ${pathVerts.road} / bike ${pathVerts.bike} / foot ${pathVerts.foot}`)
   }
 
   private makeLandmark(id: string, en: EN, baked: BakedLandmark | null, _unused: number, offMap: boolean): LandmarkView {
@@ -354,7 +410,7 @@ export class SightlinesMap extends BaseScriptComponent {
       if (l.label) this.faceCamera(l.label, camPos)
       if (l.state === "focus" && l.material) {
         const k = 0.75 + 0.25 * Math.sin(this.pulseT * 6)
-        this.setColor(l.material, [COLORS.lit[0] * k + (1 - k), COLORS.lit[1] * k + (1 - k), 1, 1])
+        this.setColor(l.material, [COLORS.lit[0] * k + (1 - k), COLORS.lit[1] * k + (1 - k), COLORS.lit[2] * k + (1 - k), 1])
       }
     }
     for (const o of this.worldTemp) if (o.name.indexOf("label") === 0) this.faceCamera(o, camPos)
@@ -376,13 +432,7 @@ export class SightlinesMap extends BaseScriptComponent {
     let t: Text = null
     if (this.labelPrefab) {
       const inner = this.labelPrefab.instantiate(holder)
-      // The prefab root is saved at x = -100; centre it on the holder.
-      inner.getTransform().setLocalPosition(vec3.zero())
-      const wl = inner.getComponent(WorldLabel.getTypeName()) as WorldLabel
-      if (wl && wl.textComp) {
-        wl.textComp.text = text
-        t = wl.textComp
-      }
+      t = tidyLabel(inner, text)
     }
     return {holder, text: t}
   }

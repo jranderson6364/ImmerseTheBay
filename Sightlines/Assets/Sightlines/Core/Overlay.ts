@@ -116,7 +116,7 @@ export interface OverlayStyle {
   confidence: number
 }
 
-const VERIFIED_RGB = [0.45, 0.95, 1.0] // ice cyan
+const VERIFIED_RGB = [1.0, 0.96, 0.86] // warm white: clean and crisp against real facades
 const ESTIMATE_RGB = [1.0, 0.76, 0.32] // warm amber
 
 export function normaliseConfidence(c: number | string): number {

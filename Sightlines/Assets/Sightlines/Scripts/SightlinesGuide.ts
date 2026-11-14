@@ -50,30 +50,93 @@ export class SightlinesGuide extends BaseScriptComponent {
    * if speech is off or TTS fails, after a reading-time delay), and never if a newer clip interrupted it.
    */
   speak(text: string, onDone?: () => void): Promise<void> {
+    return this.speakParts([text], onDone)
+  }
+
+  /**
+   * Speaks several clips back to back (e.g. Gemini's connective, then each sourced fact). All clips are requested
+   * at once and cached by text, so prefetched facts start instantly and only new text waits on the network.
+   */
+  speakParts(parts: string[], onDone?: () => void): Promise<void> {
     const token = ++this.speechToken
+    const texts = parts.map((p) => (p || "").trim()).filter(Boolean)
     const finish = () => {
       if (token === this.speechToken && onDone) onDone()
     }
-    const fallback = () => this.after(Math.max(2, text.split(/\s+/).length / 3), finish)
-    if (!text) return Promise.resolve()
-    print("[Sightlines] say: " + text)
+    if (!texts.length) return Promise.resolve()
+    print("[Sightlines] say: " + texts.join(" "))
+    const readingTime = (t: string) => Math.max(1.5, t.split(/\s+/).length / 3)
     if (!this.speakResponses) {
-      fallback()
+      this.after(texts.reduce((s, t) => s + readingTime(t), 0), finish)
       return Promise.resolve()
     }
-    return OpenAI.speech({model: "gpt-4o-mini-tts", input: text, voice: this.ttsVoice as any, instructions: "Warm, upbeat Stanford campus tour guide. Clear and quick."})
-      .then((track) => {
-        if (token !== this.speechToken) return
-        if (!this.audio) this.audio = this.getSceneObject().createComponent("AudioComponent") as AudioComponent
-        if (this.audio.isPlaying()) this.audio.stop(false)
-        this.audio.audioTrack = track
-        this.audio.setOnFinish(() => finish())
-        this.audio.play(1)
-      })
-      .catch((e) => {
-        print("[Sightlines] TTS failed: " + e)
-        fallback()
-      })
+    if (this.audio && this.audio.isPlaying()) this.audio.stop(false)
+    const started = getTime()
+    const clips = texts.map((t) => this.tts(t))
+    const playAt = (i: number) => {
+      if (token !== this.speechToken) return
+      if (i >= texts.length) return finish()
+      clips[i]
+        .then((track) => {
+          if (token !== this.speechToken) return
+          if (i === 0 && this.logTimings) print(`[Sightlines] first audio after ${(getTime() - started).toFixed(2)} s${this.lastCachedFlags[0] ? " (cached)" : ""}`)
+          if (!this.audio) this.audio = this.getSceneObject().createComponent("AudioComponent") as AudioComponent
+          if (this.audio.isPlaying()) this.audio.stop(false)
+          this.audio.audioTrack = track
+          this.audio.setOnFinish(() => playAt(i + 1))
+          this.audio.play(1)
+        })
+        .catch((e) => {
+          print("[Sightlines] TTS failed: " + e)
+          this.after(readingTime(texts[i]), () => playAt(i + 1))
+        })
+    }
+    this.lastCachedFlags = texts.map((t) => !!this.ready[t])
+    playAt(0)
+    return Promise.resolve()
+  }
+
+  /** Warms the clip cache in the background, two requests at a time. Safe to call repeatedly. */
+  prefetch(texts: string[]) {
+    if (!this.speakResponses) return
+    for (const t of texts) {
+      const k = (t || "").trim()
+      if (k && !this.cache[k] && this.prefetchQueue.indexOf(k) < 0) this.prefetchQueue.push(k)
+    }
+    this.pumpPrefetch()
+  }
+
+  private cache: Record<string, Promise<AudioTrackAsset>> = {}
+  private ready: Record<string, boolean> = {}
+  private prefetchQueue: string[] = []
+  private prefetchActive = 0
+  private lastCachedFlags: boolean[] = []
+
+  private tts(text: string): Promise<AudioTrackAsset> {
+    const k = text.trim()
+    if (this.cache[k]) return this.cache[k]
+    const p = OpenAI.speech({model: "gpt-4o-mini-tts", input: k, voice: this.ttsVoice as any, instructions: "Warm, upbeat Stanford campus tour guide. Clear and quick."})
+    this.cache[k] = p
+    p.then(
+      () => (this.ready[k] = true),
+      () => {
+        delete this.cache[k] // let a later call retry
+      }
+    )
+    return p
+  }
+
+  private pumpPrefetch() {
+    while (this.prefetchActive < 2 && this.prefetchQueue.length) {
+      const k = this.prefetchQueue.shift()
+      if (this.cache[k]) continue
+      this.prefetchActive++
+      const done = () => {
+        this.prefetchActive--
+        this.pumpPrefetch()
+      }
+      this.tts(k).then(done, done)
+    }
   }
 
   isSpeaking(): boolean {

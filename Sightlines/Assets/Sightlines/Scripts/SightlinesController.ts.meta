@@ -45,13 +45,20 @@
     showcase: false
     showcaseForwardCm: false
     showcaseScaleCm: false
+    startFacingDeg: false
+    startInstruction: false
+    startLat: false
     startLifted: false
+    startLon: false
     statusText: false
     surveyLat: false
     surveyLon: false
     tableForwardCm: false
     tableHeightCm: false
+    useStartPoint: false
     wallBearing: false
+    youAreHereHeightCm: false
+    youAreHereScale: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -65,6 +72,11 @@
       map: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
       guide: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       asr: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      useStartPoint: true
+      startLat: 37.428188
+      startLon: -122.173531
+      startFacingDeg: 104.800003
+      startInstruction: "Stand where the North-South and East-West axes cross. Face east down the walkway, between Physics and Moore, then pinch."
       surveyLat: 37.427883
       surveyLon: -122.174332
       wallBearing: !<float> 15.000000
@@ -74,6 +86,8 @@
       tableHeightCm: !<float> 85.000000
       tableForwardCm: !<float> 55.000000
       startLifted: false
+      youAreHereHeightCm: !<float> 16.000000
+      youAreHereScale: 1.800000
       statusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
       showStatusLabel: true
       autoQuiz: true
@@ -96,6 +110,13 @@
     - // @input AssignableType map
     - // @input AssignableType_1 guide
     - // @input AssignableType_2 asr
+    - '// @ui {"widget":"group_start", "label":"Start point (one-pinch calibration)"}'
+    - '// @input bool useStartPoint = true {"hint":"ON: stand on the known start point, face down the street, pinch once. OFF: the wall-pinch calibration at the survey spot below."}'
+    - '// @input float startLat = 37.4281869 {"hint":"Default: where the North-South Axis (OSM: Via Crespi) crosses the East-West Axis, just east of Huang (OSM)."}'
+    - // @input float startLon = -122.1735285
+    - '// @input float startFacingDeg = 104.8 {"hint":"Compass bearing you face when you pinch. 104.8 = east down the East-West Axis, between Physics and Moore (OSM)."}'
+    - '// @input string startInstruction = "Stand where the North-South and East-West axes cross. Face east down the walkway, between Physics and Moore, then pinch." {"hint":"Spoken/written instruction for the start point"}'
+    - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Where you stand (survey)"}'
     - '// @input float surveyLat = 37.427884 {"hint":"Latitude of the spot the wearer stands on. Default: Huang Engineering Center."}'
     - // @input float surveyLon = -122.17433
@@ -108,6 +129,8 @@
     - '// @input float tableHeightCm = 85 {"hint":"Map height above the floor in table mode (cm)"}'
     - '// @input float tableForwardCm = 55 {"hint":"How far in front of you the table-mode map sits (cm)"}'
     - // @input bool startLifted
+    - '// @input float youAreHereHeightCm = 16 {"hint":"Height of the floating \"You are here\" tag above your pin on the map (map cm)"}'
+    - // @input float youAreHereScale = 1.8
     - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Optional"}'
     - // @input Component.Text statusText

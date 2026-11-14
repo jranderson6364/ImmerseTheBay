@@ -7,9 +7,12 @@
  * by height band and by a neighbour-alternating tone, so adjacent buildings get different colours.
  * Outlines (a bright mitred strip around every roof perimeter, a short lip down the outside, and optional
  * vertical lines at sharp corners) are their own chunk list so they can be drawn in an edge colour.
+ * Roads, bike paths and foot paths (Data/PathsData.ts) are flat mitred ribbons just above the base disc, one chunk
+ * list per kind (buildPathRibbons).
  * Each chunk stays under 64,000 vertices because MeshBuilder only supports UInt16 indices.
  */
 import {BakedBuilding} from "../Data/CampusData"
+import {BakedPath, PATH_BIKE, PATH_FOOT, PATH_ROAD, PATH_ROAD_BIKELANE} from "../Data/PathsData"
 import {EN} from "./Geo"
 
 export interface MeshChunk {
@@ -365,6 +368,245 @@ export function buildBuildingOutline(b: BakedBuilding, o: MapMeshOptions): MeshC
   const w = new ChunkWriter()
   writeOutline(b, o, ringFrames(b, o), w)
   return w.done()[0] || {verts: [], idx: []}
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Roads, bike paths and foot paths (Data/PathsData.ts): flat ribbons just above the base disc.
+
+export interface PathRibbonOptions {
+  /** Map centimetres per real metre. */
+  cmPerM: number
+  /** Wearer position in local metres; the map is centred here. */
+  center: EN
+  /** Ribbons are clipped to this radius (metres) around the centre. */
+  radiusM: number
+  /** Ribbon width in map cm per kind. 0 (or less) leaves that kind out. */
+  roadWidthCm: number
+  bikeWidthCm: number
+  footWidthCm: number
+  /** Width of the dashed stripe down roads with a painted bike lane (in the bike list). 0 disables. Default 0.4. */
+  bikeLaneWidthCm?: number
+  /** Dash and gap length of the bike-lane stripe, map cm. Defaults 0.8 / 0.6. */
+  dashCm?: number
+  gapCm?: number
+}
+
+/** Ribbon heights in cm, staggered per kind to avoid z-fighting; all above the base (-0.05) and under the you-ring (0.05). */
+export const PATH_Y = {road: 0.02, foot: 0.03, bike: 0.04, bikeLane: 0.045}
+
+export interface PathMesh {
+  roads: MeshChunk[]
+  /** Bike paths plus the dashed stripes on roads with bike lanes. */
+  bike: MeshChunk[]
+  foot: MeshChunk[]
+}
+
+type P2 = [number, number]
+
+/** Joins sharper than this turn (degrees) split the ribbon into two overlapping pieces instead of a long mitre. */
+const PATH_SPLIT_TURN_DEG = 100
+const PATH_MIN_SEG_CM = 1e-4
+
+/** Cuts a map-cm polyline to the disc of radius r, splitting it where it leaves and re-enters. */
+export function clipPolylineToCircle(pts: P2[], r: number): P2[][] {
+  const runs: P2[][] = []
+  let cur: P2[] = []
+  const r2 = r * r
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [px, pz] = pts[i], [qx, qz] = pts[i + 1]
+    const dx = qx - px, dz = qz - pz
+    const a = dx * dx + dz * dz
+    let t0 = 0, t1 = 1
+    if (a < 1e-12) {
+      if (px * px + pz * pz > r2) t0 = 2
+    } else {
+      // |p + t d|^2 = r^2
+      const b = 2 * (px * dx + pz * dz)
+      const c = px * px + pz * pz - r2
+      const disc = b * b - 4 * a * c
+      if (disc <= 0) t0 = 2
+      else {
+        const s = Math.sqrt(disc)
+        t0 = Math.max(0, (-b - s) / (2 * a))
+        t1 = Math.min(1, (-b + s) / (2 * a))
+      }
+    }
+    if (t0 >= t1) {
+      if (cur.length >= 2) runs.push(cur)
+      cur = []
+      continue
+    }
+    if (t0 > 0 || !cur.length) {
+      if (cur.length >= 2) runs.push(cur)
+      cur = [[px + dx * t0, pz + dz * t0]]
+    }
+    cur.push([px + dx * t1, pz + dz * t1])
+    if (t1 < 1) {
+      if (cur.length >= 2) runs.push(cur)
+      cur = []
+    }
+  }
+  if (cur.length >= 2) runs.push(cur)
+  return runs
+}
+
+function dedupe(pts: P2[]): P2[] {
+  const out: P2[] = []
+  for (const p of pts) {
+    const q = out[out.length - 1]
+    if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > PATH_MIN_SEG_CM) out.push(p)
+  }
+  return out
+}
+
+/** Splits a polyline at joins sharper than PATH_SPLIT_TURN_DEG; the pieces share the corner point. */
+function splitSharp(pts: P2[]): P2[][] {
+  const pieces: P2[][] = []
+  let cur: P2[] = [pts[0]]
+  const lim = Math.cos((PATH_SPLIT_TURN_DEG * Math.PI) / 180)
+  for (let i = 1; i < pts.length; i++) {
+    cur.push(pts[i])
+    if (i + 1 < pts.length) {
+      const ax = pts[i][0] - pts[i - 1][0], az = pts[i][1] - pts[i - 1][1]
+      const bx = pts[i + 1][0] - pts[i][0], bz = pts[i + 1][1] - pts[i][1]
+      const cos = (ax * bx + az * bz) / ((Math.hypot(ax, az) * Math.hypot(bx, bz)) || 1)
+      if (cos < lim) {
+        pieces.push(cur)
+        cur = [pts[i]]
+      }
+    }
+  }
+  if (cur.length >= 2) pieces.push(cur)
+  return pieces
+}
+
+/**
+ * Flat mitred ribbon along a map-cm polyline at height y. With `caps`, the ends are pushed out by half the width
+ * (square caps), so pieces meeting at junctions and split corners overlap instead of leaving notches.
+ * Vertices are finally clamped to `clampR` (cm) from the centre, which only trims cap and mitre tips.
+ */
+function writeRibbon(raw: P2[], halfW: number, y: number, caps: boolean, clampR: number, w: ChunkWriter) {
+  const clean = dedupe(raw)
+  if (clean.length < 2) return
+  for (const pts of splitSharp(clean)) {
+    const n = pts.length
+    const tx: number[] = [], tz: number[] = []
+    for (let k = 0; k + 1 < n; k++) {
+      const dx = pts[k + 1][0] - pts[k][0], dz = pts[k + 1][1] - pts[k][1]
+      const len = Math.hypot(dx, dz) || 1
+      tx.push(dx / len)
+      tz.push(dz / len)
+    }
+    w.ensure(2 * n)
+    const base = w.base()
+    for (let k = 0; k < n; k++) {
+      let ox: number, oz: number
+      let cx = pts[k][0], cz = pts[k][1]
+      if (k === 0 || k === n - 1) {
+        const s = k === 0 ? 0 : n - 2
+        ox = -tz[s]
+        oz = tx[s]
+        if (caps) {
+          const dir = k === 0 ? -1 : 1
+          cx += tx[s] * halfW * dir
+          cz += tz[s] * halfW * dir
+        }
+      } else {
+        // Mitre: bisector of the two segment normals, lengthened so the edges stay parallel to each segment.
+        const n1x = -tz[k - 1], n1z = tx[k - 1], n2x = -tz[k], n2z = tx[k]
+        let bx = n1x + n2x, bz = n1z + n2z
+        const bl = Math.hypot(bx, bz) || 1
+        bx /= bl
+        bz /= bl
+        const scale = 1 / Math.max(bx * n2x + bz * n2z, 1 / MITER_LIMIT)
+        ox = bx * scale
+        oz = bz * scale
+      }
+      for (const side of [1, -1]) {
+        let vx = cx + ox * halfW * side, vz = cz + oz * halfW * side
+        const d = Math.hypot(vx, vz)
+        if (d > clampR) {
+          vx *= clampR / d
+          vz *= clampR / d
+        }
+        w.v(vx, y, vz, 0, 1, 0)
+      }
+    }
+    for (let k = 0; k + 1 < n; k++) {
+      const a = base + 2 * k
+      w.quad(a, a + 1, a + 3, a + 2)
+    }
+  }
+}
+
+/** Cuts a polyline into dashes of `dash` cm separated by `gap` cm, with the phase carried across vertices. */
+export function dashPolyline(pts: P2[], dash: number, gap: number): P2[][] {
+  const out: P2[][] = []
+  if (dash <= 0) return out
+  const period = dash + Math.max(0, gap)
+  let s = 0 // arc length at pts[i]
+  let cur: P2[] = []
+  const flush = () => {
+    if (cur.length >= 2) out.push(cur)
+    cur = []
+  }
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [ax, az] = pts[i], [bx, bz] = pts[i + 1]
+    const len = Math.hypot(bx - ax, bz - az)
+    if (len < PATH_MIN_SEG_CM) continue
+    const at = (t: number): P2 => [ax + ((bx - ax) * t) / len, az + ((bz - az) * t) / len]
+    let t = 0
+    while (t < len - 1e-9) {
+      let phase = (s + t) % period
+      if (period - phase < 1e-9) phase = 0 // rounding just short of a period boundary: start the next dash
+      if (phase < dash - 1e-9) {
+        const end = Math.min(len, t + dash - phase)
+        if (!cur.length) cur.push(at(t))
+        cur.push(at(end))
+        if (end < len) flush() // the dash ends inside this segment; one ending at the vertex continues round it
+        t = end
+      } else {
+        flush()
+        t = Math.min(len, t + period - phase)
+      }
+    }
+    s += len
+  }
+  flush()
+  return out
+}
+
+/**
+ * Flat ribbons for the baked paths: roads, bike paths (plus dashed bike-lane stripes on roads), foot paths.
+ * Kind codes: 0 road, 1 bike, 2 foot, 3 road with a bike lane (see Data/PathsData.ts).
+ */
+export function buildPathRibbons(paths: BakedPath[], o: PathRibbonOptions): PathMesh {
+  const roads = new ChunkWriter(), bike = new ChunkWriter(), foot = new ChunkWriter()
+  const R = o.radiusM * o.cmPerM
+  const laneW = o.bikeLaneWidthCm === undefined ? 0.4 : o.bikeLaneWidthCm
+  const dash = o.dashCm === undefined ? 0.8 : o.dashCm
+  const gap = o.gapCm === undefined ? 0.6 : o.gapCm
+  for (const [kind, flat] of paths) {
+    const isRoad = kind === PATH_ROAD || kind === PATH_ROAD_BIKELANE
+    const width = isRoad ? o.roadWidthCm : kind === PATH_BIKE ? o.bikeWidthCm : kind === PATH_FOOT ? o.footWidthCm : 0
+    const wantLane = kind === PATH_ROAD_BIKELANE && laneW > 0 && o.bikeWidthCm > 0
+    if (width <= 0 && !wantLane) continue
+    const pts: P2[] = []
+    for (let i = 0; i + 1 < flat.length; i += 2) pts.push([(flat[i] / 10 - o.center.e) * o.cmPerM, -(flat[i + 1] / 10 - o.center.n) * o.cmPerM])
+    if (width > 0) {
+      const hw = width / 2
+      const out = isRoad ? roads : kind === PATH_BIKE ? bike : foot
+      const y = isRoad ? PATH_Y.road : kind === PATH_BIKE ? PATH_Y.bike : PATH_Y.foot
+      for (const run of clipPolylineToCircle(pts, Math.max(0, R - hw))) writeRibbon(run, hw, y, true, R, out)
+    }
+    if (wantLane) {
+      const hw = laneW / 2
+      for (const run of clipPolylineToCircle(pts, Math.max(0, R - hw))) {
+        for (const d of dashPolyline(dedupe(run), dash, gap)) writeRibbon(d, hw, PATH_Y.bikeLane, false, R, bike)
+      }
+    }
+  }
+  return {roads: roads.done(), bike: bike.done(), foot: foot.done()}
 }
 
 /** Sum of vertices across chunks. */

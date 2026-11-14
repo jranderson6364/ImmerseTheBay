@@ -13,6 +13,7 @@
  * Editor Preview: tap = calibrate (camera forward as the wall facing), then tap = right pinch.
  */
 import {SIK} from "SpectaclesInteractionKit.lspkg/SIK"
+import {tidyLabel} from "./LabelStyle"
 import {ASRController} from "../../Scripts/ASRController"
 import {WorldLabel} from "../../Scripts/WorldLabel"
 import {LANDMARKS} from "../Data/CampusData"
@@ -21,6 +22,7 @@ import {EN, V3, angleDiff, facingFromWallPinches, latLonToEN, mapYawFor, snapFac
 import {ValidatedAnswer, founderConstellation, guessPrompt, nextFact, nextGuessTarget, scoreGuess, themesFromProfile, yourStanford} from "../Core/Guide"
 import {SightlinesGuide} from "./SightlinesGuide"
 import {SightlinesMap} from "./SightlinesMap"
+import {buildDisc, buildRing, buildTube} from "../Core/MapMesh"
 import {LocateResult, SightlinesLocator} from "./SightlinesLocator"
 import {SightlinesOverlay} from "./SightlinesOverlay"
 import {SightlinesMoney} from "./SightlinesMoney"
@@ -29,6 +31,7 @@ import {SightlinesShowcase} from "./SightlinesShowcase"
 type Mode = "calibrate" | "tour" | "guess"
 
 const STORE_KEY = "sightlines.v1"
+const THINKING_LINE = "Let me check my notes."
 
 @component
 export class SightlinesController extends BaseScriptComponent {
@@ -37,6 +40,14 @@ export class SightlinesController extends BaseScriptComponent {
   @input map: SightlinesMap
   @input guide: SightlinesGuide
   @input @allowUndefined asr: ASRController
+
+  @ui.group_start("Start point (one-pinch calibration)")
+  @input @hint("ON: stand on the known start point, face down the street, pinch once. OFF: the wall-pinch calibration at the survey spot below.") useStartPoint: boolean = true
+  @input @hint("Default: where the North-South Axis (OSM: Via Crespi) crosses the East-West Axis, just east of Huang (OSM).") startLat: number = 37.4281869
+  @input startLon: number = -122.1735285
+  @input @hint("Compass bearing you face when you pinch. 104.8 = east down the East-West Axis, between Physics and Moore (OSM).") startFacingDeg: number = 104.8
+  @input @hint("Spoken/written instruction for the start point") startInstruction: string = "Stand where the North-South and East-West axes cross. Face east down the walkway, between Physics and Moore, then pinch."
+  @ui.group_end
 
   @ui.group_start("Where you stand (survey)")
   @input @hint("Latitude of the spot the wearer stands on. Default: Huang Engineering Center.") surveyLat: number = 37.427884
@@ -51,6 +62,10 @@ export class SightlinesController extends BaseScriptComponent {
   @input @hint("Map height above the floor in table mode (cm)") tableHeightCm: number = 85
   @input @hint("How far in front of you the table-mode map sits (cm)") tableForwardCm: number = 55
   @input startLifted: boolean = false
+  @input @hint("Height of the floating \"You are here\" tag above your pin on the map (map cm)") youAreHereHeightCm: number = 16
+  @input youAreHereScale: number = 1.8
+  @input @hint("Move/resize handle on the map rim: size and how close a pinch must be to grab it (cm)") handleRadiusCm: number = 4
+  @input handleGrabCm: number = 10
   @ui.group_end
 
   @ui.group_start("Optional")
@@ -81,7 +96,7 @@ export class SightlinesController extends BaseScriptComponent {
   private focus = ""
   private guessTarget = ""
   private unfoldT = -1
-  private twist: {lastYaw: number} = null
+  private twist: {lastYaw: number; lastDist: number} = null
   private positions: Record<string, EN> = {}
   private isEditor = global.deviceInfoSystem.isEditor()
   private statusHolder: SceneObject = null
@@ -94,7 +109,7 @@ export class SightlinesController extends BaseScriptComponent {
   }
 
   private onStart() {
-    this.me = latLonToEN(this.surveyLat, this.surveyLon)
+    this.me = this.useStartPoint ? latLonToEN(this.startLat, this.startLon) : latLonToEN(this.surveyLat, this.surveyLon)
     for (const l of LANDMARKS) this.positions[l.id] = {e: l.east, n: l.north}
     for (const c of CARDS) if (c.offMap) this.positions[c.id] = latLonToEN(c.offMap.lat, c.offMap.lon)
     if (this.locator) this.locator.setSurvey(this.me)
@@ -109,7 +124,8 @@ export class SightlinesController extends BaseScriptComponent {
     }
     if (this.isEditor) this.createEvent("TapEvent").bind(() => this.onEditorTap())
     this.makeStatusLabel()
-    this.setStatus(this.isEditor ? "Preview: tap to calibrate (uses the camera's facing)." : "Face the wall. Pinch a point on its LEFT, then its RIGHT.")
+    this.prefetchStartup()
+    this.setStatus(this.calibrateInstruction())
   }
 
   // -------------------------------------------------------------------------
@@ -134,7 +150,11 @@ export class SightlinesController extends BaseScriptComponent {
     if (!hand || !hand.isTracked()) return
     const other = SIK.HandInputData.getHand(which === "left" ? "right" : "left")
     if (other && other.isTracked() && other.isPinching()) return // two-hand twist, handled in update
-    if (this.mode === "calibrate") return this.addWallPoint(toV3(hand.indexTip.position))
+    if (this.mode === "calibrate") {
+      if (this.useStartPoint) return this.finishCalibration(this.viewHorizontal())
+      return this.addWallPoint(toV3(hand.indexTip.position))
+    }
+    if (this.tryGrabHandle(which, hand.indexTip.position)) return
     // Left pinch always means "listen", so a question is never blocked by a pending quiz.
     if (which === "left" && this.asr) return this.listen()
     if (this.mode === "guess") return this.lockGuess(toV3(hand.indexKnuckle.position))
@@ -199,11 +219,15 @@ export class SightlinesController extends BaseScriptComponent {
   }
 
   private finishCalibration(facingWorld: V3) {
-    const bearing = snapFacingBearing(this.wallBearing, this.facingHint)
+    const bearing = this.useStartPoint ? this.startFacingDeg : snapFacingBearing(this.wallBearing, this.facingHint)
     this.mapYaw = mapYawFor(facingWorld, bearing)
     const cam = this.camera.getTransform().getWorldPosition()
     this.floorY = cam.y - this.eyeHeightCm
-    if (this.locator) {
+    if (this.useStartPoint) {
+      // A surveyed point beats phone GPS (±20 m), so don't let GPS move the map.
+      this.me = latLonToEN(this.startLat, this.startLon)
+      if (this.locator) this.locator.setSurvey(this.me)
+    } else if (this.locator) {
       // Outdoors with a good GPS fix (or a saved standing spot), centre the map on it; otherwise keep the survey spot.
       const w = this.locator.wearer()
       print(`[Sightlines] wearer position: ${w.source}${w.spotId ? " " + w.spotId : ""} (${w.reason})`)
@@ -212,6 +236,8 @@ export class SightlinesController extends BaseScriptComponent {
     this.hideExtras()
     this.map.build(this.me, this.camera)
     if (this.overlay) this.overlay.setCenter(this.map.center)
+    this.makeYouAreHere()
+    this.makeHandle()
     this.lifted = this.startLifted
     this.placeMap(true)
     this.mode = "tour"
@@ -305,7 +331,8 @@ export class SightlinesController extends BaseScriptComponent {
     }
     this.markHeard(fact.id)
     this.showModelFor(fact.id)
-    this.say(`${card.name}. ${fact.text}`, `${card.label}\n${fact.text}`, this.quizAfterSpeech(id))
+    this.say([`${card.name}.`, fact.text], `${card.label}\n${fact.text}`, this.quizAfterSpeech(id))
+    this.prefetchAround(id)
   }
 
   private focusOn(id: string, withMoney = true) {
@@ -351,7 +378,7 @@ export class SightlinesController extends BaseScriptComponent {
           if (fact) {
             this.markHeard(fact.id)
             this.showModelFor(fact.id)
-            this.say(`${lead} ${fact.text}`, `${card.label}${r.estimated ? " (estimated)" : ""} · ${Math.round(r.distanceM)} m`, this.quizAfterSpeech(r.id))
+            this.say([lead, fact.text], `${card.label}${r.estimated ? " (estimated)" : ""} · ${Math.round(r.distanceM)} m`, this.quizAfterSpeech(r.id))
           } else this.say(lead, `${card.label} · ${Math.round(r.distanceM)} m`)
         } else {
           this.setStatus(`${r.name}${r.estimated ? " (estimated)" : ""} · ${Math.round(r.distanceM)} m`)
@@ -371,6 +398,71 @@ export class SightlinesController extends BaseScriptComponent {
     const yaw = Math.atan2(to.x, to.z) - (8 * Math.PI) / 180
     const dist = Math.max(600, Math.min(1500, r.distanceM * 100 - 300))
     return new vec3(cam.x + Math.sin(yaw) * dist, this.floorY, cam.z + Math.cos(yaw) * dist)
+  }
+
+  /** Warms the TTS cache with what is most likely to be said first, so pinches answer instantly. */
+  private prefetchStartup() {
+    const here = this.nearestLandmark(this.me)
+    const hereName = here ? cardById(here).name : "Stanford"
+    const lines = [`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, THINKING_LINE, "Here's something new."]
+    const themes = themesFromProfile(this.state.profile)
+    for (const c of CARDS) {
+      const f = nextFact(c.id, this.state.heard, themes)
+      if (f) lines.push(`${c.name}.`, f.text)
+    }
+    for (const c of CARDS) lines.push(guessPrompt(c.id))
+    this.guide.prefetch(lines)
+  }
+
+  /** After a fact about `id`: warm its next fact and the likely quiz prompt. */
+  private prefetchAround(id: string) {
+    const themes = themesFromProfile(this.state.profile)
+    const lines: string[] = []
+    const f = nextFact(id, this.state.heard, themes)
+    if (f) lines.push(f.text)
+    const target = nextGuessTarget(this.me, this.positions, this.state.guessed, id)
+    if (target) {
+      lines.push(guessPrompt(target))
+      const tf = nextFact(target, this.state.heard, themes)
+      if (tf) lines.push(tf.text)
+    }
+    this.guide.prefetch(lines)
+  }
+
+  private youAreHere: SceneObject = null
+  private youT = 0
+
+  /** Floating, bobbing "You are here" tag over the wearer's pin on the map (map root is rebuilt on calibration). */
+  private makeYouAreHere() {
+    if (!this.map.root || !this.map.labelPrefab) return
+    const holder = global.scene.createSceneObject("you_are_here")
+    holder.setParent(this.map.root)
+    holder.getTransform().setLocalPosition(new vec3(0, this.youAreHereHeightCm, 0))
+    holder.getTransform().setLocalScale(vec3.one().uniformScale(this.youAreHereScale))
+    const t = tidyLabel(this.map.labelPrefab.instantiate(holder), "You are here")
+    if (t) {
+      try {
+        t.textFill.color = new vec4(1, 0.55, 0.75, 1)
+      } catch (e) {
+        // keep white
+      }
+    }
+    this.youAreHere = holder
+  }
+
+  private updateYouAreHere() {
+    if (!this.youAreHere || !this.map.root) return
+    this.youT += getDeltaTime()
+    const t = this.youAreHere.getTransform()
+    t.setLocalPosition(new vec3(0, this.youAreHereHeightCm + Math.sin(this.youT * 2.2) * 1.5, 0))
+    const cam = this.camera.getTransform().getWorldPosition()
+    const p = t.getWorldPosition()
+    t.setWorldRotation(quat.angleAxis(Math.atan2(cam.x - p.x, cam.z - p.z), vec3.up()))
+  }
+
+  private calibrateInstruction(): string {
+    if (this.isEditor) return this.useStartPoint ? "Preview: tap to calibrate (camera facing = start-point direction)." : "Preview: tap to calibrate (uses the camera's facing)."
+    return this.useStartPoint ? this.startInstruction : "Face the wall. Pinch a point on its LEFT, then its RIGHT."
   }
 
   private hideExtras() {
@@ -422,7 +514,7 @@ export class SightlinesController extends BaseScriptComponent {
     this.map.drawWorldBearing(r.trueBearing, this.map.colors.truth)
     const fact = nextFact(target, this.state.heard, themesFromProfile(this.state.profile))
     if (fact) this.markHeard(fact.id)
-    const line = fact ? `${r.verdict} Here's something new: ${fact.text}` : r.verdict
+    const line = fact ? [r.verdict, "Here's something new.", fact.text] : [r.verdict]
     this.say(line, `${Math.round(r.errorDeg)}° off · best ${Math.round(this.state.bestErr)}°`, this.quizAfterSpeech(target))
   }
 
@@ -439,6 +531,9 @@ export class SightlinesController extends BaseScriptComponent {
     if (/\b(lift|raise|table)\b/.test(t)) return this.setLifted(true)
     if (/\b(floor|lower|put it down)\b/.test(t)) return this.setLifted(false)
     if (/\b(recalibrate|calibrate)\b/.test(t)) return this.recalibrate()
+    if (/\b(bigger|larger|zoom in|grow)\b/.test(t)) return this.setMapScale(this.mapScale * 1.4, true)
+    if (/\b(smaller|zoom out|shrink)\b/.test(t)) return this.setMapScale(this.mapScale / 1.4, true)
+    if (/\b(normal|reset) size\b/.test(t)) return this.setMapScale(1, true)
     if (/\bwhat('?s| is) (that|this)\b|\bwhat am i looking at\b/.test(t)) return this.identifyReal()
     if (/\b(explode|take it apart|show me again)\b/.test(t) && this.showcase && this.showcase.isShowing()) return this.showcase.toggle()
     if (/^(close|hide|clear)( it| that| the model| everything)?\.?$/.test(t)) return this.hideExtras()
@@ -452,6 +547,7 @@ export class SightlinesController extends BaseScriptComponent {
   private askGuide(question: string) {
     const focus = this.gazedLandmark() || this.focus
     this.setStatus("Thinking…")
+    this.guide.speak(THINKING_LINE) // cached at startup; the real answer interrupts it
     if (focus) this.map.setState(focus, "focus")
     this.guide
       .ask(question, focus, this.state.profile, this.state.heard)
@@ -477,7 +573,8 @@ export class SightlinesController extends BaseScriptComponent {
     for (const id of a.lights) if (this.state.seen.indexOf(id) < 0) this.state.seen.push(id)
     this.save()
     const caption = a.fact_ids.length ? a.fact_ids.map((id) => factById(id).card.label).join(" · ") : "Not in my notes"
-    this.say(a.speech, caption + (a.rejected.length ? `  (dropped ${a.rejected.length})` : ""))
+    const parts = a.declined || !a.fact_ids.length ? [a.speech] : [a.connective, ...a.fact_ids.map((id) => factById(id).fact.text)]
+    this.say(parts, caption + (a.rejected.length ? `  (dropped ${a.rejected.length})` : ""))
   }
 
   private showFounders() {
@@ -507,10 +604,12 @@ export class SightlinesController extends BaseScriptComponent {
       this.unfoldT += getDeltaTime()
       const k = Math.min(1, this.unfoldT / 1.4)
       const e = 1 - Math.pow(1 - k, 3)
-      this.map.root.getTransform().setLocalScale(new vec3(e, Math.max(0.05, e * e), e))
+      this.map.root.getTransform().setLocalScale(new vec3(e, Math.max(0.05, e * e), e).uniformScale(this.mapScale))
       if (k >= 1) this.unfoldT = -1
     }
     this.followStatusLabel()
+    this.updateYouAreHere()
+    this.updateHandle()
     if (this.mode !== "calibrate") this.updateTwist()
   }
 
@@ -530,10 +629,12 @@ export class SightlinesController extends BaseScriptComponent {
       return
     }
     this.rightDownAt = -1 // a two-hand twist is not a long pinch
+    this.drag = null
     const d = right.indexTip.position.sub(left.indexTip.position)
     const yaw = Math.atan2(d.x, d.z)
+    const dist = Math.max(1, Math.hypot(d.x, d.z))
     if (!this.twist) {
-      this.twist = {lastYaw: yaw}
+      this.twist = {lastYaw: yaw, lastDist: dist}
       return
     }
     let dy = yaw - this.twist.lastYaw
@@ -543,7 +644,100 @@ export class SightlinesController extends BaseScriptComponent {
       this.mapYaw += dy * 0.5 // half-rate for fine control
       this.placeMap(false)
     }
+    // Spread / close both pinches to resize.
+    const ratio = dist / this.twist.lastDist
+    if (Math.abs(ratio - 1) < 0.2) this.setMapScale(this.mapScale * ratio, false)
     this.twist.lastYaw = yaw
+    this.twist.lastDist = dist
+  }
+
+  // -------------------------------------------------------------------------
+  // Map handle: pinch-and-drag to move; both hands spread to resize
+
+  private mapScale = 1
+  private handle: SceneObject = null
+  private drag: {hand: "left" | "right"; last: vec3} = null
+
+  private setMapScale(s: number, announce: boolean) {
+    this.mapScale = Math.max(0.3, Math.min(2.5, s))
+    if (this.map.root && this.unfoldT < 0) this.map.root.getTransform().setLocalScale(vec3.one().uniformScale(this.mapScale))
+    if (announce) this.setStatus(`Map size ${Math.round(this.mapScale * 100)}%`)
+  }
+
+  private makeHandle() {
+    if (this.handle) this.handle.destroy()
+    this.handle = global.scene.createSceneObject("map_handle")
+    const c = this.map.colors.edge
+    this.map.meshObject(this.handle, "handle_ring", buildRing(this.handleRadiusCm, 0.8, 40, 0), c)
+    this.map.meshObject(this.handle, "handle_dot", buildDisc(this.handleRadiusCm * 0.35, 24, 0), c)
+    // Four short arrows: "drag me".
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2
+      const s = Math.sin(a), co = Math.cos(a)
+      const r0 = this.handleRadiusCm + 0.8, r1 = this.handleRadiusCm + 2.4
+      this.map.meshObject(this.handle, "handle_arrow", buildTube([{x: s * r0, y: 0, z: co * r0}, {x: s * r1, y: 0, z: co * r1}], 0.5), c)
+    }
+    if (this.map.labelPrefab) {
+      const lab = global.scene.createSceneObject("handle_label")
+      lab.setParent(this.handle)
+      lab.getTransform().setLocalPosition(new vec3(0, 5, 0))
+      lab.getTransform().setLocalScale(vec3.one().uniformScale(0.9))
+      tidyLabel(this.map.labelPrefab.instantiate(lab), "pinch to move · two hands to resize")
+    }
+  }
+
+  /** World position of the handle: on the map's rim, on the side nearest the wearer. */
+  private handlePos(): vec3 {
+    const t = this.map.root.getTransform()
+    const c = t.getWorldPosition()
+    const cam = this.camera.getTransform().getWorldPosition()
+    let dx = cam.x - c.x, dz = cam.z - c.z
+    const l = Math.hypot(dx, dz) || 1
+    dx /= l
+    dz /= l
+    const r = this.map.radiusM * this.map.cmPerM * this.mapScale + this.handleRadiusCm + 4
+    return new vec3(c.x + dx * r, c.y + 0.5, c.z + dz * r)
+  }
+
+  /** Starts a drag if this pinch is on the handle. */
+  private tryGrabHandle(which: "left" | "right", tip: vec3): boolean {
+    if (!this.handle || !this.map.root || this.mode === "calibrate") return false
+    const h = this.handle.getTransform().getWorldPosition()
+    if (tip.distance(h) > this.handleGrabCm) return false
+    this.drag = {hand: which, last: tip}
+    this.rightDownAt = -1
+    this.setStatus("Moving the map…")
+    return true
+  }
+
+  private updateHandle() {
+    if (!this.handle || !this.map.root) return
+    this.handle.enabled = this.mode !== "calibrate"
+    if (this.drag) {
+      let hand
+      try {
+        hand = SIK.HandInputData.getHand(this.drag.hand)
+      } catch (e) {
+        hand = null
+      }
+      if (!hand || !hand.isTracked() || !hand.isPinching()) {
+        this.drag = null
+        this.setStatus("Map moved. Say “floor” to put it back.")
+      } else {
+        const tip = hand.indexTip.position
+        const dlt = tip.sub(this.drag.last)
+        const t = this.map.root.getTransform()
+        const p = t.getWorldPosition()
+        // Floor map slides on the floor; a lifted map can also go up and down.
+        t.setWorldPosition(new vec3(p.x + dlt.x, this.lifted ? p.y + dlt.y : p.y, p.z + dlt.z))
+        this.drag.last = tip
+      }
+    }
+    const ht = this.handle.getTransform()
+    ht.setWorldPosition(this.handlePos())
+    const cam = this.camera.getTransform().getWorldPosition()
+    const hp = ht.getWorldPosition()
+    ht.setWorldRotation(quat.angleAxis(Math.atan2(cam.x - hp.x, cam.z - hp.z), vec3.up()))
   }
 
   // -------------------------------------------------------------------------
@@ -553,7 +747,7 @@ export class SightlinesController extends BaseScriptComponent {
     this.mode = "calibrate"
     this.wallPoints = []
     this.hideExtras()
-    this.setStatus("Face the wall. Pinch a point on its LEFT, then its RIGHT.")
+    this.setStatus(this.calibrateInstruction())
   }
 
   private resetTour() {
@@ -595,9 +789,9 @@ export class SightlinesController extends BaseScriptComponent {
     return {x: v.x, y: 0, z: v.z}
   }
 
-  private say(speech: string, caption: string, onDone?: () => void) {
+  private say(speech: string | string[], caption: string, onDone?: () => void) {
     this.setStatus(caption)
-    this.guide.speak(speech, onDone)
+    this.guide.speakParts(typeof speech === "string" ? [speech] : speech, onDone)
   }
 
   private setStatus(s: string) {
@@ -611,9 +805,7 @@ export class SightlinesController extends BaseScriptComponent {
     this.statusHolder = global.scene.createSceneObject("SightlinesStatus")
     this.statusHolder.getTransform().setLocalScale(vec3.one().uniformScale(0.6))
     const inner = this.map.labelPrefab.instantiate(this.statusHolder)
-    inner.getTransform().setLocalPosition(vec3.zero()) // prefab root is saved at x = -100
-    const wl = inner.getComponent(WorldLabel.getTypeName()) as WorldLabel
-    if (wl && wl.textComp) this.statusLabel = wl.textComp
+    this.statusLabel = tidyLabel(inner, "")
   }
 
   /** Keeps the caption low in the field of view, lagging slightly so it doesn't feel glued to the head. */

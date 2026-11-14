@@ -2,7 +2,7 @@
 
 A Stanford tour guide in your glasses. A 3D campus map unfolds on the floor around you, lined up with the real campus. Look at a building and pinch to hear who it's named for, the founder story behind it, and what's inside. Then the guide quizzes you: "Point to where you think Gates is." Concept: [docs/sightlines-concept.md](../docs/sightlines-concept.md).
 
-Built on Snap's MIT-licensed [Depth Cache sample](https://github.com/specs-devs/samples/tree/5.15.4) (`5.15.4` branch). It reuses the sample's Remote Service Gateway setup, ASR, and WorldLabel prefab. Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0.
+Built on Snap's MIT-licensed [Depth Cache sample](https://github.com/specs-devs/samples/tree/5.15.4) (`5.15.4` branch). It reuses the sample's Remote Service Gateway setup, ASR, and WorldLabel prefab. Map data (buildings, roads, bike and foot paths) © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0.
 
 ## What's here
 
@@ -74,8 +74,13 @@ Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is th
 | `showOutlines` / `outlineWidthCm` | on / 0.2 | Bright pale-ice edge strip around every roof (and courtyard), with a short lip down the wall. Landmarks get a warm-white one 25% wider. 0.15–0.25 reads best. |
 | `showCornerLines` | on | Thin vertical lines at corners sharper than 45°. Turn off if the map looks busy. |
 | `wallInsetCm` | 0.04 | Pulls walls slightly inside the roof edge so the roof and outline overhang them. |
+| `showRoads` / `roadWidthCm` | on / 1.3 | Roads as flat warm grey-white ribbons under the buildings. 1.3 cm is about 8 m at 1:600. |
+| `showBikePaths` / `bikeWidthCm` | on / 0.65 | Bike paths as solid lime-green ribbons (about 4 m). Also controls the dashed green stripe down roads with painted bike lanes (`bikeLaneWidthCm`, 0.4). |
+| `showFootpaths` / `footWidthCm` | off / 0.4 | Foot paths and sidewalks, faint. They are dense, so they are off by default. |
 
 Background roofs are coloured by height: steel blue under 8 m, periwinkle from 8 to 15 m, lavender over 15 m. Walls are about half as bright. Each band has two tones, and neighbouring buildings alternate between them. Most campus buildings have no OSM height and bake as 9 m, so the tone alternation does most of the separating. Landmarks keep the amber, gold, cyan and white state colours. The build log line reports chunks and background vertex count: about 44k at the defaults.
+
+Paths come from `Data/PathsData.ts`, baked by `bun Sightlines/tools/bake-paths.ts` (add `--refresh` to re-download from Overpass). The bake is separate from `CampusData.ts`, so landmark building indices never move. Ribbons sit at y 0.02–0.045 cm, staggered by kind, and are clipped to `radiusM` around the wearer. The log line adds path vertex counts: about 2k road and 5k bike at the defaults, plus about 3.7k with foot paths on.
 
 ## Calibration at the venue (do this before the judges arrive)
 

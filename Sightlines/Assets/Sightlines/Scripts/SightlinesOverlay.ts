@@ -12,7 +12,7 @@ import {MeshChunk, buildTube} from "../Core/MapMesh"
 import {
   LocatorResult, NametagPlacement, OverlayStyle, footprintOutline, nametagPlacement, overlayAnimation, overlayBuildingFor, overlayStyle, scanRing, tagText
 } from "../Core/Overlay"
-import {WorldLabel} from "../../Scripts/WorldLabel"
+import {tidyLabel} from "./LabelStyle"
 
 /** What showBuilding returns, so callers (e.g. a money pile) can place things next to the tag. */
 export interface OverlayTagInfo {
@@ -297,17 +297,14 @@ export class SightlinesOverlay extends BaseScriptComponent {
     holder.getTransform().setLocalScale(vec3.one().uniformScale(scale))
     if (!this.labelPrefab) return null
     const inner = this.labelPrefab.instantiate(holder)
-    // The prefab root is saved at x = -100; centre it on the holder.
-    inner.getTransform().setLocalPosition(vec3.zero())
-    const wl = inner.getComponent(WorldLabel.getTypeName()) as WorldLabel
-    if (!wl || !wl.textComp) return null
-    wl.textComp.text = text
+    const tc = tidyLabel(inner, text)
+    if (!tc) return null
     try {
-      wl.textComp.textFill.color = new vec4(rgba[0], rgba[1], rgba[2], rgba[3])
+      tc.textFill.color = new vec4(rgba[0], rgba[1], rgba[2], rgba[3])
     } catch (e) {
       // Leave the prefab colour.
     }
-    return wl.textComp
+    return tc
   }
 
   /** Same contract as SightlinesMap.meshObject (position, normal, texture0; stride 8; bounded batches). */
