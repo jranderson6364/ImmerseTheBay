@@ -21,9 +21,13 @@ The 2026 Devpost schedule lists submissions from Friday 9 PM to Sunday 9 AM. The
 
 ## Rules and tracks status
 
-- The 2026 tracks, judging criteria, and prizes have **not been released** on the live dashboard. The tracks on the main website are explicitly labeled as the **2025 archive**; do not treat them as 2026 tracks.
+- An opening-ceremony slide photographed Friday at 7:13 PM confirms **36 hours to build an XR project** and **teams of 2–4 people**. Primary track prizes focus on application-based categories; sponsored track prizes focus on use of sponsors' platforms.
+- An opening-ceremony slide photographed Friday at 7:14 PM confirms a **team Devpost submission, a demo video, and a public Git repository**. The video is limited to **30 seconds** and should use a **vertical short** format. The **team form is due before equipment checkout**. All code developed by teams must be open sourced under the **MIT License**.
+- A 7:15 PM rules slide confirms **LLMs, agentic coding, and generative AI are allowed**. Hardware and software must be sponsor provided or publicly available; otherwise the project is eligible only for the **Wild West** track. The slide points to Discord's #resources channel for student AI credits and benefits.
+- Another 7:15 PM slide says organizers will download submissions at **exactly 9 AM Sunday**. A team without a submission then will **not have a table for judging**. A project can enter **up to two main tracks and all sponsored tracks**. The slide notes that Devpost remains editable until 3 PM for personal portfolios, but that is after the judging download.
+- Specific 2026 track names, judging criteria, and prizes have **not yet been captured**. The tracks on the main website are explicitly labeled as the **2025 archive**; do not treat them as 2026 tracks.
 - Devpost's rules page is marked **DRAFT**. It says participants must be 18+ and currently studying or within three years of university graduation, but says final eligibility wording is pending.
-- Team size, competitive build window wording, prior work and assets, AI use, submission deliverables, code of conduct, prizes, and judging criteria are still pending organizer confirmation on Devpost. The live schedule lists staff-assisted teams of 2–4 and a Friday 9 PM hacking start; verify the final rules when announced.
+- Prior work and assets, code of conduct, specific prizes, and judging criteria are still pending organizer confirmation on Devpost. The live schedule lists a Friday 9 PM hacking start; verify the final rules when announced.
 - The project requirement currently shown on Devpost is to build an augmented, virtual, or mixed reality project during the official competitive build window.
 
 ## Equipment and practical details
@@ -46,3 +50,7 @@ The 2026 Devpost schedule lists submissions from Friday 9 PM to Sunday 9 AM. The
 - [2026 Devpost rules](https://immerse-the-bay-2026.devpost.com/rules)
 - [2026 Devpost dates](https://immerse-the-bay-2026.devpost.com/details/dates)
 - [2025 tracks archive](https://immersethebay.org/tracks)
+- [Opening-ceremony rules slide](<C:/Users/jande/OneDrive/Pictures/Screenshots/Screenshot 2026-11-13 191345.png>) (user screenshot, Friday 7:13 PM)
+- [Opening-ceremony submission slide](<C:/Users/jande/OneDrive/Pictures/Screenshots/Screenshot 2026-11-13 191458.png>) (user screenshot, Friday 7:14 PM)
+- [Opening-ceremony AI and hardware rules slide](<C:/Users/jande/OneDrive/Pictures/Screenshots/Screenshot 2026-11-13 191523.png>) (user screenshot, Friday 7:15 PM)
+- [Opening-ceremony deadline and track entry slide](<C:/Users/jande/OneDrive/Pictures/Screenshots/Screenshot 2026-11-13 191549.png>) (user screenshot, Friday 7:15 PM)
