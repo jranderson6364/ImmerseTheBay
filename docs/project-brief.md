@@ -1,6 +1,6 @@
 # Project brief
 
-Fill this out with the team after the official track reveal. Keep the first version to one page.
+Fill this out with the team once the concept is chosen. Keep the first version to one page. The confirmed 2026 tracks are in [event-brief.md](event-brief.md).
 
 ## Experience
 
@@ -9,7 +9,9 @@ Fill this out with the team after the official track reveal. Keep the first vers
 - User and setting:
 - Core interaction:
 - Why XR is necessary for this interaction:
-- Target track (verify 2026 rules):
+- Primary track: Virtuous Reality (if building an education or health product)
+- Possible second main track: Creative Zenith for strong craft, or AI Horizons if AI is part of the XR experience
+- Possible sponsor track: ManageXR for useful responsive AI on smart glasses; Visko only if Orbis powers a live steerable world
 
 ## Constraints
 
@@ -28,7 +30,7 @@ Fill this out with the team after the official track reveal. Keep the first vers
 
 ## Decisions to make before implementation
 
-- [ ] Confirm 2026 track and final rules.
+- [ ] Pick up to two 2026 main tracks and any sponsor track the product actually qualifies for.
 - [ ] Confirm device access and test deploy path.
 - [ ] Agree on a small interaction that can be demonstrated live.
 - [ ] Assign one owner for integration and one for the Devpost submission.

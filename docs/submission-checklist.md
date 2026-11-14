@@ -4,7 +4,7 @@ The live schedule lists **Sunday, November 15 at 9:00 AM Pacific** as the submis
 
 ## During the build
 
-- [ ] Submit the team form before equipment checkout.
+- [ ] Submit the team form and one ranked equipment request per team before Friday 9:30 PM; submit the team form before checkout.
 - [ ] Keep the project runnable on the target hardware.
 - [ ] Record dependencies, versions, setup steps, and required permissions.
 - [ ] Save source and original or licensed assets; record credits.
