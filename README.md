@@ -4,6 +4,8 @@ Project workspace for the November 13–15 Stanford XR hackathon.
 
 ## Start here
 
+- **[Partsight Lens](Partsight/README.md):** the project we're building. It covers setup, controls, and the device test checklist. The decision behind it is in [docs/partsight-decision.md](docs/partsight-decision.md).
+
 - [Event brief](docs/event-brief.md): confirmed schedule, rules status, equipment, and links.
 - [Project brief](docs/project-brief.md): fill in the concept, team, device, and technical choices once decided.
 - [Submission checklist](docs/submission-checklist.md): working checklist for the Sunday deadline and demo.
