@@ -66,6 +66,7 @@ export class SightlinesController extends BaseScriptComponent {
   @input youAreHereScale: number = 1.8
   @input @hint("Move/resize handle on the map rim: size and how close a pinch must be to grab it (cm)") handleRadiusCm: number = 4
   @input handleGrabCm: number = 10
+  @input @hint("Map size when it first unfolds (1 = 2.3 m across). Resize later with two hands or \"bigger\"/\"smaller\".") startMapScale: number = 0.65
   @ui.group_end
 
   @ui.group_start("Optional")
@@ -238,6 +239,7 @@ export class SightlinesController extends BaseScriptComponent {
     if (this.overlay) this.overlay.setCenter(this.map.center)
     this.makeYouAreHere()
     this.makeHandle()
+    this.mapScale = this.startMapScale
     this.lifted = this.startLifted
     this.placeMap(true)
     this.mode = "tour"
@@ -533,7 +535,7 @@ export class SightlinesController extends BaseScriptComponent {
     if (/\b(recalibrate|calibrate)\b/.test(t)) return this.recalibrate()
     if (/\b(bigger|larger|zoom in|grow)\b/.test(t)) return this.setMapScale(this.mapScale * 1.4, true)
     if (/\b(smaller|zoom out|shrink)\b/.test(t)) return this.setMapScale(this.mapScale / 1.4, true)
-    if (/\b(normal|reset) size\b/.test(t)) return this.setMapScale(1, true)
+    if (/\b(normal|reset) size\b/.test(t)) return this.setMapScale(this.startMapScale, true)
     if (/\bwhat('?s| is) (that|this)\b|\bwhat am i looking at\b/.test(t)) return this.identifyReal()
     if (/\b(explode|take it apart|show me again)\b/.test(t) && this.showcase && this.showcase.isShowing()) return this.showcase.toggle()
     if (/^(close|hide|clear)( it| that| the model| everything)?\.?$/.test(t)) return this.hideExtras()
