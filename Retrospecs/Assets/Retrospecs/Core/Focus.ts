@@ -245,37 +245,216 @@ export interface P3 {
 }
 
 export interface FocusLayout {
-  /** Info panel centre. */
+  /** Info panel (main screen) centre. */
   panel: P3
-  /** Exploded model centre: to the wearer's right of the panel. */
+  /** Exploded model centre: the screen to the wearer's right of the main screen. */
   showcase: P3
-  /** Experiences anchor: to the wearer's left of the panel. */
+  /** Experience centre: the screen to the wearer's left of the main screen. */
   experience: P3
-  /** Unit vectors in the horizontal plane. */
+  /** Horizontal unit vectors: the wall's right, and from the screens back toward the wearer. */
   right: P3
   toCam: P3
 }
 
+// ---------------------------------------------------------------------------
+// The "wall of TVs": floating screens in front of the wearer at about eye height.
+//
+// Wall frame: `origin` is the wearer's eye position when the wall was last placed, `yaw` the heading it faces
+// (forward = (sin yaw, 0, cos yaw)). Local coordinates: x to the wearer's right, y up, z forward (cm). The main
+// screen sits straight ahead; the side screens sit on the same circle around the eyes, one either side, each turned
+// to face the wearer. The wall only re-centres (smoothly) when the wearer turns or walks well away, so it never
+// jitters with small head motion.
+
+export interface WallConfig {
+  /** Main screen size (cm). The info panel publishes its real size here each time it builds. */
+  mainWidthCm: number
+  mainHeightCm: number
+  /** Distance from the eyes to the main screen (cm). */
+  distanceCm: number
+  /** How far below eye height the main screen's centre sits (cm). */
+  dropCm: number
+  /** Width of a side screen (the exploded model / experience slot, cm). */
+  sideSizeCm: number
+  /** Angular gap between screens (degrees). */
+  gapDeg: number
+  /** Re-centre once the wearer's heading is this far from the wall's (degrees). Keep it past the side screens. */
+  followDeg: number
+  /** ...or once the eyes are this far from where the wall was placed (cm). */
+  followCm: number
+  /** Re-centring speed (1/s, exponential approach). */
+  followSpeed: number
+  /** Clear space kept between the main screen's bottom edge and the line from the eyes to the focused building (cm). */
+  sightMarginCm: number
+}
+
+export const DEFAULT_WALL: WallConfig = {
+  mainWidthCm: 60, mainHeightCm: 44, distanceCm: 130, dropCm: 14, sideSizeCm: 40, gapDeg: 6,
+  followDeg: 40, followCm: 45, followSpeed: 3, sightMarginCm: 4
+}
+
+/** Live wall config (the info panel copies its inputs and its built size in here). */
+export const TV_WALL: WallConfig = {...DEFAULT_WALL}
+
+const DEG = Math.PI / 180
+
+/** Heading (radians) of a horizontal direction: 0 = +z, pi/2 = +x. */
+export function yawOf(dx: number, dz: number): number {
+  return Math.atan2(dx, dz)
+}
+
+/** a - b wrapped to (-pi, pi]. */
+export function angleDiff(a: number, b: number): number {
+  let d = (a - b) % (2 * Math.PI)
+  if (d > Math.PI) d -= 2 * Math.PI
+  if (d <= -Math.PI) d += 2 * Math.PI
+  return d
+}
+
+export class TvWall {
+  active = false
+  origin: P3 = {x: 0, y: 0, z: 0}
+  yaw = 0
+  following = false
+
+  /** Places the wall at the eyes `cam`, facing heading `yaw`, immediately. */
+  reset(cam: P3, yaw: number) {
+    this.origin = {x: cam.x, y: cam.y, z: cam.z}
+    this.yaw = yaw
+    this.following = false
+    this.active = true
+  }
+
+  deactivate() {
+    this.active = false
+    this.following = false
+  }
+
+  forward(): P3 {
+    return {x: Math.sin(this.yaw), y: 0, z: Math.cos(this.yaw)}
+  }
+
+  /** The wearer's right when facing the wall (facing f, right = (-f.z, 0, f.x)). */
+  right(): P3 {
+    return {x: -Math.cos(this.yaw), y: 0, z: Math.sin(this.yaw)}
+  }
+
+  toWorld(l: P3): P3 {
+    const f = this.forward()
+    const r = this.right()
+    return {x: this.origin.x + r.x * l.x + f.x * l.z, y: this.origin.y + l.y, z: this.origin.z + r.z * l.x + f.z * l.z}
+  }
+
+  toLocal(w: P3): P3 {
+    const f = this.forward()
+    const r = this.right()
+    const dx = w.x - this.origin.x
+    const dz = w.z - this.origin.z
+    return {x: dx * r.x + dz * r.z, y: w.y - this.origin.y, z: dx * f.x + dz * f.z}
+  }
+
+  /**
+   * Lazy follow. `cam` is the eye position, `viewYaw` the wearer's heading (from up x camera-right, so it stays
+   * defined when looking down at the floor map). Starts re-centring when the heading is off by more than
+   * `followDeg` or the eyes moved more than `followCm`, then eases toward the wearer until aligned again.
+   * Returns true while it is moving.
+   */
+  update(cam: P3, viewYaw: number, dt: number, cfg: WallConfig = TV_WALL): boolean {
+    if (!this.active) return false
+    const dYaw = angleDiff(viewYaw, this.yaw)
+    const dist = Math.hypot(cam.x - this.origin.x, cam.y - this.origin.y, cam.z - this.origin.z)
+    if (!this.following && (Math.abs(dYaw) > cfg.followDeg * DEG || dist > cfg.followCm)) this.following = true
+    if (!this.following) return false
+    const k = 1 - Math.exp(-Math.max(0, dt) * cfg.followSpeed)
+    this.yaw = this.yaw + dYaw * k
+    this.origin = {x: lerp(this.origin.x, cam.x, k), y: lerp(this.origin.y, cam.y, k), z: lerp(this.origin.z, cam.z, k)}
+    const left = Math.hypot(cam.x - this.origin.x, cam.y - this.origin.y, cam.z - this.origin.z)
+    if (Math.abs(angleDiff(viewYaw, this.yaw)) < 2 * DEG && left < 3) this.following = false
+    return true
+  }
+}
+
+/** The one wall shared by the info panel (which places and moves it) and the side screens (which ride on it). */
+export const sharedWall = new TvWall()
+
+export interface WallSlots {
+  /** Local centres (cm). */
+  main: P3
+  left: P3
+  right: P3
+  /** Angle of the side screens' centres from straight ahead (radians). */
+  sideAngle: number
+}
+
 /**
- * World layout around a focused building. `top` is the top of the focused building, `base` its footprint centre at
- * floor level, `cam` the wearer's eyes. The panel rises above the building; the exploded model and the experience
- * sit either side of it, clear of the panel's edges. The money pile stays on the map, on the wearer's side.
+ * Local slot centres. `topLocal` (optional) is the focused building's top in wall coordinates: the main screen
+ * rises, if needed, so its bottom edge stays above the line of sight to it.
+ */
+export function wallSlots(cfg: WallConfig = TV_WALL, topLocal?: P3): WallSlots {
+  const D = cfg.distanceCm
+  let y = -cfg.dropCm
+  if (topLocal && topLocal.z > 1) {
+    const lineX = (topLocal.x * D) / topLocal.z
+    const lineY = (topLocal.y * D) / topLocal.z
+    if (Math.abs(lineX) < cfg.mainWidthCm / 2 + cfg.sightMarginCm) {
+      const need = lineY + cfg.sightMarginCm + cfg.mainHeightCm / 2
+      // Rise above the sightline, but never put the screen's centre more than 10 cm above the eyes.
+      if (need > y) y = Math.min(need, 10)
+    }
+  }
+  const halfMain = Math.atan(cfg.mainWidthCm / 2 / D)
+  const halfSide = Math.atan(cfg.sideSizeCm / 2 / D)
+  const a = halfMain + cfg.gapDeg * DEG + halfSide
+  const sy = -cfg.dropCm
+  return {
+    main: {x: 0, y, z: D},
+    right: {x: D * Math.sin(a), y: sy, z: D * Math.cos(a)},
+    left: {x: -D * Math.sin(a), y: sy, z: D * Math.cos(a)},
+    sideAngle: a
+  }
+}
+
+/**
+ * World layout of the focus screens. They float in front of the wearer (`cam`, the eyes) at about eye height: on
+ * the shared wall when it is placed (the info panel places it on show(), before the controller asks for this),
+ * otherwise facing the focused building. `top` is the top of the focused building (the main screen stays above the
+ * line of sight to it), `base` its footprint centre. The old above-the-building sizes in `o` are still accepted for
+ * the controller's call, but only `sideObjectCm` matters now (it widens the side slots if larger).
  */
 export function focusLayout(
   base: P3, top: P3, cam: P3,
-  o: {panelWidthCm: number; panelHeightCm: number; panelGapCm: number; sideObjectCm: number; sideGapCm: number}
+  o: {panelWidthCm?: number; panelHeightCm?: number; panelGapCm?: number; sideObjectCm?: number; sideGapCm?: number},
+  wall: TvWall = sharedWall,
+  cfg: WallConfig = TV_WALL
 ): FocusLayout {
-  let dx = cam.x - base.x
-  let dz = cam.z - base.z
-  const l = Math.hypot(dx, dz) || 1
-  dx /= l
-  dz /= l
-  // Facing direction f = -toCam; the wearer's right = (-f.z, f.x) = (toCam.z, -toCam.x).
-  const right = {x: dz, y: 0, z: -dx}
-  const panel = {x: top.x, y: top.y + o.panelGapCm + o.panelHeightCm / 2, z: top.z}
-  const side = o.panelWidthCm / 2 + o.sideGapCm + o.sideObjectCm / 2
-  const at = (s: number) => ({x: panel.x + right.x * s, y: panel.y, z: panel.z + right.z * s})
-  return {panel, showcase: at(side), experience: at(-side), right, toCam: {x: dx, y: 0, z: dz}}
+  let w = wall
+  if (!w.active) {
+    w = new TvWall()
+    const dx = top.x - cam.x
+    const dz = top.z - cam.z
+    w.reset(cam, Math.hypot(dx, dz) > 1e-6 ? yawOf(dx, dz) : yawOf(base.x - cam.x, base.z - cam.z))
+  }
+  const c = o.sideObjectCm && o.sideObjectCm > cfg.sideSizeCm ? {...cfg, sideSizeCm: o.sideObjectCm} : cfg
+  const s = wallSlots(c, w.toLocal(top))
+  const f = w.forward()
+  return {
+    panel: w.toWorld(s.main),
+    showcase: w.toWorld(s.right),
+    experience: w.toWorld(s.left),
+    right: w.right(),
+    toCam: {x: -f.x, y: 0, z: -f.z}
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Artist media (Nazeli Sayra Kurtoğlu's illustrations and animation; see Art/nazeli_samples/README.md)
+
+/** Credit line shown under her art on the focus screen. */
+export const ARTIST_CREDIT = "Art: Nazeli Sayra Kurtoğlu"
+
+/** Largest w x h with the given aspect (w / h) inside maxW x maxH. */
+export function fitMedia(aspect: number, maxW: number, maxH: number): {w: number; h: number} {
+  const a = aspect > 0 && isFinite(aspect) ? aspect : 16 / 9
+  return a >= maxW / maxH ? {w: maxW, h: maxW / a} : {w: maxH * a, h: maxH}
 }
 
 /** Idle exit: true once nothing has been spoken for `idleSec` since the last speech (or since focus began). */

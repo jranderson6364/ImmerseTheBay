@@ -20,6 +20,7 @@ import {
 import {WorldLabel} from "../../Scripts/WorldLabel"
 import {FocusTuning, backgroundLook, easeInOut, footprintRadiusM, landmarkLook, stepBlend} from "../Core/Focus"
 import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
+import {WorldPickCandidate, XZ, outerRingEN, pickOnMap} from "../Core/Pick"
 
 export type LandmarkState = "dim" | "seen" | "lit" | "focus"
 
@@ -47,6 +48,12 @@ interface LandmarkView {
   halo: SceneObject | null
   haloMaterial: Material | null
   outlineMaterial: Material | null
+  /** Real footprint outer ring (EN metres); empty for point landmarks. */
+  ringEN: EN[]
+  /** Footprint on the map (cm, before focus scaling); empty for point landmarks and edge pins. */
+  poly: XZ[]
+  /** Roof height (m) for line-of-sight picks. */
+  heightM: number
 }
 
 interface BackgroundPart {
@@ -91,6 +98,7 @@ const COLORS: Record<string, [number, number, number, number]> = {
   lit: [0.85, 0.68, 0.36, 1], // lit by an answer: soft gold
   focus: [0.82, 0.23, 0.27, 1], // selected: Stanford cardinal (#D23A44), not neon
   focusEdge: [0.91, 0.75, 0.36, 1], // selected building's outline and halo: soft gold (#E9BE5C)
+  hover: [0.25, 0.85, 1.0, 1], // under the cursor, before the pinch: bright cyan, unlike anything else on the map
   you: [0.95, 0.45, 0.5, 1],
   thread: [0.93, 0.74, 0.4, 1],
   guess: [1.0, 0.55, 0.2, 1],
@@ -174,6 +182,14 @@ export class RetrospecsMap extends BaseScriptComponent {
 
   @input @hint("Real-direction beacon label size per cm of distance (0.009 matches the status caption)") sightlineLabelPerCm: number = 0.009
 
+  @ui.group_start("World name tags (real buildings around you)")
+  @input @hint("Float name tags over the real buildings around you, and highlight the one you're aiming at") showWorldTags: boolean = true
+  @input @hint("How many of the nearest landmarks get a tag") worldTagCount: number = 10
+  @input @hint("Only tag landmarks within this distance (m)") worldTagMaxM: number = 500
+  @input @hint("Tags farther than this are drawn closer and smaller, so they look the same but stay inside the camera's far plane (m)") worldTagRenderM: number = 30
+  @input @hint("Tag size per cm of drawn distance (0.006 = readable, 0.009 = big)") worldTagPerCm: number = 0.006
+  @ui.group_end
+
   @ui.group_start("Focus mode (a selected building)")
   @input @hint("Focused building's scale (1.6-2 reads well)") focusScale: number = 1.8
   @input @hint("Extra lift of the focused building (map cm)") focusLiftCm: number = 1.2
@@ -215,6 +231,8 @@ export class RetrospecsMap extends BaseScriptComponent {
     this.cmPerM = 100 / this.scaleDenominator
     if (this.root) this.root.destroy()
     if (this.worldRoot) this.worldRoot.destroy()
+    this.worldTags = {}
+    this.worldTagIds = []
     this.root = global.scene.createSceneObject("RetrospecsMapRoot")
     this.worldRoot = global.scene.createSceneObject("RetrospecsWorldRoot")
     this.landmarks = {}
@@ -326,12 +344,23 @@ export class RetrospecsMap extends BaseScriptComponent {
     const prev = this.landmarks[this.hoverId]
     this.hoverId = next
     if (next) print(`[Retrospecs] cursor on ${next}`)
-    if (prev) this.applyOutline(prev)
-    if (this.landmarks[next]) this.applyOutline(this.landmarks[next])
+    // Restore the previous one's body colour, label size and tag; the new one is painted every frame in onUpdate.
+    if (prev) {
+      this.setState(prev.id, prev.state)
+      if (prev.label) prev.label.getTransform().setLocalScale(vec3.one().uniformScale(this.labelScale))
+      if (prev.labelText) prev.labelText.textFill.color = new vec4(1, 1, 1, 1)
+    }
+    const l = this.landmarks[next]
+    if (l) {
+      this.applyOutline(l)
+      if (l.label) l.label.getTransform().setLocalScale(vec3.one().uniformScale(this.labelScale * 1.5))
+      if (l.labelText) l.labelText.textFill.color = new vec4(COLORS.hover[0], COLORS.hover[1], COLORS.hover[2], 1)
+    }
   }
 
   private outlineColor(l: LandmarkView, dim: number): number[] {
-    if (l.state === "focus" || l.id === this.hoverId) return COLORS.focusEdge
+    if (l.id === this.hoverId && l.state !== "focus") return COLORS.hover
+    if (l.state === "focus") return COLORS.focusEdge
     return this.dimmed(COLORS.landmarkOutline, dim)
   }
 
@@ -405,9 +434,13 @@ export class RetrospecsMap extends BaseScriptComponent {
       obj.getTransform().setLocalPosition(new vec3(-placed.x, 0, -placed.z))
     }
     const label = this.makeLabel(this.root, card ? card.label : id, new vec3(placed.x, topCm + 2.5, placed.z))
+    const b = baked && baked.building >= 0 ? BUILDINGS[baked.building] : null
+    const ringEN = b ? outerRingEN(b[3], b[4]) : []
+    const poly = ringEN.length && !offMap ? ringEN.map((v) => ({x: (v.e - this.center.e) * this.cmPerM, z: -(v.n - this.center.n) * this.cmPerM})) : []
+    const heightM = b ? b[0] : baked ? baked.heightM : 10
     return {
       id, en, map: placed, topCm, obj, material, outline, label: label.holder, labelText: label.text, state: "dim", offMap,
-      pivot, footprintCm, focusT: 0, halo: null, haloMaterial: null, outlineMaterial
+      pivot, footprintCm, focusT: 0, halo: null, haloMaterial: null, outlineMaterial, ringEN, poly, heightM
     }
   }
 
@@ -645,34 +678,34 @@ export class RetrospecsMap extends BaseScriptComponent {
    * with `slackCm` of grace beyond the footprint edge so small buildings are still easy to hit.
    */
   pickUnderCursor(local: vec3, slackCm = 2): string | null {
-    let best: string = null
-    let bestGap = slackCm
-    for (const id of Object.keys(this.landmarks)) {
-      const l = this.landmarks[id]
-      // The focused building has grown, so its target grows with it.
-      const radius = id === this.focusId ? Math.max(l.footprintCm, this.focusClearanceCm(id)) : l.footprintCm
-      const gap = Math.hypot(l.map.x - local.x, l.map.z - local.z) - radius
-      if (gap < bestGap) {
-        bestGap = gap
-        best = id
-      }
-    }
-    return best
+    return pickOnMap({x: local.x, z: local.z}, this.mapPickCandidates(), slackCm)
   }
 
-  /** Nearest landmark to a map-local point (cm), within `maxCm`. */
+  /** Landmark at a map-local point (cm), within `maxCm` of its footprint. */
   pickAtMapPoint(local: vec3, maxCm = 4): string | null {
-    let best: string = null
-    let bestD = maxCm
-    for (const id of Object.keys(this.landmarks)) {
+    return pickOnMap({x: local.x, z: local.z}, this.mapPickCandidates(), maxCm)
+  }
+
+  /**
+   * Footprints for picking. Real outlines, so a point on Hoover never lands on the Main Quad's big bounding circle.
+   * Point landmarks and edge pins are small discs.
+   */
+  private mapPickCandidates() {
+    return Object.keys(this.landmarks).map((id) => {
       const l = this.landmarks[id]
-      const d = Math.hypot(l.map.x - local.x, l.map.z - local.z)
-      if (d < bestD) {
-        bestD = d
-        best = id
-      }
-    }
-    return best
+      // The focused building grows about its base, so its outline grows with it (scaled, not a bounding circle).
+      const k = id === this.focusId ? Math.max(1, this.tuning().focusScale) : 1
+      const poly = k === 1 ? l.poly : l.poly.map((v) => ({x: l.map.x + (v.x - l.map.x) * k, z: l.map.z + (v.z - l.map.z) * k}))
+      return {id, center: {x: l.map.x, z: l.map.z}, poly, radius: poly.length ? 0 : 1.5 * k}
+    })
+  }
+
+  /** Real-world footprints, for "which building am I looking at" picks out in the world. */
+  worldPickCandidates(): WorldPickCandidate[] {
+    return Object.keys(this.landmarks).map((id) => {
+      const l = this.landmarks[id]
+      return {id, en: l.en, ring: l.ringEN, radiusM: 8, heightM: l.heightM}
+    })
   }
 
   // -------------------------------------------------------------------------
@@ -691,11 +724,85 @@ export class RetrospecsMap extends BaseScriptComponent {
         this.setColor(l.material, [COLORS.focus[0] * k, COLORS.focus[1] * k, COLORS.focus[2] * k, 1])
       }
     }
+    // Hovered (aimed at, not yet pinched): pulsing cyan body, so it's obvious what a pinch will pick.
+    const h = this.hoverId ? this.landmarks[this.hoverId] : null
+    if (h && h.material && h.state !== "focus") {
+      const k = 0.8 + 0.2 * Math.sin(this.pulseT * 6)
+      this.setColor(h.material, [COLORS.hover[0] * k, COLORS.hover[1] * k, COLORS.hover[2] * k, 1])
+    }
     for (const o of this.worldTemp) if (o.name.indexOf("label") === 0) this.faceCamera(o, camPos)
+    this.updateWorldTags(camPos)
     // Gentle breathing glow on the focus halo once it has settled.
     const f = this.focusId ? this.landmarks[this.focusId] : null
     if (f && f.haloMaterial && f.halo && f.halo.enabled && !this.focusDirty) {
       this.setColor(f.haloMaterial, this.dimmed(COLORS.focusEdge, 0.7 + 0.2 * Math.sin(this.pulseT * 3)))
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // World name tags: the nearest landmarks get a floating name over the real building, re-projected from where
+  // the wearer is now (worldRoot is pinned at map.center by the controller). Far ones are drawn closer and smaller
+  // about the eye, which looks identical but stays inside the far plane. The hovered one turns cyan and grows.
+
+  private worldTags: Record<string, {holder: SceneObject; text: Text; look?: string}> = {}
+  private worldTagT = 0
+  private worldTagIds: string[] = []
+
+  private updateWorldTags(camPos: vec3) {
+    if (!this.showWorldTags || !this.worldRoot || !this.labelPrefab) return
+    const w = this.worldRoot.getTransform()
+    const eye = w.getInvertedWorldTransform().multiplyPoint(camPos) // wearer, in the real-world frame (cm)
+    // Re-choose which landmarks are tagged a few times a second (nearest N within range, plus the hovered one).
+    this.worldTagT -= getDeltaTime()
+    if (this.worldTagT <= 0) {
+      this.worldTagT = 0.5
+      const here = {e: this.center.e + eye.x / 100, n: this.center.n - eye.z / 100}
+      const ids = Object.keys(this.landmarks)
+        .map((id) => ({id, d: distanceM(here, this.landmarks[id].en)}))
+        .filter((x) => x.d > 12 && x.d < this.worldTagMaxM)
+        .sort((a, b) => a.d - b.d)
+        .slice(0, Math.max(0, this.worldTagCount))
+        .map((x) => x.id)
+      if (this.hoverId && ids.indexOf(this.hoverId) < 0) ids.push(this.hoverId)
+      for (const id of Object.keys(this.worldTags)) {
+        if (ids.indexOf(id) < 0) {
+          this.worldTags[id].holder.destroy()
+          delete this.worldTags[id]
+        }
+      }
+      for (const id of ids) {
+        if (this.worldTags[id]) continue
+        const card = cardById(id)
+        this.worldTags[id] = this.makeLabel(this.worldRoot, card ? card.label : id, vec3.zero())
+      }
+      this.worldTagIds = ids
+    }
+    for (const id of this.worldTagIds) {
+      const tag = this.worldTags[id]
+      const l = this.landmarks[id]
+      if (!tag || !l) continue
+      // Real top of the building (+3 m), relative to the wearer's eye.
+      const bx = (l.en.e - this.center.e) * 100
+      const bz = -(l.en.n - this.center.n) * 100
+      const by = (l.heightM + 3) * 100
+      const v = new vec3(bx - eye.x, by - eye.y, bz - eye.z)
+      const d = v.length
+      if (d < 1) continue
+      const k = Math.min(1, (this.worldTagRenderM * 100) / d)
+      const pos = eye.add(v.uniformScale(k))
+      const drawn = d * k
+      const hovered = id === this.hoverId
+      const t = tag.holder.getTransform()
+      t.setLocalPosition(pos)
+      t.setLocalScale(vec3.one().uniformScale(drawn * this.worldTagPerCm * (hovered ? 1.6 : 1)))
+      this.faceCamera(tag.holder, camPos)
+      const look = hovered ? "hover" : l.state === "focus" ? "focus" : "plain"
+      if (tag.text && tag.look !== look) {
+        tag.look = look
+        const c = hovered ? COLORS.hover : l.state === "focus" ? COLORS.focusEdge : [1, 1, 1, 1]
+        tag.text.textFill.color = new vec4(c[0], c[1], c[2], 1)
+        tag.text.text = (cardById(id) ? cardById(id).label : id) + (hovered ? "  · pinch" : "")
+      }
     }
   }
 

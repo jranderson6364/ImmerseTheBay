@@ -27,8 +27,14 @@
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
     appearSec: false
-    bodySize: false
+    artCycleSec: false
+    artMaxHeightCm: false
+    artMaxWidthCm: false
+    bodyTextSize: false
     camera: false
+    flyFromBuilding: false
+    followAngleDeg: false
+    followDistanceCm: false
     font: false
     material: false
     media1Id: false
@@ -39,15 +45,17 @@
     media3Texture: false
     media4Id: false
     media4Texture: false
-    mediaHeightCm: false
     mediaMaterial: false
+    namesakeTextSize: false
     panelGapCm: false
     panelHeightCm: false
     panelWidthCm: false
-    riseCm: false
+    screenDistanceCm: false
+    screenDropCm: false
+    screenWidthCm: false
     showMedia: false
-    tiltToViewer: false
-    titleSize: false
+    smallTextSize: false
+    titleTextSize: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -63,11 +71,17 @@
       panelWidthCm: !<float> 30.000000
       panelHeightCm: !<float> 24.000000
       panelGapCm: !<float> 6.000000
-      riseCm: !<float> 10.000000
+      screenWidthCm: !<float> 60.000000
+      screenDistanceCm: !<float> 130.000000
+      screenDropCm: !<float> 14.000000
+      followAngleDeg: !<float> 40.000000
+      followDistanceCm: !<float> 45.000000
       appearSec: 0.500000
-      titleSize: !<float> 48.000000
-      bodySize: !<float> 32.000000
-      tiltToViewer: true
+      flyFromBuilding: true
+      titleTextSize: !<float> 100.000000
+      namesakeTextSize: !<float> 58.000000
+      bodyTextSize: !<float> 50.000000
+      smallTextSize: !<float> 40.000000
       showMedia: true
       mediaMaterial: !<reference.Material> 00000000-0000-0000-0000-000000000000
       media1Id: ""
@@ -78,25 +92,33 @@
       media3Texture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
       media4Id: ""
       media4Texture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
-      mediaHeightCm: !<float> 14.000000
+      artMaxWidthCm: !<float> 56.000000
+      artMaxHeightCm: !<float> 30.000000
+      artCycleSec: !<float> 8.000000
   ScriptTypes:
     -
       {}
   InputLines:
-    - '// @ui {"widget":"label", "label":"<span style=\"color: #60A5FA;\">Retrospecs Info Panel</span><br/><span style=\"color: #94A3B8; font-size: 11px;\">Focus-mode card above the selected building.</span>"}'
+    - '// @ui {"widget":"label", "label":"<span style=\"color: #60A5FA;\">Retrospecs Info Panel</span><br/><span style=\"color: #94A3B8; font-size: 11px;\">Focus-mode screen floating in front of the wearer (wall of TVs).</span>"}'
     - "// @input Asset.Material material {\"hint\":\"Any material with a Base Color (e.g. Assets/Materials/White.mat). Cloned per colour. If empty, the controller passes the map's.\"}"
-    - '// @input SceneObject camera {"hint":"Camera object the panel turns toward. If empty, it faces the point given to show()."}'
+    - "// @input SceneObject camera {\"hint\":\"Camera object (the wearer's head). Needed for the lazy follow.\"}"
     - '// @input Asset.Font font {"hint":"Optional font for the panel text (default font if empty)"}'
-    - '// @input float panelWidthCm = 30 {"hint":"Panel width (world cm)"}'
-    - '// @input float panelHeightCm = 24 {"hint":"Panel height (world cm)"}'
-    - "// @input float panelGapCm = 6 {\"hint\":\"Gap between the building top and the panel's bottom edge (world cm)\"}"
-    - '// @input float riseCm = 10 {"hint":"How far the panel rises while it appears (world cm)"}'
-    - '// @input float appearSec = 0.5 {"hint":"Seconds to rise in / sink out"}'
-    - '// @input float titleSize = 120 {"hint":"Largest text size; text wraps, then shrinks only if it overflows its box. A map label is about 135 at scale 1."}'
-    - // @input float bodySize = 72
-    - '// @input bool tiltToViewer = true {"hint":"Turn fully toward the wearer (on) or only around the vertical axis (off)"}'
-    - '// @input bool showMedia = true {"hint":"Show artist illustrations / animations above the card. Turn off to compare with the plain card."}'
-    - '// @input Asset.Material mediaMaterial {"hint":"Material with a baseTex texture slot (e.g. Assets/Materials/CaptureTexture.mat). Cloned per item."}'
+    - '// @input float panelWidthCm = 30 {"hint":"(Legacy, unused for placement)"}'
+    - '// @input float panelHeightCm = 24 {"hint":"(Legacy, unused for placement)"}'
+    - '// @input float panelGapCm = 6 {"hint":"(Legacy, unused for placement)"}'
+    - '// @input float screenWidthCm = 60 {"hint":"Main screen width (cm)"}'
+    - '// @input float screenDistanceCm = 130 {"hint":"Distance from the eyes to the main screen (cm)"}'
+    - '// @input float screenDropCm = 14 {"hint":"Main screen centre below eye height (cm)"}'
+    - '// @input float followAngleDeg = 40 {"hint":"Re-centre the screens when you turn this far away (degrees)"}'
+    - '// @input float followDistanceCm = 45 {"hint":"...or walk this far (cm)"}'
+    - '// @input float appearSec = 0.6 {"hint":"Seconds to fly out / back"}'
+    - '// @input bool flyFromBuilding = true {"hint":"Fly out of the building (on) or fade in at the wall (off)"}'
+    - '// @input float titleTextSize = 100 {"hint":"Largest text sizes: text wraps, then shrinks only if it overflows its box"}'
+    - // @input float namesakeTextSize = 58
+    - // @input float bodyTextSize = 50
+    - // @input float smallTextSize = 40
+    - '// @input bool showMedia = true {"hint":"Show artist art screens. Turn off to compare with the plain card."}'
+    - '// @input Asset.Material mediaMaterial {"hint":"Material with a baseTex slot (Assets/Materials/CaptureTexture.mat). If empty, loaded by path."}'
     - // @input string media1Id
     - // @input Asset.Texture media1Texture
     - // @input string media2Id
@@ -105,4 +127,6 @@
     - // @input Asset.Texture media3Texture
     - // @input string media4Id
     - // @input Asset.Texture media4Texture
-    - '// @input float mediaHeightCm = 14 {"hint":"Height of the media row above the card (world cm)"}'
+    - '// @input float artMaxWidthCm = 56 {"hint":"Largest art size (cm)"}'
+    - // @input float artMaxHeightCm = 30
+    - '// @input float artCycleSec = 8 {"hint":"Seconds per art piece when a building has several"}'

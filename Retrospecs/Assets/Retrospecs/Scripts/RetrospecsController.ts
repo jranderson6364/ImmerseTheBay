@@ -30,7 +30,11 @@ import {RetrospecsMoney} from "./RetrospecsMoney"
 import {RetrospecsShowcase} from "./RetrospecsShowcase"
 import {RetrospecsInfoPanel} from "./RetrospecsInfoPanel"
 import {Fact} from "../Core/Cards"
-import {FocusLayout, focusLayout, idleExpired} from "../Core/Focus"
+import {FocusLayout, focusLayout} from "../Core/Focus"
+import {pickByBearing} from "../Core/Pick"
+import {HoverState, SWITCH_DWELL_SEC, SelectionAction, SelectionInput, decideSelection, focusIdleExpired, hoverHeldSec, isLocked, newHoverState, selectionTarget, stepHover} from "../Core/Selection"
+import {narrationFor} from "../Data/NarrationData"
+import {LOOKING_UP_LINE, LiveTurn, isAskFurtherIntent, presentLive, stripAskFurtherCommand} from "../Core/AskLive"
 
 type Mode = "calibrate" | "tour" | "guess"
 
@@ -97,6 +101,9 @@ export class RetrospecsController extends BaseScriptComponent {
 
   @ui.group_start("Focus mode (selected building)")
   @input @allowUndefined @hint("Floating card above the selected building: name, namesake, the fact, a number graphic") infoPanel: RetrospecsInfoPanel
+  @input @hint("Ask further: when the checked notes don't cover a question about the building in focus, answer from the live web (Gemini + Google Search). Say \"look it up\" to go there directly.") askFurther: boolean = true
+  @input @hint("Dev: typed as if spoken ~4 s after calibrating (e.g. \"look up whether the Hoover deck is open\"). Leave empty.") debugUtterance: string = ""
+  @input @hint("Ask further: seconds after a live answer during which questions about the same building stay on the web path (follow-ups)") liveFollowUpSec: number = 45
   // HOOK for the per-building 3D experiences (Scripts/RetrospecsExperiences.ts, another session's class). Typed as a
   // plain script component and called through `any`: show(id, anchorWorldPos: vec3, faceToward: vec3, scaleCm) and
   // hide(), if present.
@@ -125,6 +132,12 @@ export class RetrospecsController extends BaseScriptComponent {
   /** Focus mode: the selected building ("" = none) and when the guide last spoke during it. */
   private focusMode = ""
   private focusActiveAt = 0
+  /** Selection lock-in (Core/Selection): when the focused building was selected, when the guide last spoke, when a
+   * selection pinch was last acted on, and the hysteresis-filtered hover. */
+  private selectedAt = -1
+  private lastSpokeAt = -1
+  private lastSelectAt = -1
+  private hover: HoverState = newHoverState()
 
   onAwake() {
     this.createEvent("OnStartEvent").bind(() => this.onStart())
@@ -167,9 +180,67 @@ export class RetrospecsController extends BaseScriptComponent {
     }
   }
 
+  private hoverT = 0
+  private worldHover = ""
+
+  /** Keeps map.hoverId equal to what a right pinch would pick. The map cursor is checked every frame; the
+   * real-world aim (a bit more work) ten times a second. */
+  private updateHover() {
+    if (this.mode !== "tour") {
+      this.hover = newHoverState()
+      return this.map.setHover("")
+    }
+    let raw = this.cursorLandmark()
+    if (!raw) {
+      this.hoverT -= getDeltaTime()
+      if (this.hoverT <= 0) {
+        this.hoverT = 0.1
+        this.worldHover = this.gazedLandmark()
+      }
+      raw = this.worldHover
+    }
+    // Hysteresis: a neighbour (or nothing) must hold ~0.2 s before it replaces the current hover, so the
+    // highlight doesn't flicker between adjacent buildings as the ray wobbles.
+    const now = getTime()
+    stepHover(this.hover, raw, now)
+    this.map.setHover(this.shownHover(now))
+  }
+
+  /** Cyan = what a pinch would pick. While a selection is locked, another building only lights once it has been
+   * held long enough to switch to it. */
+  private shownHover(now: number): string {
+    const id = this.hover.id
+    if (!id || id === this.focusMode || !this.selectionLocked(now)) return id
+    return hoverHeldSec(this.hover, now) >= SWITCH_DWELL_SEC ? id : ""
+  }
+
+  /** The focused building is protected from accidental switches (Core/Selection). */
+  private selectionLocked(now: number): boolean {
+    return !!this.focusMode && isLocked(now, this.selectedAt, this.lastSpokeAt, this.guide.isSpeaking())
+  }
+
+  /** What a selection pinch (or Preview tap) would do right now: the hovered building (with how long it was held),
+   * else whatever the cursor / hand ray / head points at (held 0: never enough to switch while locked). */
+  private selectionNow(): {action: SelectionAction; input: SelectionInput} {
+    const now = getTime()
+    const pickId = this.hover.id || this.cursorLandmark() || this.gazedLandmark()
+    const pickHeldSec = this.hover.id && pickId === this.hover.id ? hoverHeldSec(this.hover, now) : 0
+    const input: SelectionInput = {now, focusId: this.focus, lastActionAt: this.lastSelectAt, locked: this.selectionLocked(now), pickId, pickHeldSec}
+    return {action: decideSelection(input), input}
+  }
+
+  /** Acts on a selection decision: "more" = next segment of the focused building, "switch" = select the pick,
+   * "none" = nothing focused or aimed at (nearest building). Never re-gazes, so it can't jump elsewhere. */
+  private runSelection(action: SelectionAction, target: string) {
+    if (action === "ignore") return
+    this.lastSelectAt = getTime()
+    if (action === "none" || !target) return this.tellAboutGaze("")
+    this.tellAbout(target)
+  }
+
   private rightDownAt = -1
-  /** Building under the cursor when the right pinch went down (the ray drifts as the fingers close). */
-  private pinchPick = ""
+  /** Selection decided when the right pinch went down (the ray drifts as the fingers close), run on release. */
+  private pendingSel: SelectionAction = "none"
 
   private onPinch(which: "left" | "right") {
     const hand = SIK.HandInputData.getHand(which)
@@ -184,14 +255,19 @@ export class RetrospecsController extends BaseScriptComponent {
     // Left pinch always means "listen", so a question is never blocked by a pending quiz.
     if (which === "left" && this.asr) return this.listen()
     if (this.mode === "guess") return this.lockGuess(toV3(hand.indexKnuckle.position))
-    this.pinchPick = which === "right" ? this.cursorLandmark() : ""
-    // Tour, right hand: decide on release. Short = tell about gaze, long = identify the real building.
-    // A pinch with the cursor on a map building answers at once; there is no real building to identify.
-    if (which === "right" && this.locator && !this.pinchPick) {
-      this.rightDownAt = getTime()
+    // Decide what was aimed at the moment the fingers touch (the ray drifts as they close): the hovered building,
+    // else the map building under the cursor, else the real building the hand ray (or head) points at. Once a
+    // building is selected it is locked in (Core/Selection): stray pinches mean "more", never a jump elsewhere.
+    const sel = this.selectionNow()
+    if (sel.action === "ignore") return // double-fire / bounce
+    // Only when nothing is aimed at (and nothing is locked in) does a long hold ask GPS + Gemini to identify the
+    // real building; a short one does the decided action on release.
+    if (which === "right" && this.locator && !sel.input.pickId && !sel.input.locked) {
+      this.pendingSel = sel.action
+      this.rightDownAt = sel.input.now
       return
     }
-    this.tellAboutGaze(this.pinchPick)
+    this.runSelection(sel.action, selectionTarget(sel.action, sel.input))
   }
 
   private onRightPinchUp() {
@@ -200,8 +276,9 @@ export class RetrospecsController extends BaseScriptComponent {
     this.rightDownAt = -1
     if (this.mode !== "tour") return
     if (this.twist) return // it was a two-hand twist
-    if (held >= this.longPinchSec) this.identifyReal()
-    else this.tellAboutGaze()
+    if (held >= this.longPinchSec) return this.identifyReal()
+    // Nothing was aimed at: "more" on the building in focus, else the nearest one. Never re-gazes at release.
+    this.runSelection(this.pendingSel, this.pendingSel === "more" ? this.focus : "")
   }
 
   private onEditorTap() {
@@ -215,7 +292,9 @@ export class RetrospecsController extends BaseScriptComponent {
       const f = this.viewHorizontal()
       return this.lockGuess({x: cam.x + f.x * 60, y: cam.y, z: cam.z + f.z * 60})
     }
-    this.tellAboutGaze()
+    // Same lock-in rules as a pinch on device.
+    const sel = this.selectionNow()
+    this.runSelection(sel.action, selectionTarget(sel.action, sel.input))
   }
 
   listen() {
@@ -262,6 +341,7 @@ export class RetrospecsController extends BaseScriptComponent {
       if (w.source !== "survey") this.me = w.en
     }
     this.hideExtras()
+    this.worldAnchor = null // re-pin the real-world frame where the wearer stands now
     this.map.build(this.me, this.camera)
     if (this.overlay) this.overlay.setCenter(this.map.center)
     this.makeYouAreHere()
@@ -277,6 +357,13 @@ export class RetrospecsController extends BaseScriptComponent {
     if (here) this.map.setState(here, "focus")
     const hereName = here ? cardById(here).name : "Stanford"
     this.say(`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, `You're at ${hereName}. Look at a building and pinch. Left pinch to ask.`)
+
+    // Dev hook: a typed "voice" question a few seconds after calibrating, to exercise the voice path in Preview.
+    if (this.debugUtterance) {
+      const ev = this.createEvent("DelayedCallbackEvent")
+      ev.bind(() => this.handleUtterance(this.debugUtterance))
+      ev.reset(4)
+    }
   }
 
   /** Puts the map on the floor centred on the wearer, or at table height in front of them. */
@@ -297,10 +384,23 @@ export class RetrospecsController extends BaseScriptComponent {
     if (resetCenter || this.lifted) t.setWorldPosition(pos)
     else t.setWorldPosition(new vec3(t.getWorldPosition().x, pos.y, t.getWorldPosition().z))
     t.setWorldRotation(rot)
-    // World-space sightlines stay anchored at the wearer's floor position.
+    // The real-world frame is pinned where the wearer stood at calibration (map.center), set once and never moved,
+    // so name tags and pinch targets stay on their buildings as the wearer walks. Lift/floor/twist only turn it.
+    if (!this.worldAnchor) this.worldAnchor = new vec3(cam.x, this.floorY, cam.z)
     const w = this.map.worldRoot.getTransform()
-    w.setWorldPosition(new vec3(cam.x, this.floorY, cam.z))
+    w.setWorldPosition(this.worldAnchor)
     w.setWorldRotation(rot)
+  }
+
+  /** World origin of map.center (set at calibration). */
+  private worldAnchor: vec3 = null
+
+  /** Where the wearer is now, in campus EN metres: map.center plus how far they've walked since calibrating. */
+  private hereEN(): EN {
+    if (!this.map.worldRoot || !this.worldAnchor) return this.map.center
+    const cam = this.camera.getTransform().getWorldPosition()
+    const local = this.map.worldRoot.getTransform().getInvertedWorldTransform().multiplyPoint(cam)
+    return {e: this.map.center.e + local.x / 100, n: this.map.center.n - local.z / 100}
   }
 
   private setLifted(on: boolean) {
@@ -336,15 +436,32 @@ export class RetrospecsController extends BaseScriptComponent {
     return ""
   }
 
+  /** Right-hand targeting ray direction (world), or null when the hand isn't tracked. */
+  private handRayDir(): vec3 | null {
+    try {
+      for (const it of SIK.InteractionManager.getTargetingInteractors()) {
+        if (!(it.inputType & InteractorInputType.RightHand)) continue
+        const d = it.direction
+        if (d && d.length > 0.5) return d.normalize()
+      }
+    } catch (e) {
+      // SIK not ready
+    }
+    return null
+  }
+
   /** Which landmark is the wearer looking at? The cursor first, then head gaze: down = on the map; out = the real direction. */
   private gazedLandmark(): string {
     const pointed = this.cursorLandmark()
     if (pointed) return pointed
     const camT = this.camera.getTransform()
     const cam = camT.getWorldPosition()
-    const dir = camT.getWorldRotation().multiplyVec3(new vec3(0, 0, -1))
+    // Aim with the right-hand ray when it is tracked (what the wearer sees as the cursor), else the head.
+    const hand = this.handRayDir()
+    const dir = hand || camT.getWorldRotation().multiplyVec3(new vec3(0, 0, -1))
     const mapY = this.map.root.getTransform().getWorldPosition().y
-    if (dir.y < -0.3) {
+    // Head looking down at the map (the hand ray already hits the map through its cursor target).
+    if (!hand && dir.y < -0.3) {
       const t = (mapY - cam.y) / dir.y
       if (t > 0) {
         const hit = cam.add(dir.uniformScale(t))
@@ -353,20 +470,13 @@ export class RetrospecsController extends BaseScriptComponent {
         if (id) return id
       }
     }
+    // Hand pointing down at the floor but off the map's buildings: nothing out in the world is meant.
+    if (hand && dir.y < -0.45) return ""
+    // Out in the world: the building whose real footprint covers the view direction, nearest first, but looking
+    // up over a low roof (the Quad) finds the tall one behind it (Hoover). Instant and local: no network.
     const bearing = worldDirToBearing(toV3(dir), this.mapYaw)
-    let best = ""
-    let bestScore = 1e9
-    for (const id of Object.keys(this.map.landmarks)) {
-      const d = this.map.distanceTo(id)
-      if (d < 25) continue // you're standing in it
-      const err = Math.abs(angleDiff(this.map.bearingTo(id), bearing))
-      const score = err + d / 200 // prefer nearer when angles are close
-      if (err < 14 && score < bestScore) {
-        bestScore = score
-        best = id
-      }
-    }
-    return best
+    const pitch = (Math.asin(Math.max(-1, Math.min(1, dir.y))) * 180) / Math.PI
+    return pickByBearing(this.hereEN(), bearing, this.map.worldPickCandidates(), pitch) || ""
   }
 
   tellAboutGaze(picked = "") {
@@ -375,10 +485,50 @@ export class RetrospecsController extends BaseScriptComponent {
     this.tellAbout(id)
   }
 
+  /** Next narration segment per building (0 = overview). */
+  private segAt: Record<string, number> = {}
+
+  /**
+   * Narrated tour: the first pinch on a building plays its overview, each further pinch on the SAME building plays
+   * the next "more" segment (each ends with "pinch again" or a pointer to a nearby building). After the last one,
+   * it starts over from the overview. Buildings without narration fall back to single facts.
+   */
   private tellAbout(id: string) {
+    const segs = narrationFor(id)
+    if (!segs.length) return this.tellFact(id)
+    const card = cardById(id)
+    const again = id === this.focus && this.focusMode === id
+    let i = this.segAt[id] || 0
+    if (i >= segs.length) i = 0 // heard it all: start over from the overview
+    const seg = segs[i]
+    this.segAt[id] = i + 1
+    // The card shows a sourced fact alongside: the next unheard one, else cycle through the card's facts.
+    const fact = nextFact(id, this.state.heard, themesFromProfile(this.state.profile)) || (card && card.facts.length ? card.facts[i % card.facts.length] : null)
+    if (!again) {
+      this.focusOn(id)
+      this.enterFocus(id, fact)
+    } else {
+      this.focusActiveAt = getTime()
+      if (this.infoPanel && fact) {
+        const frame = this.map.focusFrame(id)
+        if (frame) this.infoPanel.show(card, fact, frame.top, this.camera.getTransform().getWorldPosition())
+      }
+    }
+    if (fact) {
+      this.markHeard(fact.id)
+      this.showModelFor(fact.id)
+    }
+    const more = i + 1 < segs.length ? `  ·  pinch again for more (${i + 1}/${segs.length})` : ""
+    this.sayClip(seg.clip, seg.text, `${card ? card.label : id}${more}`)
+    // Warm the next segment so "pinch again" starts instantly.
+    if (i + 1 < segs.length) this.guide.prefetchClip(segs[i + 1].clip, segs[i + 1].text)
+  }
+
+  private tellFact(id: string) {
     const fact = nextFact(id, this.state.heard, themesFromProfile(this.state.profile))
     const card = cardById(id)
-    this.focusOn(id)
+    // "More" on the building already in focus: keep its lights, money and experience; enterFocus just updates the card.
+    if (!(id === this.focus && this.focusMode === id)) this.focusOn(id)
     this.enterFocus(id, fact)
     if (!fact) {
       if (this.showcase) this.showcase.hide()
@@ -440,14 +590,19 @@ export class RetrospecsController extends BaseScriptComponent {
   private enterFocus(id: string, fact: Fact | null) {
     const card = cardById(id)
     if (!card || !this.map.root || !this.map.landmarks[id]) return
+    // Already in focus on this building: only refresh the card, no re-grow or experience re-animation.
+    const same = this.focusMode === id
     this.focusMode = id
     this.focusActiveAt = getTime()
-    this.map.setFocus(id)
+    if (!same) {
+      this.selectedAt = this.focusActiveAt
+      this.map.setFocus(id)
+    }
     const frame = this.map.focusFrame(id)
     const cam = this.camera.getTransform().getWorldPosition()
     if (this.infoPanel && frame) this.infoPanel.show(card, fact, frame.top, cam)
     const exp = this.experiences as any
-    if (exp) {
+    if (exp && !same) {
       const layout = this.focusLayoutFor(id)
       try {
         if (exp.hide) exp.hide()
@@ -495,8 +650,10 @@ export class RetrospecsController extends BaseScriptComponent {
     if (!this.focusMode) return
     if (this.mode === "calibrate" || !this.map.root) return this.exitFocus()
     const now = getTime()
-    if (this.guide.isSpeaking()) this.focusActiveAt = now
-    if (idleExpired(now, this.focusActiveAt, this.focusIdleSec)) {
+    const speaking = this.guide.isSpeaking()
+    if (speaking) this.focusActiveAt = this.lastSpokeAt = now
+    // Never while the guide talks, and at least 30 s after it stops (Core/Selection), whatever the scene says.
+    if (focusIdleExpired(now, this.focusActiveAt, this.focusIdleSec, speaking)) {
       print("[Retrospecs] focus idle, restoring the map")
       this.hideExtras()
       return
@@ -518,7 +675,7 @@ export class RetrospecsController extends BaseScriptComponent {
         const tag = this.overlay ? this.overlay.showBuilding(r, this.map.worldRoot, this.map.center) : null
         const card = r.landmark ? cardById(r.id) : null
         if (card) {
-          this.focusOn(r.id, false)
+          if (r.id !== this.focusMode) this.focusOn(r.id, false) // same building: don't reset its lights/money
           if (this.money && this.money.hasGift(r.id)) {
             if (this.moneyOnMap) this.money.showForLandmark(r.id, this.map, true, {mapExaggeration: this.moneyMapExaggeration, mapOffsetCm: this.moneyClearanceCm(r.id)})
             else this.money.show(r.id, this.pileSpot(r), this.camera.getTransform().getWorldPosition())
@@ -555,7 +712,7 @@ export class RetrospecsController extends BaseScriptComponent {
   private prefetchStartup() {
     const here = this.nearestLandmark(this.me)
     const hereName = here ? cardById(here).name : "Stanford"
-    const lines = [`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, THINKING_LINE, "Here's something new."]
+    const lines = [`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, THINKING_LINE, LOOKING_UP_LINE, "Here's something new."]
     const themes = themesFromProfile(this.state.profile)
     for (const c of CARDS) {
       const f = nextFact(c.id, this.state.heard, themes)
@@ -637,6 +794,7 @@ export class RetrospecsController extends BaseScriptComponent {
 
   /** Clears the money pile, model and tags, and leaves focus mode. */
   private hideExtras() {
+    this.liveFor = "" // leaving the building ends the live follow-up window
     this.exitFocus()
     if (this.money) this.money.hide()
     if (this.showcase) this.showcase.hide()
@@ -720,17 +878,101 @@ export class RetrospecsController extends BaseScriptComponent {
     if (QUIZ_ENABLED && /\b(quiz|guess|test me)\b/.test(t)) return this.startGuess(this.focus)
     if (/\b(something new|tell me more|another (one|fact))\b/.test(t) && this.focus) return this.tellAbout(this.focus)
     if (/^(i'?m|i am|i like|i love|i want|i study|my )/.test(t)) return this.setProfile(raw)
+    // Ask further: "look it up", "search …", "what else …" go to the live web for the building in focus.
+    if (isAskFurtherIntent(t)) return this.askLive(stripAskFurtherCommand(raw))
+    // Mid-conversation follow-ups ("when was that?") stay with the live answer that prompted them.
+    if (this.inLiveConversation()) return this.askLive(raw)
     this.askGuide(raw)
   }
 
+  // -------------------------------------------------------------------------
+  // Ask further: live, web-grounded answers beyond the baked narration and the checked cards.
+
+  /** Recent live Q/A per building, for follow-ups. */
+  private liveTurns: Record<string, LiveTurn[]> = {}
+  private liveAt = -1
+  private liveFor = ""
+  private liveToken = 0
+
+  /** Which building a voice question is about: the one in focus while the card is up (looking around while asking
+   * must not retarget it), else the one looked at, else the last focused one. */
+  private voiceTarget(): string {
+    return this.focusMode || this.gazedLandmark() || this.focus
+  }
+
+  /** True shortly after a live answer about the building still in focus. */
+  private inLiveConversation(): boolean {
+    if (!this.liveFor || this.liveAt < 0) return false
+    const target = this.voiceTarget()
+    return target === this.liveFor && getTime() - this.liveAt < this.liveFollowUpSec
+  }
+
+  /** Everything the visitor has heard about `id`: narration segments played so far, plus card facts heard. */
+  private toldAbout(id: string): string[] {
+    const told: string[] = []
+    const segs = narrationFor(id)
+    const n = Math.min(segs.length, this.segAt[id] || 0)
+    for (let i = 0; i < n; i++) told.push(segs[i].text)
+    const card = cardById(id)
+    if (card) for (const f of card.facts) if (this.state.heard.indexOf(f.id) >= 0) told.push(f.text)
+    return told
+  }
+
+  private askLive(question: string) {
+    const id = this.voiceTarget()
+    const card = id ? cardById(id) : undefined
+    const token = ++this.liveToken
+    this.setStatus(card ? `Looking up ${card.label}…` : "Looking it up…")
+    this.guide.speak(LOOKING_UP_LINE) // cached at startup; the answer interrupts it
+    if (id) this.map.setState(id, "focus")
+    const turns = id ? this.liveTurns[id] || [] : []
+    this.guide
+      .askLive(question, card, id ? this.toldAbout(id) : [], turns, this.state.profile)
+      .then((a) => {
+        if (token !== this.liveToken) return // a newer question superseded this one
+        const label = card ? card.label : ""
+        const shown = presentLive(a, label)
+        if (id) {
+          this.liveTurns[id] = turns.concat([{q: question || "(tell me more)", a: a.speech}]).slice(-3)
+          this.liveFor = id
+          this.liveAt = getTime()
+          this.focusActiveAt = getTime()
+          // Show the answer on the focus card, with where it came from. Never marked heard or lit: no validator here.
+          if (this.focusMode !== id && card && this.map.landmarks[id]) {
+            this.focusOn(id, false)
+            this.enterFocus(id, null)
+          }
+          const frame = this.map.focusFrame(id)
+          if (this.infoPanel && frame && card) {
+            const live = {id: "live_" + id, theme: "fun" as const, text: a.speech, source: a.sources.length ? a.sources[0].uri : ""}
+            this.infoPanel.show(card, live, frame.top, this.camera.getTransform().getWorldPosition(), shown.caption)
+          }
+        }
+        this.say(shown.parts, shown.caption)
+      })
+      .catch((e) => {
+        if (token !== this.liveToken) return
+        print("[Retrospecs] live lookup failed (" + e + ")")
+        if (id) {
+          this.say("I couldn't reach the web just now. Here's what my notes say.", "Web lookup failed", () => this.tellAbout(id))
+          return
+        }
+        this.setStatus("Couldn't reach the web. Look at a building and pinch.")
+        this.guide.speak("I couldn't reach the web just now. Look at a building and pinch to hear about it.")
+      })
+  }
+
   private askGuide(question: string) {
-    const focus = this.gazedLandmark() || this.focus
+    const focus = this.voiceTarget()
     this.setStatus("Thinking…")
     this.guide.speak(THINKING_LINE) // cached at startup; the real answer interrupts it
     if (focus) this.map.setState(focus, "focus")
     this.guide
       .ask(question, focus, this.state.profile, this.state.heard)
-      .then((a) => this.applyAnswer(a))
+      .then((a) => {
+        if (this.askFurther && focus && (a.declined || !a.fact_ids.length)) return this.askLive(question)
+        this.applyAnswer(a)
+      })
       .catch((e) => {
         print("[Retrospecs] guide failed (" + e + "), using local answer")
         if (/\b(founder|founders|tech|companies|named after)\b/.test(question.toLowerCase())) return this.showFounders()
@@ -793,8 +1035,9 @@ export class RetrospecsController extends BaseScriptComponent {
     this.updateFocusMode()
     this.updateYouAreHere()
     this.updateHandle()
-    // Gold outline on the building under the cursor. Never in guess mode: it would give the answer away.
-    this.map.setHover(this.mode === "tour" ? this.cursorLandmark() : "")
+    // Cyan highlight on whatever a pinch would pick right now (map cursor first, else the real building the hand
+    // ray or head points at). Never in guess mode: it would give the answer away.
+    this.updateHover()
     if (this.mode !== "calibrate") this.updateTwist()
     this.debugCursor() // DEBUG-CURSOR (temporary)
   }
@@ -956,6 +1199,8 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   private resetTour() {
+    this.liveTurns = {}
+    this.liveFor = ""
     this.state = {heard: [], seen: [], guessed: [], profile: "", bestErr: 999}
     this.save()
     this.hideExtras()
@@ -997,6 +1242,12 @@ export class RetrospecsController extends BaseScriptComponent {
   private say(speech: string | string[], caption: string, onDone?: () => void) {
     this.setStatus(caption)
     this.guide.speakParts(typeof speech === "string" ? [speech] : speech, onDone)
+  }
+
+  /** Plays a pre-baked narration clip (ElevenLabs), falling back to live TTS of `text` if it isn't bundled. */
+  private sayClip(clip: string, text: string, caption: string, onDone?: () => void) {
+    this.setStatus(caption)
+    this.guide.speakClip(clip, text, onDone)
   }
 
   private setStatus(s: string) {

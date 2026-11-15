@@ -26,8 +26,13 @@
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
+    liveFallbackModel: false
+    liveFallbackOpenAI: false
+    liveModel: false
+    liveTimeoutSec: false
     logTimings: false
     model: false
+    narrationClips: false
     speakResponses: false
     timeoutSec: false
     ttsVoice: false
@@ -45,6 +50,12 @@
       ttsVoice: coral
       timeoutSec: !<float> 8.000000
       logTimings: true
+      liveModel: gemini-2.5-flash
+      liveTimeoutSec: !<float> 18.000000
+      liveFallbackOpenAI: true
+      liveFallbackModel: gpt-4o-mini-search-preview
+      narrationClips: !<reference.AudioTrackAsset[]>
+        []
   ScriptTypes:
     -
       {}
@@ -55,3 +66,8 @@
     - '// @input string ttsVoice = "coral"'
     - '// @input float timeoutSec = 8 {"hint":"Seconds before an unanswered question falls back to a local fact"}'
     - // @input bool logTimings = true
+    - '// @input string liveModel = "gemini-2.5-flash" {"hint":"Ask further: model for live, Google-Search-grounded answers"}'
+    - '// @input float liveTimeoutSec = 18 {"hint":"Ask further: seconds before a live web answer gives up (search takes longer than the card guide)"}'
+    - "// @input bool liveFallbackOpenAI = true {\"hint\":\"Ask further: if Gemini grounding fails, retry with OpenAI's web-search model\"}"
+    - '// @input string liveFallbackModel = "gpt-4o-mini-search-preview"'
+    - '// @input Asset.AudioTrackAsset[] narrationClips = {} {"hint":"Pre-baked ElevenLabs narration (Audio/narration/*.mp3, named <building>_<n>). Drag the whole folder in. Missing clips fall back to live TTS."}'

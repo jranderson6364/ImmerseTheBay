@@ -7,7 +7,10 @@
 import {Gemini} from "RemoteServiceGateway.lspkg/HostedExternal/Gemini"
 import {GeminiTypes} from "RemoteServiceGateway.lspkg/HostedExternal/GeminiTypes"
 import {OpenAI} from "RemoteServiceGateway.lspkg/HostedExternal/OpenAI"
+import {NARRATION_CLIPS} from "../Data/NarrationClips"
 import {GUIDE_SCHEMA, GUIDE_SYSTEM_PROMPT, ValidatedAnswer, buildGuidePrompt, validateGuide} from "../Core/Guide"
+import {LIVE_SYSTEM_PROMPT, LiveAnswer, LiveTurn, buildLivePrompt, parseLiveReply, parseOpenAILiveReply} from "../Core/AskLive"
+import {Card} from "../Core/Cards"
 
 @component
 export class RetrospecsGuide extends BaseScriptComponent {
@@ -17,6 +20,11 @@ export class RetrospecsGuide extends BaseScriptComponent {
   @input ttsVoice: string = "coral"
   @input @hint("Seconds before an unanswered question falls back to a local fact") timeoutSec: number = 8
   @input logTimings: boolean = true
+  @input @hint("Ask further: model for live, Google-Search-grounded answers") liveModel: string = "gemini-2.5-flash"
+  @input @hint("Ask further: seconds before a live web answer gives up (search takes longer than the card guide)") liveTimeoutSec: number = 18
+  @input @hint("Ask further: if Gemini grounding fails, retry with OpenAI's web-search model") liveFallbackOpenAI: boolean = true
+  @input liveFallbackModel: string = "gpt-4o-mini-search-preview"
+  @input @hint("Pre-baked ElevenLabs narration (Audio/narration/*.mp3, named <building>_<n>). Drag the whole folder in. Missing clips fall back to live TTS.") narrationClips: AudioTrackAsset[] = []
 
   private audio: AudioComponent = null
   private speechToken = 0
@@ -43,6 +51,58 @@ export class RetrospecsGuide extends BaseScriptComponent {
       return v
     })
     return withTimeout(call, this.timeoutSec, this)
+  }
+
+  /**
+   * "Ask further": a live, web-grounded answer about one building (Gemini + Google Search). If Gemini errors or
+   * comes back without grounding, tries OpenAI's web-search model once. Resolves with the best answer it got
+   * (check `grounded` before calling it "from the web"); rejects only when neither produced any text.
+   */
+  askLive(question: string, card: Card | undefined, told: string[], recent: LiveTurn[], profile: string): Promise<LiveAnswer> {
+    const started = getTime()
+    const prompt = buildLivePrompt(question, card, told, recent, profile)
+    const req: GeminiTypes.Models.GenerateContentRequest = {
+      model: this.liveModel,
+      type: "generateContent",
+      body: {
+        contents: [{role: "user", parts: [{text: prompt}]}],
+        systemInstruction: {parts: [{text: LIVE_SYSTEM_PROMPT}]},
+        // Grounding can't be combined with a JSON response schema on 2.5, so this call returns plain text.
+        tools: [{google_search: {}} as any],
+        generationConfig: {temperature: 0.4, maxOutputTokens: 400}
+      }
+    }
+    const gemini = withTimeout(Gemini.models(req), this.liveTimeoutSec, this).then((response) => {
+      const a = parseLiveReply(response)
+      const cand = response && (response as any).candidates && (response as any).candidates[0]
+      print(`[Retrospecs] live answer after ${(getTime() - started).toFixed(2)} s, groundingMetadata: ${cand && cand.groundingMetadata ? "yes" : "NO"}` + (a && a.queries.length ? `, searched: ${a.queries.join(" | ")}` : ""))
+      if (!a) throw "empty live answer"
+      return a
+    })
+    if (!this.liveFallbackOpenAI) return gemini
+    return gemini
+      .then((a) => (a.grounded ? a : this.askLiveOpenAI(prompt, started).then((b) => (b.grounded ? b : a), () => a)))
+      .catch((e) => {
+        print("[Retrospecs] Gemini live failed (" + e + "), trying OpenAI web search")
+        return this.askLiveOpenAI(prompt, started)
+      })
+  }
+
+  private askLiveOpenAI(prompt: string, started: number): Promise<LiveAnswer> {
+    const call = OpenAI.chatCompletions({
+      model: this.liveFallbackModel,
+      messages: [
+        {role: "system", content: LIVE_SYSTEM_PROMPT},
+        {role: "user", content: prompt}
+      ],
+      web_search_options: {}
+    } as any).then((response) => {
+      const a = parseOpenAILiveReply(response)
+      print(`[Retrospecs] OpenAI live answer after ${(getTime() - started).toFixed(2)} s, citations: ${a ? a.sources.length : 0}`)
+      if (!a) throw "empty OpenAI live answer"
+      return a
+    })
+    return withTimeout(call, this.liveTimeoutSec, this)
   }
 
   /**
@@ -94,6 +154,56 @@ export class RetrospecsGuide extends BaseScriptComponent {
     this.lastCachedFlags = texts.map((t) => !!this.ready[t])
     playAt(0)
     return Promise.resolve()
+  }
+
+  private clipIndex: Record<string, AudioTrackAsset> = null
+
+  /** Bundled narration clip by name (`hoover_0`), or null. */
+  bakedClip(name: string): AudioTrackAsset | null {
+    if (!this.clipIndex) {
+      this.clipIndex = {}
+      for (const a of this.narrationClips || []) {
+        if (!a) continue
+        const n = (a.name || "").replace(/\.(mp3|wav|ogg|m4a)$/i, "")
+        this.clipIndex[n] = a
+      }
+      print(`[Retrospecs] ${Object.keys(this.clipIndex).length} dragged-in + ${Object.keys(NARRATION_CLIPS).length} bundled narration clips`)
+    }
+    if (this.clipIndex[name]) return this.clipIndex[name]
+    // Not dragged in: load the bundled clip by path (Data/NarrationClips.ts, generated from Audio/narration).
+    const load = NARRATION_CLIPS[name]
+    if (!load) return null
+    try {
+      this.clipIndex[name] = load()
+    } catch (e) {
+      print(`[Retrospecs] baked clip ${name} failed to load: ${e}`)
+      return null
+    }
+    return this.clipIndex[name]
+  }
+
+  /**
+   * Plays a baked narration clip instantly (no network). A newer speak/speakClip interrupts it. Without the clip,
+   * speaks `text` with live TTS instead.
+   */
+  speakClip(name: string, text: string, onDone?: () => void): Promise<void> {
+    const track = this.speakResponses ? this.bakedClip(name) : null
+    if (!track) return this.speakParts([text], onDone)
+    const token = ++this.speechToken
+    print("[Retrospecs] say (baked " + name + "): " + text)
+    if (!this.audio) this.audio = this.getSceneObject().createComponent("AudioComponent") as AudioComponent
+    if (this.audio.isPlaying()) this.audio.stop(false)
+    this.audio.audioTrack = track
+    this.audio.setOnFinish(() => {
+      if (token === this.speechToken && onDone) onDone()
+    })
+    this.audio.play(1)
+    return Promise.resolve()
+  }
+
+  /** Makes the next clip start instantly: nothing to do if it is baked, else warm the live TTS cache. */
+  prefetchClip(name: string, text: string) {
+    if (!this.bakedClip(name)) this.prefetch([text])
   }
 
   /** Warms the clip cache in the background, two requests at a time. Safe to call repeatedly. */

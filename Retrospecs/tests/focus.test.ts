@@ -1,9 +1,9 @@
-import {describe, expect, test} from "bun:test"
+import {beforeEach, describe, expect, test} from "bun:test"
 import {CARDS, factById} from "../Assets/Retrospecs/Core/Cards"
 import {BUILDINGS, LANDMARKS} from "../Assets/Retrospecs/Data/CampusData"
 import {
-  DEFAULT_FOCUS, easeInOut, extractFigures, focusLayout, footprintRadiusM, formatMoney, frameRects, idleExpired, landmarkLook,
-  largestGift, panelGraphic, quadsChunk, stepBlend
+  ARTIST_CREDIT, DEFAULT_FOCUS, DEFAULT_WALL, P3, TvWall, angleDiff, easeInOut, extractFigures, fitMedia, focusLayout, footprintRadiusM,
+  formatMoney, frameRects, idleExpired, landmarkLook, largestGift, panelGraphic, quadsChunk, sharedWall, stepBlend, wallSlots
 } from "../Assets/Retrospecs/Core/Focus"
 
 const fact = (id: string) => factById(id).fact
@@ -134,18 +134,147 @@ describe("layout", () => {
     expect(r).toBeLessThan(150)
   })
 
-  test("panel above the building; model and experience either side, clear of the panel", () => {
-    const o = {panelWidthCm: 30, panelHeightCm: 24, panelGapCm: 6, sideObjectCm: 40, sideGapCm: 4}
-    // Wearer south of the building (map +z is south), looking north.
-    const L = focusLayout({x: 0, y: 0, z: 0}, {x: 0, y: 10, z: 0}, {x: 0, y: 160, z: 140}, o)
-    expect(L.panel.y).toBe(10 + 6 + 12)
-    expect(L.toCam.z).toBeCloseTo(1)
-    // Facing -z, the wearer's right is +x.
+})
+
+describe("wall of TVs", () => {
+  const o = {panelWidthCm: 30, panelHeightCm: 24, panelGapCm: 6, sideObjectCm: 40, sideGapCm: 4}
+  // Wearer standing south of the building (map +z is south), eyes 160 cm up, looking north (-z) at the floor map.
+  const cam = {x: 0, y: 160, z: 140}
+  const base = {x: 0, y: 0, z: 0}
+  const top = {x: 0, y: 10, z: 0}
+  const cfg = {...DEFAULT_WALL}
+  const off = () => new TvWall()
+  const sub = (a: P3, b: P3) => ({x: a.x - b.x, y: a.y - b.y, z: a.z - b.z})
+  const len = (a: P3) => Math.hypot(a.x, a.y, a.z)
+  const deg = (r: number) => (r * 180) / Math.PI
+
+  beforeEach(() => sharedWall.deactivate())
+
+  test("screens float in front of the wearer at about eye height, not above the building", () => {
+    const L = focusLayout(base, top, cam, o, off(), cfg)
+    const d = sub(L.panel, cam)
+    expect(d.z).toBeLessThan(0) // in front (toward the building)
+    expect(Math.hypot(d.x, d.z)).toBeGreaterThanOrEqual(100)
+    expect(Math.hypot(d.x, d.z)).toBeLessThanOrEqual(160)
+    expect(d.y).toBeLessThanOrEqual(-5)
+    expect(d.y).toBeGreaterThanOrEqual(-25)
+    expect(L.panel.y).toBeGreaterThan(top.y + 100)
+    for (const p of [L.showcase, L.experience]) {
+      expect(Math.abs(p.y - cam.y)).toBeLessThanOrEqual(25)
+      expect(len(sub(p, cam))).toBeGreaterThanOrEqual(100)
+      expect(len(sub(p, cam))).toBeLessThanOrEqual(160)
+    }
+    // Facing -z, the wearer's right is +x; the model is on the right, the experience on the left.
     expect(L.right.x).toBeCloseTo(1)
-    expect(L.showcase.x).toBeGreaterThan(o.panelWidthCm / 2 + o.sideObjectCm / 2)
-    expect(L.experience.x).toBeLessThan(-(o.panelWidthCm / 2 + o.sideObjectCm / 2))
-    expect(L.showcase.y).toBe(L.panel.y)
+    expect(L.toCam.z).toBeCloseTo(1)
+    expect(L.showcase.x).toBeGreaterThan(0)
+    expect(L.experience.x).toBeLessThan(0)
   })
+
+  test("main screen is comfortably large and inside the central view", () => {
+    const s = wallSlots(cfg)
+    expect(cfg.mainWidthCm).toBeGreaterThanOrEqual(50)
+    expect(cfg.mainWidthCm).toBeLessThanOrEqual(70)
+    // Half-angles from the eyes: well inside a 46 degree diagonal field of view.
+    const halfW = deg(Math.atan(cfg.mainWidthCm / 2 / s.main.z))
+    const top = deg(Math.atan((s.main.y + cfg.mainHeightCm / 2) / s.main.z))
+    const bottom = deg(Math.atan((s.main.y - cfg.mainHeightCm / 2) / s.main.z))
+    expect(halfW).toBeLessThan(16)
+    expect(top).toBeLessThan(12)
+    expect(bottom).toBeGreaterThan(-23)
+  })
+
+  test("side screens do not overlap the main screen or each other", () => {
+    const s = wallSlots({...cfg, sideSizeCm: o.sideObjectCm})
+    const halfMain = Math.atan(cfg.mainWidthCm / 2 / cfg.distanceCm)
+    const halfSide = Math.atan(o.sideObjectCm / 2 / cfg.distanceCm)
+    expect(s.sideAngle - halfSide).toBeGreaterThan(halfMain)
+    // Inner edge of the right screen (it faces the eyes, so its edge is along the tangent) clears the main screen.
+    const innerX = s.right.x - (o.sideObjectCm / 2) * Math.cos(s.sideAngle)
+    expect(innerX).toBeGreaterThan(cfg.mainWidthCm / 2)
+    expect(s.left.x).toBeCloseTo(-s.right.x)
+  })
+
+  test("the main screen stays above the line of sight to the focused building", () => {
+    // A building far across the floor map: the sightline is shallow, so the screen must rise.
+    const w = off()
+    w.reset(cam, Math.PI) // facing -z
+    const farTop = {x: 0, y: 60, z: -260}
+    const L = focusLayout(base, farTop, cam, o, w, cfg)
+    const t = w.toLocal(farTop)
+    const s = w.toLocal(L.panel)
+    const lineY = (t.y * s.z) / t.z
+    expect(s.y - cfg.mainHeightCm / 2).toBeGreaterThanOrEqual(lineY + cfg.sightMarginCm - 1e-6)
+    expect(L.panel.y).toBeGreaterThan(cam.y - cfg.dropCm)
+    // A building on the floor nearby: the default drop already clears it.
+    const near = focusLayout(base, top, cam, o, w, cfg)
+    expect(near.panel.y).toBeCloseTo(cam.y - cfg.dropCm)
+  })
+
+  test("uses the shared wall once the panel places it", () => {
+    sharedWall.reset(cam, Math.PI / 2) // facing +x
+    const L = focusLayout(base, top, cam, o)
+    expect(L.panel.x).toBeGreaterThan(cam.x + 100)
+    expect(Math.abs(L.panel.z - cam.z)).toBeLessThan(1)
+  })
+
+  test("lazy follow: looking at a side screen keeps the wall still; turning well away re-centres smoothly", () => {
+    const w = off()
+    w.reset(cam, Math.PI)
+    const s = wallSlots(cfg)
+    const outerEdge = s.sideAngle + Math.atan(cfg.sideSizeCm / 2 / cfg.distanceCm)
+    expect(deg(outerEdge)).toBeLessThan(cfg.followDeg)
+    // Small head motion and looking at either side screen: no move.
+    for (const a of [0.05, -0.05, s.sideAngle, -s.sideAngle, outerEdge]) {
+      expect(w.update({x: cam.x + 3, y: cam.y - 2, z: cam.z}, Math.PI + a, 1 / 60, cfg)).toBe(false)
+      expect(w.yaw).toBe(Math.PI)
+    }
+    // Turn 60 degrees: it starts following, but does not snap in one frame.
+    const target = Math.PI + (60 * Math.PI) / 180
+    expect(w.update(cam, target, 1 / 60, cfg)).toBe(true)
+    expect(Math.abs(angleDiff(target, w.yaw))).toBeGreaterThan((50 * Math.PI) / 180)
+    let frames = 1
+    while (w.following && frames < 600) {
+      w.update(cam, target, 1 / 60, cfg)
+      frames++
+    }
+    expect(frames).toBeGreaterThan(20)
+    expect(Math.abs(deg(angleDiff(target, w.yaw)))).toBeLessThan(2)
+    expect(w.following).toBe(false)
+  })
+
+  test("walking away re-centres on the new eye position", () => {
+    const w = off()
+    w.reset(cam, Math.PI)
+    const moved = {x: cam.x + 80, y: cam.y, z: cam.z}
+    for (let i = 0; i < 600; i++) w.update(moved, Math.PI, 1 / 60, cfg)
+    expect(Math.abs(w.origin.x - moved.x)).toBeLessThan(3)
+  })
+
+  test("wall frame round-trips local and world points", () => {
+    const w = off()
+    w.reset({x: 10, y: 150, z: -20}, 0.7)
+    const l = {x: 12, y: -14, z: 130}
+    const back = w.toLocal(w.toWorld(l))
+    expect(back.x).toBeCloseTo(l.x)
+    expect(back.y).toBeCloseTo(l.y)
+    expect(back.z).toBeCloseTo(l.z)
+    expect(angleDiff(0.1, 2 * Math.PI - 0.1)).toBeCloseTo(0.2)
+  })
+
+  test("art screen fits Nazeli's pieces inside its box at their own aspect", () => {
+    for (const aspect of [446 / 602, 1003 / 604, 16 / 9]) {
+      const r = fitMedia(aspect, 56, 30)
+      expect(r.w).toBeLessThanOrEqual(56 + 1e-6)
+      expect(r.h).toBeLessThanOrEqual(30 + 1e-6)
+      expect(r.w / r.h).toBeCloseTo(aspect)
+      expect(Math.max(r.w / 56, r.h / 30)).toBeCloseTo(1)
+    }
+    expect(ARTIST_CREDIT).toBe("Art: Nazeli Sayra Kurtoğlu")
+  })
+})
+
+describe("focus geometry", () => {
 
   test("quads are double-sided with valid indices; frames have four sides", () => {
     const c = quadsChunk([{x0: 0, y0: 0, x1: 2, y1: 1}, ...frameRects({x0: -1, y0: -1, x1: 1, y1: 1}, 0.1)])

@@ -18,6 +18,8 @@
 import {MeshChunk} from "../Core/MapMesh"
 import {DESIGN_SCALE_CM, EXP_COLORS, ExpColor, Experience, HIDDEN, Pose, buildNode, experienceFor, labelWeight} from "../Core/Experiences"
 import {tidyLabel} from "./LabelStyle"
+import {P3, sharedWall} from "../Core/Focus"
+import {addBezel} from "./ScreenBezel"
 
 const MESH_VERTEX_STRIDE = 8
 const MESH_VERTEX_BATCH = 512
@@ -57,6 +59,8 @@ export class RetrospecsExperiences extends BaseScriptComponent {
   private age = 0
   private faceToward: vec3 = vec3.zero()
   private materials: Partial<Record<ExpColor, Material>> = {}
+  /** Where it sits on the focus wall (wall-local cm), when shown while the wall is up; it then rides the wall. */
+  private wallLocal: P3 = null
 
   onAwake() {
     this.createEvent("UpdateEvent").bind(() => this.onUpdate())
@@ -96,6 +100,13 @@ export class RetrospecsExperiences extends BaseScriptComponent {
     const to = faceToward.sub(anchorWorldPos)
     rt.setWorldRotation(quat.angleAxis(Math.atan2(to.x, to.z), vec3.up()))
     rt.setLocalScale(vec3.one().uniformScale(0.001))
+    // On the focus wall: ride it (lazy follow) and sit in a TV bezel like the main screen beside it.
+    this.wallLocal = sharedWall.active ? sharedWall.toLocal(anchorWorldPos) : null
+    if (this.wallLocal) {
+      const s = scaleCm > 0 ? scaleCm : this.defaultScaleCm
+      addBezel(this.root, this.material, {x0: -0.65 * s, y0: -0.12 * s, x1: 0.65 * s, y1: 1.3 * s}, -0.55 * s)
+      this.followWall()
+    }
 
     const scaleObj = global.scene.createSceneObject("scale")
     scaleObj.setParent(this.root)
@@ -132,11 +143,23 @@ export class RetrospecsExperiences extends BaseScriptComponent {
     this.exp = null
     this.nodeObjs = []
     this.labels = []
+    this.wallLocal = null
+  }
+
+  /** Keeps the experience on its wall slot, facing the wall's eye point. */
+  private followWall() {
+    if (!this.root || !this.wallLocal || !sharedWall.active) return
+    const p = sharedWall.toWorld(this.wallLocal)
+    const o = sharedWall.origin
+    const rt = this.root.getTransform()
+    rt.setWorldPosition(new vec3(p.x, p.y, p.z))
+    rt.setWorldRotation(quat.angleAxis(Math.atan2(o.x - p.x, o.z - p.z), vec3.up()))
   }
 
   private onUpdate() {
     if (!this.root) return
     this.age += getDeltaTime()
+    this.followWall()
     this.applyPose()
   }
 

@@ -19,6 +19,17 @@ Checked November 13, 2026. All times Pacific. Recheck the live dashboard and Dis
 
 The 2026 Devpost schedule lists submissions from Friday 9 PM to Sunday 9 AM. The live schedule and arrival guide also state the Sunday 9 AM deadline.
 
+## Judging format (checked Nov 14 against `ITB 2026 Opening Ceremony.pdf`)
+
+- **Required for submission:** Devpost entry, **30-second vertical demo video**, and a public MIT-licensed repo. The slides list no stage pitch and no pitch length.
+- **Judging:** Sunday 10 AM–noon in the Huang basement, at team tables. "If you do not have a submission by then, you will not have a table for judging." Expect judges to come to the table for a live demo and short Q&A.
+- **Prepare anyway:** a roughly 2–3 minute table demo and talk track. Confirm the format in Discord #event-questions; the live dashboard and Devpost were not readable from here.
+- **Slide schedule details:**
+  - Saturday workshops are in Y2E2 111.
+  - Hardware checkout and return are at the "HP Garage (Basement)".
+  - Closing ceremony is Sunday 1:30 PM in STLC 111, then expo and networking at 3 PM in the Huang basement.
+  - The final slide misdates Sunday as "November 16".
+
 ## Rules and tracks status
 
 - An opening-ceremony slide photographed Friday at 7:13 PM confirms **36 hours to build an XR project** and **teams of 2–4 people**. Primary track prizes focus on application-based categories; sponsored track prizes focus on use of sponsors' platforms.

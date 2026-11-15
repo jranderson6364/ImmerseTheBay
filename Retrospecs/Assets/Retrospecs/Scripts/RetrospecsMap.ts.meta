@@ -48,10 +48,15 @@
     showFootpaths: false
     showOutlines: false
     showRoads: false
+    showWorldTags: false
     sightlineLabelPerCm: false
     useLandmarkModels: false
     verticalExaggeration: false
     wallInsetCm: false
+    worldTagCount: false
+    worldTagMaxM: false
+    worldTagPerCm: false
+    worldTagRenderM: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -80,6 +85,11 @@
       labelScale: 0.350000
       useLandmarkModels: true
       sightlineLabelPerCm: 0.009000
+      showWorldTags: true
+      worldTagCount: !<float> 10.000000
+      worldTagMaxM: !<float> 500.000000
+      worldTagRenderM: !<float> 30.000000
+      worldTagPerCm: 0.006000
       focusScale: 1.800000
       focusLiftCm: 1.200000
       backgroundScale: 0.350000
@@ -111,6 +121,13 @@
     - '// @input float labelScale = 1.2 {"hint":"Map label size. The status caption is 0.6 at 70 cm; map labels are 1.5-3 m away."}'
     - '// @input bool useLandmarkModels = true {"hint":"Draw recognisable models for key landmarks (Hoover, Memorial Church, Main Quad, Huang...) instead of plain extrusions"}'
     - '// @input float sightlineLabelPerCm = 0.009 {"hint":"Real-direction beacon label size per cm of distance (0.009 matches the status caption)"}'
+    - '// @ui {"widget":"group_start", "label":"World name tags (real buildings around you)"}'
+    - "// @input bool showWorldTags = true {\"hint\":\"Float name tags over the real buildings around you, and highlight the one you're aiming at\"}"
+    - '// @input float worldTagCount = 10 {"hint":"How many of the nearest landmarks get a tag"}'
+    - '// @input float worldTagMaxM = 500 {"hint":"Only tag landmarks within this distance (m)"}'
+    - "// @input float worldTagRenderM = 30 {\"hint\":\"Tags farther than this are drawn closer and smaller, so they look the same but stay inside the camera's far plane (m)\"}"
+    - '// @input float worldTagPerCm = 0.006 {"hint":"Tag size per cm of drawn distance (0.006 = readable, 0.009 = big)"}'
+    - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Focus mode (a selected building)"}'
     - "// @input float focusScale = 1.8 {\"hint\":\"Focused building's scale (1.6-2 reads well)\"}"
     - '// @input float focusLiftCm = 1.2 {"hint":"Extra lift of the focused building (map cm)"}'

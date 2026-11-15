@@ -14,7 +14,8 @@ Built on Snap's MIT-licensed [Depth Cache sample](https://github.com/specs-devs/
 | `Assets/Retrospecs/Core/Cards.ts` | **The only facts the guide may speak**, each with a source URL. Edit facts here. |
 | `Assets/Retrospecs/Core/Guide.ts` | Gemini prompt and schema, the validator (drops invented buildings, facts and numbers), profile themes, fact picker, point-to-guess scoring. Unit-tested. |
 | `Assets/Retrospecs/Scripts/RetrospecsMap.ts` | Builds the map at runtime, plus highlights, labels, threads, arcs and sightline pillars. |
-| `Assets/Retrospecs/Scripts/RetrospecsGuide.ts` | Gemini Q&A and OpenAI text-to-speech over the Remote Service Gateway. |
+| `Assets/Retrospecs/Core/AskLive.ts` | Ask further: grounded-answer prompt, reply parsing (Gemini grounding and OpenAI citations), speech cleanup, "from the web" labelling. Unit-tested. |
+| `Assets/Retrospecs/Scripts/RetrospecsGuide.ts` | Gemini Q&A, live web answers (`askLive`), and OpenAI text-to-speech over the Remote Service Gateway. |
 | `Assets/Retrospecs/Scripts/RetrospecsController.ts` | Calibration, floor/table map, gaze pick, voice commands, point-to-guess, saved progress. |
 | `tests/` | `bun test Retrospecs/tests` (16 tests). |
 
@@ -63,6 +64,8 @@ Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is th
 | "lift" / "table" · "floor" | Map at table height in front of you · back on the floor. |
 | "I'm a … / I like …" | Sets your profile. "Your Stanford" lights up. |
 | "Which buildings are named after tech founders?" | AI answer (constellation of buildings). Falls back to a local answer if the network is down. |
+| "look it up" · "look up …" · "search …" · "what else …" · "dig deeper" | **Ask further.** A live web answer about the building in focus, from Gemini with Google Search grounding (OpenAI's web-search model is the fallback). It goes beyond the baked narration and the checked cards, and is told what you've already heard so it doesn't repeat. The answer goes on the focus card with its source domains. It's spoken with a "From what I found online" prefix, so it can't pass for a checked fact; if no search actually ran, it says "This isn't in my checked notes". Takes about 5–7 s. |
+| Any question about the building in focus that the cards don't cover | Falls through to ask further automatically (`askFurther` on the controller). For 45 s afterwards, follow-ups like "when was that?" stay on the web path. "tell me more" still plays the next narration segment. |
 | "something new" · "quiz me" · "recalibrate" · "reset tour" | As named. |
 
 ### Map tuning (`RetrospecsMap` Inspector)

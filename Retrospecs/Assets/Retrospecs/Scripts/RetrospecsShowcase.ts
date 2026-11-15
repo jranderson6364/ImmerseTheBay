@@ -19,6 +19,8 @@
  */
 import {MeshChunk, buildTube} from "../Core/MapMesh"
 import {tidyLabel} from "./LabelStyle"
+import {P3, sharedWall} from "../Core/Focus"
+import {addBezel} from "./ScreenBezel"
 import {
   PRODUCT_COLORS, ColorGroup, ProductModel, ProductPart, Vec3, buildPart, explodedPosition, labelDirection, labelledParts, modelBounds,
   modelForFact, modelSpan, modelsForLandmark as productsForLandmark, partCenter, partProgress, productById
@@ -81,6 +83,8 @@ export class RetrospecsShowcase extends BaseScriptComponent {
   private faceToward: vec3 = vec3.zero()
   private materials: Partial<Record<ColorGroup, Material>> = {}
   private landmarkCycle: Record<string, number> = {}
+  /** Where it sits on the focus wall (wall-local cm), when shown while the wall is up; it then rides the wall. */
+  private wallLocal: P3 = null
 
   onAwake() {
     this.createEvent("UpdateEvent").bind(() => this.onUpdate())
@@ -131,6 +135,13 @@ export class RetrospecsShowcase extends BaseScriptComponent {
     const to = faceToward.sub(worldPos)
     rt.setWorldRotation(quat.angleAxis(Math.atan2(to.x, to.z), vec3.up()))
     rt.setLocalScale(vec3.one().uniformScale(0.001))
+    // On the focus wall: ride it (lazy follow) and sit in a TV bezel beside the main screen.
+    this.wallLocal = sharedWall.active ? sharedWall.toLocal(worldPos) : null
+    if (this.wallLocal) {
+      const s = scaleCm && scaleCm > 0 ? scaleCm : this.defaultScaleCm
+      addBezel(this.root, this.material, {x0: -0.5 * s, y0: -0.5 * s, x1: 0.5 * s, y1: 0.5 * s}, -0.6 * s)
+      this.followWall()
+    }
 
     this.spin = global.scene.createSceneObject("spin")
     this.spin.setParent(this.root)
@@ -186,6 +197,17 @@ export class RetrospecsShowcase extends BaseScriptComponent {
     this.spin = null
     this.parts = []
     this.model = null
+    this.wallLocal = null
+  }
+
+  /** Keeps the model on its wall slot, facing the wall's eye point. */
+  private followWall() {
+    if (!this.root || !this.wallLocal || !sharedWall.active) return
+    const p = sharedWall.toWorld(this.wallLocal)
+    const o = sharedWall.origin
+    const rt = this.root.getTransform()
+    rt.setWorldPosition(new vec3(p.x, p.y, p.z))
+    rt.setWorldRotation(quat.angleAxis(Math.atan2(o.x - p.x, o.z - p.z), vec3.up()))
   }
 
   private setPhase(p: Phase) {
@@ -209,6 +231,7 @@ export class RetrospecsShowcase extends BaseScriptComponent {
     const speed = this.phase === "open" ? this.rotateDegPerSec / 3 : this.rotateDegPerSec
     this.yawDeg = (this.yawDeg + speed * dt) % 360
     for (const v of this.parts) if (v.part.spin) v.spinDeg = (v.spinDeg + v.part.spin.degPerSec * dt) % 360
+    this.followWall()
     this.applyPose()
   }
 
