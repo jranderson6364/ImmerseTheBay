@@ -260,7 +260,7 @@
     - '// @input float peopleHologramSideDeg = 23 {"hint":"People screen: degrees right of the card when a building also has a diagram"}'
     - '// @input float peopleHologramWidthCm = 56 {"hint":"People screen width (cm)"}'
     - '// @input float flankGapDeg = 4 {"hint":"Main Quad / Huang / Hoover (Core/CardTheme SIMPLE_FOCUS_IDS): the same gap (degrees) between the card and the 3D animation on its left and the founder screen on its right"}'
-    - "// @input bool lookNudge = true {\"hint\":\"Look-around nudge: a pulsing arrow at the edge of the view points at side pieces you haven't looked at yet (and back down at the map after a while looking away)\"}"
+    - '// @input bool lookNudge = true {"hint":"Look-around nudge arrows (also gated by LOOK_NUDGE_ARROWS in code, currently off)"}'
     - '// @input float pickSlackCm = 6 {"hint":"Map cursor forgiveness: a pinch this close to a building (map cm) still picks it"}'
     - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Bring the map here (walked away from it)"}'
