@@ -14,5 +14,6 @@ Contract for `heroes/<card_id>.py`:
   x 52-864, y 48-674 (clear of the 20 px corner chamfers and the ~34 px edge vignette). Nothing is drawn over it.
   Spectacles is additive: dark pixels read as see-through, so give form with light, not with black.
 
-Missing module or index -> story_cards_featured.SCENES[card_id] if present -> None (line-drawing fallback).
+Missing module or index -> story_cards_featured.SCENES[card_id] if present -> heroes/footprint.py (the building's
+real footprint from Assets/Retrospecs/Data/CampusData.ts) -> None (line-drawing fallback).
 """

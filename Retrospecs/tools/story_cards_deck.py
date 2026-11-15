@@ -6,7 +6,8 @@ brackets, Georgia serif, white text, copper kicker, an orange chamfered Next Car
 Ask Me More tabs to the right of the panel. Drawn at 2x and downsampled.
 
 Pictures come from a pluggable registry (see heroes/__init__.py): heroes.<card_id>.SCENES, else
-story_cards_featured.SCENES[card_id], else the caller's line drawing (the `visual` callback).
+story_cards_featured.SCENES[card_id], else heroes/footprint.py (the building's real footprint from CampusData.ts),
+else the caller's line drawing (the `visual` callback).
 
 Fixed geometry, 1x card pixels on the 1200 x 1280 texture. Button art stays inside the hit regions from
 Core/CardLayout.ts (storyCardHits / storyAskButton); the app draws a hover rim ~16 px outside them:
@@ -116,6 +117,10 @@ def hero_source(card_id, index):
     scenes = F.SCENES.get(card_id)
     if scenes is not None and index < len(scenes):
         return "story_cards_featured", scenes[index]
+    from heroes import footprint
+    scenes = footprint.scenes_for(card_id)
+    if scenes is not None and index < len(scenes):
+        return "heroes.footprint", scenes[index]
     return None, None
 
 
@@ -299,7 +304,7 @@ def draw_text(card, slide):
         y += blh
 
 
-def draw_next(card, index, count):
+def draw_next(card, index, count, label_text=None):
     b = (NEXT_HIT[0] + 2, NEXT_HIT[1] + 8, NEXT_HIT[2] - 4, NEXT_HIT[3] - 8)
     pts = chamfer(b, 20)
     m = F.poly_mask(pts)
@@ -307,6 +312,8 @@ def draw_next(card, index, count):
     shape(card, chamfer(inset(b, 1.5), 19.5), outline=(255, 196, 150, 255), width=2.5)
     last = index + 1 >= count
     s = ("Replay Card" if count == 1 else "Replay Cards") if last else "Next Card"
+    if label_text:                      # one-card stops: the button plays the next narration segment
+        s, last = label_text, label_text.startswith("Replay")
     cy = (b[1] + b[3]) / 2
     label(card, (b[0] + 40, cy), s, font(SERIF_B, 36), WHITE + (255,), anchor="lm")
     ax = b[2] - 50
@@ -326,6 +333,8 @@ def draw_next(card, index, count):
             chevron(p, ax - 14, cy, 13, 5)
             chevron(p, ax + 4, cy, 13, 5)
     ink(card, WHITE + (255,), glyph)
+    if count == 1:
+        return                          # one card: no "STORY 1 OF 1" and no pips
     # progress: STORY n OF N above copper pips
     px = 588
     label(card, (px, 1134), f"STORY {index + 1} OF {count}", font(LINING_B, 17), COPPER + (255,), tracking=2.4, anchor="lm")
@@ -378,9 +387,10 @@ def draw_fallback(card, card_id, index, visual):
 
 # ---------------------------------------------------------------------------------------------------------------
 
-def render_deck_card(card_id, index, slide, count, name, hero=None, visual=None):
+def render_deck_card(card_id, index, slide, count, name, hero=None, visual=None, next_label=None):
     """One 1200 x 1280 RGBA story card. `hero` may be a pre-rendered hero canvas (else the registry is used);
-    `visual(draw, card_id, index)` draws the 1x line-art fallback when no hero exists."""
+    `visual(draw, card_id, index)` draws the 1x line-art fallback when no hero exists. `next_label` overrides the
+    Next Card button's text (one-card stops: "Hear More", or "Replay Card" when the narration has one segment)."""
     card = new()
     draw_panel(card)
     draw_header(card, name)
@@ -391,7 +401,7 @@ def render_deck_card(card_id, index, slide, count, name, hero=None, visual=None)
     elif visual is not None:
         draw_fallback(card, card_id, index, visual)
     draw_text(card, slide)
-    draw_next(card, index, count)
+    draw_next(card, index, count, next_label)
     draw_ask(card)
     draw_stop(card)
     return card.resize((W, H), Image.Resampling.LANCZOS)

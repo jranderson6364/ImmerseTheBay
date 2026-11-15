@@ -9,21 +9,22 @@ import {STORY_CARD, shapeChunk, shapeFrameChunk, shapeOutline, storyAskButton} f
 const GEN = readFileSync(join(import.meta.dir, "../tools/story_cards_featured.py"), "utf-8")
 
 describe("card themes", () => {
-  test("deck-hero cards (render_story_decks.py DECK_HERO_IDS) have the baked tab and the copper deck colours", () => {
+  test("every story card (tools/story-cards.json, all drawn with the deck template) has the baked tab and copper", () => {
     const deck = readFileSync(join(import.meta.dir, "../tools/render_story_decks.py"), "utf-8")
-    const ids = /DECK_HERO_IDS = \(([^)]*)\)/.exec(deck)[1].match(/"(\w+)"/g).map((s) => s.slice(1, -1))
+    const ids = Object.keys(JSON.parse(readFileSync(join(import.meta.dir, "../tools/story-cards.json"), "utf-8")))
     expect([...BAKED_ASK_CARDS].sort()).toEqual([...ids].sort())
     const copper = /COPPER = \((\d+), (\d+), (\d+)/.exec(deck).slice(1).map(Number)
     for (const id of ids) expect(CARD_THEMES[id].accent.slice(0, 3).map((v) => Math.round(v * 255))).toEqual(copper)
   })
-  test("other buildings get the older decks' navy and copper; only featured cards have the baked tab", () => {
-    expect(themeFor("hpgarage")).toBe(DECK_THEME)
+  test("ids without a deck card get the older decks' navy and copper and no baked tab", () => {
+    expect(themeFor("hpgarage")).toBe(CARD_THEMES.mainquad)
     expect(themeFor("")).toBe(DECK_THEME)
     const deck = readFileSync(join(import.meta.dir, "../tools/render_story_decks.py"), "utf-8")
     const copper = /COPPER = \((\d+), (\d+), (\d+)/.exec(deck).slice(1).map(Number)
     expect(DECK_THEME.accent.slice(0, 3).map((v) => Math.round(v * 255))).toEqual(copper)
     expect(hasBakedAsk("mainquad")).toBe(true)
-    expect(hasBakedAsk("hpgarage")).toBe(false)
+    expect(hasBakedAsk("hpgarage")).toBe(true)
+    expect(hasBakedAsk("")).toBe(false)
     expect(cornerFor(CARD_THEMES.huang).chamfer).toBe(true)
   })
   test("generator's ASK_BOX is storyAskButton's drawn rect in texture pixels", () => {

@@ -1,7 +1,7 @@
 /**
  * Colours of the illustrated story cards (tools/story_cards_featured.py THEMES), as 0..1 RGBA for the mesh UI that
- * sits with them: the Ask Me More button on cards without it baked in, and the Ask Me More window. Buildings without
- * a featured card get the older decks' navy and copper (DECK_THEME). Pure, so it's unit-tested.
+ * sits with them: the Ask Me More button on cards without it baked in, and the Ask Me More window. Ids without a deck
+ * card get the older decks' navy and copper (DECK_THEME). Pure, so it's unit-tested.
  *
  * Also the draw-order ladder for the mesh UI. Text doesn't write depth, so without an explicit order a button's fill
  * can be drawn after its label and paint over it (which one goes first can change as the head moves: "the text
@@ -30,15 +30,23 @@ const COPPER_DECK: CardTheme = {
   button: [rgb(236, 134, 76), rgb(206, 104, 60)], frame: "chamfer"
 }
 
-export const CARD_THEMES: Record<string, CardTheme> = {
-  mainquad: COPPER_DECK,
-  huang: COPPER_DECK,
-  hoover: COPPER_DECK
-}
+/**
+ * Story card textures with the Ask Me More tab baked in: every building's card is now drawn with the copper deck
+ * template (render_story_decks.py DECK_HERO_IDS, the ids in tools/story-cards.json).
+ */
+export const BAKED_ASK_CARDS = [
+  "mainquad", "huang", "hoover", "hpgarage", "memchu", "varian", "spilker", "moore",
+  "gates", "packard", "y2e2", "shriram", "allen", "hewlett", "cantor", "mccullough",
+  "durand", "sequoia", "greenearth", "mitchell", "gilbert", "clark", "likashing", "coda",
+  "bassbio", "sapp", "oldunion", "tresidder", "greenlib", "lathrop", "bookstore", "littlefield"
+]
+
+export const CARD_THEMES: Record<string, CardTheme> = {}
+for (const id of BAKED_ASK_CARDS) CARD_THEMES[id] = COPPER_DECK
 
 /**
- * Every other building: the older story decks' navy panel and copper (tools/render_story_decks.py PANEL, COPPER), so
- * the mesh Ask Me More button and the window match the card they sit on.
+ * Fallback for ids without a deck card (the compact card): the older story decks' navy panel and copper
+ * (tools/render_story_decks.py PANEL, COPPER), so the mesh Ask Me More button and the window match.
  */
 export const DECK_THEME: CardTheme = {
   top: rgb(16, 26, 37), bottom: rgb(8, 13, 20), accent: rgb(245, 169, 103), rim: rgb(245, 169, 103),
@@ -48,9 +56,6 @@ export const DECK_THEME: CardTheme = {
 export function themeFor(cardId: string): CardTheme {
   return CARD_THEMES[cardId] || DECK_THEME
 }
-
-/** Story card textures with the Ask Me More tab baked in (render_story_decks.py DECK_HERO_IDS). */
-export const BAKED_ASK_CARDS = ["mainquad", "huang", "hoover"]
 
 export function hasBakedAsk(cardId: string): boolean {
   return BAKED_ASK_CARDS.indexOf(cardId) >= 0
