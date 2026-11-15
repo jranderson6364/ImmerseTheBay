@@ -722,11 +722,14 @@ export class RetrospecsMap extends BaseScriptComponent {
 
   /**
    * Landmark under the cursor at a map-local point (cm): the one whose footprint the point falls in or nearest to,
-   * with `slackCm` of grace beyond the footprint edge so small buildings are still easy to hit.
+   * with `slackCm` of grace beyond the footprint edge so small buildings are still easy to hit. `only` (the locked
+   * demo's target) tests that one footprint alone, so a neighbour can never win the pick.
    */
-  pickUnderCursor(local: vec3, slackCm = 2, eyeLocal?: vec3): string | null {
-    if (eyeLocal) return pickAlongRay(eyeLocal, local, this.mapPickCandidates(), slackCm)
-    return pickOnMap({x: local.x, z: local.z}, this.mapPickCandidates(), slackCm)
+  pickUnderCursor(local: vec3, slackCm = 2, eyeLocal?: vec3, only = ""): string | null {
+    const all = this.mapPickCandidates()
+    const cands = only ? all.filter((c) => c.id === only) : all
+    if (eyeLocal) return pickAlongRay(eyeLocal, local, cands, slackCm)
+    return pickOnMap({x: local.x, z: local.z}, cands, slackCm)
   }
 
   /** Landmark at a map-local point (cm), within `maxCm` of its footprint; through the buildings' heights with `eyeLocal`. */

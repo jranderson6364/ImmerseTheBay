@@ -523,12 +523,33 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     return false
   }
 
+  /** Locked demo: the button the judge should press next glows (blinks between rest and hover). "" = none. */
+  private pulse: PanelButton = ""
+  private pulseClock = 0
+  private pulseLit = false
+
+  setPulse(kind: PanelButton) {
+    this.pulse = kind
+    this.pulseClock = 0
+    this.pulseLit = false
+    this.hovered = "-" as PanelButton // force a repaint on the next frame
+  }
+
   private updateButtons() {
     if (!this.buttons.length) return
     const h = this.buttonUnderRay()
-    if (h === this.hovered) return
+    let lit = false
+    if (this.pulse && this.buttons.some((b) => b.kind === this.pulse)) {
+      this.pulseClock += getDeltaTime()
+      lit = Math.floor(this.pulseClock / 0.6) % 2 === 0
+    }
+    if (h === this.hovered && lit === this.pulseLit) return
     this.hovered = h
-    for (const b of this.buttons) for (const p of b.parts) p.part.rgba = b.kind === h ? p.hover : p.base
+    this.pulseLit = lit
+    for (const b of this.buttons) {
+      const on = b.kind === h || (lit && b.kind === this.pulse)
+      for (const p of b.parts) p.part.rgba = on ? p.hover : p.base
+    }
   }
 
   /** One thin box collider over the card with an SIK Interactable (indirect), so the ray cursor lands on it. */

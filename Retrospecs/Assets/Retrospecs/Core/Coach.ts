@@ -2,9 +2,9 @@
  * Indoor demo coach: a short walkthrough for someone who has never worn Specs. No calibration, no "face east":
  *
  *   start  "Pinch to open the map."                       any pinch places the map in front of you
- *   pick   "Aim your hand's ray at Hoover Tower, pinch."  ONLY the suggested building can be picked, so the visitor
+ *   pick   "Aim your hand's ray at the Main Quad, pinch."  ONLY the suggested building can be picked, so the visitor
  *                                                         proves they can steer the cursor before anything else
- *   card   "Pinch the card for more · Next spot · X"      after Hoover opens
+ *   card   "Pinch the card for more · Next spot · X"      after the Main Quad opens
  *   done   "That's it. Left pinch to ask a question."     after one more action, then it fades out
  *
  * Pure TypeScript (no Lens Studio APIs), unit-tested in tests/coach.test.ts.
@@ -78,7 +78,10 @@ export function coachWrongPickLine(target: string, other: string): string {
   return `That's ${other || "a different building"}. Try ${target}, the gold one.`
 }
 
-/** The building the pick step points people at: the first centerpiece that is on the map. */
+/** Buildings the pick step points people at, best first: the Main Quad is the biggest, easiest target on the map. */
+export const COACH_FIRST: string[] = ["mainquad", "hoover", "huang", "hpgarage", "memchu"]
+
+/** The building the pick step points people at: the first preferred building that is on the map. */
 export function suggestedBuilding(onMap: string[], preferred: string[]): string {
   for (const id of preferred) if (onMap.indexOf(id) >= 0) return id
   return onMap.length ? onMap[0] : ""

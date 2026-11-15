@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test"
-import {coachAim, coachAllowsPick, coachHint, coachLine, coachNext, coachWrongPickLine, suggestedBuilding} from "../Assets/Retrospecs/Core/Coach"
+import {COACH_FIRST, coachAim, coachAllowsPick, coachHint, coachLine, coachNext, coachWrongPickLine, suggestedBuilding} from "../Assets/Retrospecs/Core/Coach"
 import {CENTERPIECES} from "../Assets/Retrospecs/Core/Centerpieces"
 import {cardById} from "../Assets/Retrospecs/Core/Cards"
 
@@ -48,10 +48,12 @@ describe("indoor demo coach", () => {
     expect(coachLine("card")).toBe("")
   })
 
-  test("suggests the first centerpiece on the map, which is Hoover", () => {
-    expect(CENTERPIECES[0]).toBe("hoover")
-    expect(cardById("hoover")).toBeTruthy()
-    expect(suggestedBuilding(["gates", "huang", "hoover"], CENTERPIECES)).toBe("hoover")
+  test("suggests the Main Quad first: the biggest, easiest target", () => {
+    expect(COACH_FIRST[0]).toBe("mainquad")
+    expect(cardById("mainquad")).toBeTruthy()
+    for (const id of CENTERPIECES) expect(COACH_FIRST).toContain(id)
+    expect(suggestedBuilding(["gates", "huang", "hoover", "mainquad"], COACH_FIRST)).toBe("mainquad")
+    expect(suggestedBuilding(["gates", "huang", "hoover"], COACH_FIRST)).toBe("hoover")
     expect(suggestedBuilding(["gates"], ["hoover"])).toBe("gates")
     expect(suggestedBuilding([], ["hoover"])).toBe("")
   })

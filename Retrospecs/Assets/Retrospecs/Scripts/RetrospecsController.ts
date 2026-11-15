@@ -38,7 +38,8 @@ import {STORY_CARD_COUNTS, storyCardFactId} from "./StoryDeck"
 import {PanelButton} from "./RetrospecsInfoPanel"
 import {isNextSpotIntent, nextSpot, spotTier} from "../Core/NextSpot"
 import {CENTERPIECES, isCenterpiece} from "../Core/Centerpieces"
-import {CoachAim, CoachEvent, CoachStep, DONE_HOLD_SEC, coachAim, coachAllowsPick, coachHint, coachLine, coachNext, coachWrongPickLine, suggestedBuilding} from "../Core/Coach"
+import {COACH_FIRST, CoachAim, CoachEvent, CoachStep, DONE_HOLD_SEC, coachAim, coachAllowsPick, coachHint, coachLine, coachNext, coachWrongPickLine, suggestedBuilding} from "../Core/Coach"
+import {DEMO_ASK_TIMEOUT_SEC, DemoEvent, DemoState, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget, demoSegment, demoStart, demoStopId} from "../Core/DemoScript"
 import {TV_WALL, sharedWall} from "../Core/Focus"
 import {RespawnRules, farFromMap, newRespawnState, stepRespawn} from "../Core/Respawn"
 import {LIVE_PREFIX_GENERAL, LIVE_PREFIX_WEB, LOOKING_UP_LINE, LiveTurn, isAskFurtherIntent, presentLive, stripAskFurtherCommand} from "../Core/AskLive"
@@ -63,6 +64,11 @@ export class RetrospecsController extends BaseScriptComponent {
 
   @ui.group_start("Indoor demo")
   @input @hint("ON (judging indoors): no calibration, any pinch opens the map, then a short coach shows how to pick a building and use the card. OFF (filming outdoors): the start-point calibration below.") indoorDemo: boolean = true
+  @input @hint("LOCKED JUDGE DEMO (Core/DemoScript): Main Quad, then Huang, then one voice question, in that order only. Nothing else can be picked or said, and every step has a spoken direction. Replaces the coach. Turn OFF for the free-roam video.") demoMode: boolean = true
+  @ui.group_end
+  @ui.group_start("Declutter")
+  @input @hint("Money piles beside a selected building (the gift in $1 bills). OFF = card, animation, person hologram and diagram only.") showMoneyPiles: boolean = false
+  @input @hint("Exploded product models while a fact is spoken. OFF = card, animation, person hologram and diagram only.") showExplodedModels: boolean = false
   @ui.group_end
   @ui.group_start("Start point (one-pinch calibration)")
   @input @hint("ON: stand on the known start point, face down the street, pinch once. OFF: the wall-pinch calibration at the survey spot below.") useStartPoint: boolean = true
@@ -184,6 +190,11 @@ export class RetrospecsController extends BaseScriptComponent {
   private coachAimNow: CoachAim = "none"
   private coachAimOther = ""
   private caption = ""
+  /** Locked judge demo (Core/DemoScript). "off" unless demoMode is on. */
+  private demo: DemoState = {step: "off", stop: 0, card: 0}
+  private demoAimOn = false
+  private demoAskedAt = -1
+  private demoHeardAnswer = false
 
   onAwake() {
     this.createEvent("OnStartEvent").bind(() => this.onStart())
@@ -218,6 +229,12 @@ export class RetrospecsController extends BaseScriptComponent {
     this.setupInfoPanel()
     this.setupChat()
     this.prefetchStartup()
+    if (this.demoMode) {
+      this.demo = demoStart()
+      this.setStatus(this.calibrateInstruction())
+      this.guide.speakParts([demoLine(this.demo, "")])
+      return
+    }
     if (this.indoorDemo) this.coachStep = "start"
     this.setStatus(this.calibrateInstruction())
     if (this.indoorDemo) this.guide.speakParts([coachLine("start")])
@@ -248,6 +265,7 @@ export class RetrospecsController extends BaseScriptComponent {
       this.hover = newHoverState()
       return this.map.setHover("")
     }
+    if (this.demoActive()) return this.updateDemoAim()
     // Aiming at the focus card or the ask chat: nothing on the map lights up (a pinch there acts on the window).
     if ((this.infoPanel && this.infoPanel.rayOnCard()) || (this.chat && this.chat.rayOnWindow())) {
       this.hover = newHoverState()
@@ -343,9 +361,11 @@ export class RetrospecsController extends BaseScriptComponent {
     // start a left-hand "listen", or pick a building behind it.
     if (this.rayOnOtherButton(which === "left" ? InteractorInputType.LeftHand : InteractorInputType.RightHand)) return
     if (this.mode === "calibrate") {
-      if (this.useStartPoint || this.indoorDemo) return this.finishCalibration(this.viewHorizontal())
+      if (this.useStartPoint || this.indoorDemo || this.demoMode) return this.finishCalibration(this.viewHorizontal())
       return this.addWallPoint(toV3(hand.indexTip.position))
     }
+    // Locked judge demo: every pinch goes through the script.
+    if (this.demoActive()) return this.demoPinch(which)
     // Coach pick step: the right hand must select the target; the left hand does nothing yet.
     if (this.coachStep === "pick") {
       if (which === "right") this.coachPick()
@@ -395,6 +415,7 @@ export class RetrospecsController extends BaseScriptComponent {
       const f = this.viewHorizontal()
       return this.lockGuess({x: cam.x + f.x * 60, y: cam.y, z: cam.z + f.z * 60})
     }
+    if (this.demoActive()) return this.demoPinch("right")
     if (this.coachStep === "pick") return this.coachPick()
     if (this.cardPinch()) return
     // Same lock-in rules as a pinch on device.
@@ -519,6 +540,7 @@ export class RetrospecsController extends BaseScriptComponent {
     const here = this.nearestLandmark(this.me)
     print(`[Retrospecs] calibrated: facing bearing ${bearing}, map yaw ${(this.mapYaw * 180 / Math.PI).toFixed(1)}°`)
     this.resetLights()
+    if (this.demoMode) return this.demoEvent("mapOpened")
     if (this.indoorDemo) return this.coachEvent("mapOpened")
     if (here) this.map.setState(here, "focus")
     const hereName = here ? cardById(here).name : "Stanford"
@@ -588,7 +610,7 @@ export class RetrospecsController extends BaseScriptComponent {
    * Landmark under the SIK cursor on the map ("" = none). Right-hand ray on device, the mouse in Editor Preview;
    * the left hand is for "listen" and doesn't steer selection.
    */
-  private cursorLandmark(): string {
+  private cursorLandmark(only = "", slackCm = this.pickSlackCm): string {
     const target = this.map.cursorTarget
     if (!this.map.root || this.mode === "calibrate") return ""
     let interactors
@@ -623,7 +645,7 @@ export class RetrospecsController extends BaseScriptComponent {
         const r = this.map.radiusM * this.map.cmPerM
         if (hit.x * hit.x + hit.z * hit.z > r * r) continue
       }
-      const id = this.map.pickUnderCursor(hit, this.pickSlackCm, eye)
+      const id = this.map.pickUnderCursor(hit, slackCm, eye, only)
       if (id) return id
     }
     return ""
@@ -736,7 +758,7 @@ export class RetrospecsController extends BaseScriptComponent {
     if (this.state.seen.indexOf(id) < 0) this.state.seen.push(id)
     if (this.tourShown.indexOf(id) < 0) this.tourShown.push(id) // pinched stops count for "next spot" too
     this.map.drawSightline(id)
-    if (withMoney && this.money) this.money.showForLandmark(id, this.map, this.moneyOnMap, {mapExaggeration: this.moneyMapExaggeration, mapOffsetCm: this.moneyClearanceCm(id)})
+    if (withMoney && this.money && this.showMoneyPiles) this.money.showForLandmark(id, this.map, this.moneyOnMap, {mapExaggeration: this.moneyMapExaggeration, mapOffsetCm: this.moneyClearanceCm(id)})
     this.save()
   }
 
@@ -748,6 +770,7 @@ export class RetrospecsController extends BaseScriptComponent {
   /** Exploded product model for the fact being spoken: beside the focused building, or in front of the wearer. */
   private showModelFor(factId: string) {
     if (!this.showcase) return
+    if (!this.showExplodedModels) return this.showcase.hide()
     const mid = this.showcase.modelForFact(factId)
     if (!mid) return this.showcase.hide()
     const cam = this.camera.getTransform().getWorldPosition()
@@ -877,7 +900,8 @@ export class RetrospecsController extends BaseScriptComponent {
     // The card stays up while its ask chat is open.
     if (this.chat && this.chat.isOpen()) this.focusActiveAt = now
     // Never while the guide talks, and at least 30 s after it stops (Core/Selection), whatever the scene says.
-    if (focusIdleExpired(now, this.focusActiveAt, this.focusIdleSec, speaking)) {
+    // The locked demo never drops a card on its own: the judge may still be reading it.
+    if (!this.demoActive() && focusIdleExpired(now, this.focusActiveAt, this.focusIdleSec, speaking)) {
       print("[Retrospecs] focus idle, restoring the map")
       this.hideExtras()
       this.coachEvent("closed") // the card's gone, so its tip must go too
@@ -1024,7 +1048,7 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   private calibrateInstruction(): string {
-    if (this.indoorDemo) return "Welcome to Retrospecs"
+    if (this.indoorDemo || this.demoMode) return "Welcome to Retrospecs"
     if (this.isEditor) return this.useStartPoint ? "Preview: tap to calibrate (camera facing = start-point direction)." : "Preview: tap to calibrate (uses the camera's facing)."
     return this.useStartPoint ? this.startInstruction : "Face the wall. Pinch a point on its LEFT, then its RIGHT."
   }
@@ -1097,6 +1121,7 @@ export class RetrospecsController extends BaseScriptComponent {
       if (/\b(skip|ready|done|start|open)\b/.test(t)) this.finishCalibration(this.viewHorizontal())
       return
     }
+    if (this.demoActive()) return this.demoUtterance(raw, t)
     if (/\b(demo|tutorial|how does this work|show me how)\b/.test(t)) return this.restartCoach()
     // Coach pick step: no shortcuts ("next spot" etc.) until the visitor has selected the target with the cursor.
     if (this.coachStep === "pick") return this.setStatus(this.caption)
@@ -1257,6 +1282,10 @@ export class RetrospecsController extends BaseScriptComponent {
    */
   private askFromBubble(raw: string) {
     this.bubbleListening = false
+    if (this.demoActive()) {
+      if (this.demo.step !== "ask") return this.demoNudge()
+      this.demoMarkAsked()
+    }
     const question = (raw || "").trim()
     if (!question) {
       if (this.chat) this.chat.showError(this.chatTitle(), "", "I didn't catch that. Tap the bubble and ask again.")
@@ -1405,6 +1434,7 @@ export class RetrospecsController extends BaseScriptComponent {
     this.followStatusLabel()
     if (this.chat) this.chat.update(getDeltaTime())
     this.updateCoach()
+    this.updateDemo()
     this.updateFocusMode()
     this.updateYouAreHere()
     this.updateRespawn()
@@ -1455,7 +1485,7 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   private respawnActive(): boolean {
-    return this.respawnEnabled && this.mode === "tour" && !!this.map.root && this.coachStep !== "pick"
+    return this.respawnEnabled && this.mode === "tour" && !!this.map.root && this.coachStep !== "pick" && !this.demoActive()
   }
 
   /** True while the "pinch both hands" offer is showing (far from the map and looking down). */
@@ -1667,7 +1697,8 @@ export class RetrospecsController extends BaseScriptComponent {
     this.mode = "calibrate"
     this.wallPoints = []
     this.hideExtras()
-    if (this.indoorDemo) this.coachStep = "start"
+    if (this.demoMode) this.demo = demoStart()
+    else if (this.indoorDemo) this.coachStep = "start"
     this.setStatus(this.calibrateInstruction())
   }
 
@@ -1726,7 +1757,9 @@ export class RetrospecsController extends BaseScriptComponent {
   private setStatus(s: string) {
     this.caption = s
     const suggest = this.coachSuggest ? cardById(this.coachSuggest) : null
-    const hint = coachHint(this.coachStep, this.coachAimNow, suggest ? suggest.label : "", this.coachAimOther)
+    const hint = this.demo.step !== "off"
+      ? demoHint(this.demo, this.demoLabel(), this.demoAimOn)
+      : coachHint(this.coachStep, this.coachAimNow, suggest ? suggest.label : "", this.coachAimOther)
     const shown = hint ? (s ? s + "\n" + hint : hint) : s
     if (this.statusText) this.statusText.text = shown
     if (this.statusLabel) this.statusLabel.text = shown
@@ -1743,7 +1776,7 @@ export class RetrospecsController extends BaseScriptComponent {
     this.coachStep = next
     print(`[Retrospecs] coach: ${next}`)
     if (next === "pick") {
-      this.coachSuggest = suggestedBuilding(Object.keys(this.map.landmarks).filter((id) => !!cardById(id)), CENTERPIECES)
+      this.coachSuggest = suggestedBuilding(Object.keys(this.map.landmarks).filter((id) => !!cardById(id)), COACH_FIRST)
       if (this.coachSuggest) {
         this.map.setState(this.coachSuggest, "lit")
         this.map.drawArcToLandmark(this.coachSuggest, this.map.colors.lit) // cleared by resetLights on the first pick
@@ -1774,6 +1807,143 @@ export class RetrospecsController extends BaseScriptComponent {
     if (this.coachStep !== "done" || getTime() - this.coachDoneAt < DONE_HOLD_SEC) return
     this.coachStep = "off"
     this.setStatus(this.caption)
+  }
+
+  // -------------------------------------------------------------------------
+  // Locked judge demo (Core/DemoScript): Main Quad, Huang, one question. Only the scripted action works at each step.
+
+  /** True once the demo is running and the map is open (calibrate still takes any pinch to open it). */
+  private demoActive(): boolean {
+    return this.demo.step !== "off" && this.mode === "tour"
+  }
+
+  private demoLabel(): string {
+    const id = demoStopId(this.demo)
+    const c = id ? cardById(id) : null
+    return c ? c.label : ""
+  }
+
+  /** Aim step: only the stop's building can light up, tested against its footprint alone (so the Quad's neighbours,
+   * like Memorial Church on its south side, can never steal the pick). Other steps: nothing on the map lights. */
+  private updateDemoAim() {
+    this.hover = newHoverState()
+    const target = demoPickTarget(this.demo)
+    const onTarget = !!target && !this.rayOnDemoUi() && this.cursorLandmark(target, this.pickSlackCm * 1.5) === target
+    this.map.setHover(onTarget ? target : "")
+    if (onTarget === this.demoAimOn) return
+    this.demoAimOn = onTarget
+    this.setStatus(this.caption)
+  }
+
+  private rayOnDemoUi(): boolean {
+    return (!!this.infoPanel && this.infoPanel.rayOnCard()) || (!!this.chat && this.chat.rayOnWindow())
+  }
+
+  private demoPinch(which: "left" | "right") {
+    const now = getTime()
+    if (this.lastSelectAt >= 0 && now - this.lastSelectAt < 0.35) return // bounce
+    this.lastSelectAt = now
+    this.rightDownAt = -1
+    const step = this.demo.step
+    if (step === "end") return this.demoEvent("restart")
+    if (step === "ask") {
+      if (which === "left" && this.asr) {
+        this.listen()
+        this.setStatus("Listening… ask your question.")
+        return
+      }
+      return this.demoNudge()
+    }
+    if (which !== "right") return this.demoNudge()
+    if (step === "aim") {
+      const target = demoPickTarget(this.demo)
+      if (target && this.cursorLandmark(target, this.pickSlackCm * 1.5) === target) return this.demoEvent("picked")
+      return this.demoNudge()
+    }
+    if (step === "cards") {
+      if (this.infoPanel && this.infoPanel.rayOnCard()) return this.demoEvent("cardPinch")
+      return this.demoNudge()
+    }
+  }
+
+  private demoNudge() {
+    const line = demoNudgeLine(this.demo, this.demoLabel())
+    if (line && !this.guide.isSpeaking()) this.guide.speakParts([line])
+    this.setStatus(this.caption)
+  }
+
+  private demoEvent(ev: DemoEvent) {
+    const before = this.demo
+    const next = demoNext(before, ev)
+    if (next === before) return
+    this.demo = next
+    print(`[Retrospecs] demo: ${next.step} stop ${next.stop} card ${next.card}`)
+    this.enterDemoStep()
+  }
+
+  private enterDemoStep() {
+    const s = this.demo
+    const id = demoStopId(s)
+    const card = id ? cardById(id) : null
+    const label = card ? card.label : ""
+    if (this.infoPanel) this.infoPanel.setPulse("")
+    if (s.step === "aim") {
+      this.guide.stopSpeaking()
+      if (this.chat && this.chat.isOpen()) this.chat.hide()
+      this.hideExtras()
+      this.resetLights()
+      this.focus = ""
+      this.demoAimOn = false
+      if (id) {
+        this.map.setState(id, "lit")
+        this.map.drawArcToLandmark(id, this.map.colors.lit) // cleared by resetLights on the pick
+      }
+      this.say(demoLine(s, label), label)
+      return
+    }
+    if (s.step === "cards") {
+      const seg = demoSegment(s)
+      if (!id || seg < 0) return
+      this.guide.stopSpeaking()
+      this.segAt[id] = seg
+      this.tellAbout(id)
+      this.setStatus(label)
+      if (this.infoPanel) this.infoPanel.setPulse(demoIsLastCard(s) && demoHasNextStop(s) ? "next" : "more")
+      return
+    }
+    if (s.step === "ask") {
+      this.demoAskedAt = -1
+      this.demoHeardAnswer = false
+      this.say(demoLine(s, label), label)
+      return
+    }
+    if (s.step === "end") this.say(demoLine(s, label), "Thanks!")
+  }
+
+  /** Demo voice: only "restart demo" / "start over" (presenter) and, in the ask step, the judge's question. */
+  private demoUtterance(raw: string, t: string) {
+    if (/\b(restart|reset) (the )?demo\b|^start over\b/.test(t)) return this.demoEvent("restart")
+    if (this.demo.step !== "ask") return this.demoNudge()
+    this.demoMarkAsked()
+    if (isAskFurtherIntent(t)) return this.askLive(stripAskFurtherCommand(raw))
+    this.askGuide(raw)
+  }
+
+  private demoMarkAsked() {
+    this.demoAskedAt = getTime()
+    this.demoHeardAnswer = false
+  }
+
+  /** Ask step: move on once the answer has been spoken, or after the timeout (venue Wi-Fi fails sometimes). */
+  private updateDemo() {
+    if (this.demo.step !== "ask" || this.demoAskedAt < 0) return
+    const speaking = this.guide.isSpeaking()
+    if (speaking) this.demoHeardAnswer = true
+    const since = getTime() - this.demoAskedAt
+    if ((this.demoHeardAnswer && !speaking && since > 1) || since > DEMO_ASK_TIMEOUT_SEC) {
+      this.demoAskedAt = -1
+      this.demoEvent("answered")
+    }
   }
 
   private makeStatusLabel() {
