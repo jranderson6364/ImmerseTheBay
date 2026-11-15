@@ -82,7 +82,7 @@ Everything Retrospecs-specific lives under `Assets/Retrospecs/`. The rest of `As
 
 ## One-time setup in Lens Studio (about 15 minutes)
 
-Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is the Depth Cache sample from Snap's `5.15.4` branch, and the scripts type-check with zero errors against the 5.15.4 API and packages. Don't open it in Lens Studio 5.22. (Partsight's base came from the newer 5.22 branch, which is why Retrospecs doesn't reuse it.)
+Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is the Depth Cache sample from Snap's `5.15.4` branch, and the scripts type-check with zero errors against the 5.15.4 API and packages. Don't open it in Lens Studio 5.22. ([Partsight](../unneeded/Partsight/) used a newer 5.22 base; Retrospecs does not depend on it.)
 
 1. **Open** `Retrospecs/Retrospecs.esproj`.
 2. **Gateway token:** Window → Remote Service Gateway Token → Generate. Paste it into the scene's `RemoteServiceGatewayCredentials` object. Never commit the token.

@@ -28,7 +28,7 @@ What was rejected, and why:
 - **A separate Visko-only entry, an Orbis "what if" beat, or an "imagine inside" intro.** These double the work, are still a garnish, or waste seconds of the 30 s video.
 - **Open-ended "explain anything" and Snap3D on the fly.** Snap3D returns a single mesh with no parts in 20–60 s, so an exploded view is impossible.
 
-One thing should be said plainly: **the literal request for generated mechanism video is not met.** What it was for (animation that teaches the mechanism) is met by authored, hand-driven animation. Orbis stays a post-hackathon idea. One verified fact for later: `scripts/test_orbis_cottage.py` does receive RGB frames in Python via `on_frame`, so the laptop side of a relay works.
+One thing should be said plainly: **the literal request for generated mechanism video is not met.** What it was for (animation that teaches the mechanism) is met by authored, hand-driven animation. Orbis stays a post-hackathon idea. One verified fact for later: `unneeded/scripts/test_orbis_cottage.py` does receive RGB frames in Python via `on_frame`, so the laptop side of a relay works.
 
 ## Scope
 
