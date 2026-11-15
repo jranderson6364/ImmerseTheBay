@@ -1,4 +1,4 @@
-// Run: bun test parked/PocketKO/tests
+// Run: bun test unneeded/PocketKO/tests
 import {describe, expect, test} from "bun:test"
 import {DEMO_MOVES, FALLBACK_MOVE, MAX_DAMAGE, MIN_DAMAGE, validateMove} from "../Assets/PocketKO/Core/Moves"
 import {GestureDetector, V3} from "../Assets/PocketKO/Core/Gesture"

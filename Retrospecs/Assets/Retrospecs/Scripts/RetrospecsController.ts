@@ -7,7 +7,7 @@
  * Flow (what a judge sees, with demoMode on, the default)
  *  0. TITLE      Scripts/TitleScreen.ts. One pinch lifts it away.
  *  1. DEMO       Core/DemoScript.ts, a locked state machine: open the map, Main Quad cards, its Archive Gallery
- *                (Core/Archive.ts), Huang cards, one question (Ask Me More, Scripts/AskChat.ts), Hoover cards. Only
+ *                (Core/Archive.ts), Huang cards, one question (Ask Me More, Scripts/AskChat.ts), then "last stop: Hoover", whose pick hands over to free roam. Only
  *                the next target can be picked, and every step has a spoken line and an on-screen tip. Hold both
  *                pinches for 5 s to skip; say "restart demo" to reset.
  *  2. TOUR       Free roam. Right pinch = "tell me about what I'm looking at" (the map building under the ray, else
@@ -51,7 +51,7 @@ import {hasArchive} from "./ArchivePhotos"
 import {isNextSpotIntent, nextSpot, spotTier} from "../Core/NextSpot"
 import {CENTERPIECES, isCenterpiece} from "../Core/Centerpieces"
 import {COACH_FIRST, CoachAim, CoachEvent, CoachStep, DONE_HOLD_SEC, coachAim, coachAllowsPick, coachHint, coachLine, coachNext, coachWrongPickLine, suggestedBuilding} from "../Core/Coach"
-import {DEMO_AFTER_ANSWER_SEC, DEMO_ASK_LATER_LINE, DEMO_ASK_TIMEOUT_SEC, demoAnswerMaxSec,DEMO_SKIP_HOLD_SEC, DEMO_SUGGESTED_QUESTION, demoSkipHint, isRestartDemoIntent, DemoEvent, DemoState, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget, demoSegment, demoStart, demoStopId, demoArchiveOpenHint} from "../Core/DemoScript"
+import {DEMO_AFTER_ANSWER_SEC, DEMO_ASK_LATER_LINE, DEMO_ASK_TIMEOUT_SEC, demoAnswerMaxSec,DEMO_SKIP_HOLD_SEC, DEMO_SUGGESTED_QUESTION, demoSkipHint, isRestartDemoIntent, DemoEvent, DemoState, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget, demoSegment, demoStart, demoStopId, demoArchiveOpenHint, DEMO_STOPS} from "../Core/DemoScript"
 import {flankHeadings, halfWidthDeg} from "../Core/CardLayout"
 import {isSimpleFocus} from "../Core/CardTheme"
 import {TV_WALL, sharedWall} from "../Core/Focus"
@@ -2333,7 +2333,19 @@ export class RetrospecsController extends BaseScriptComponent {
       if (this.infoPanel) this.infoPanel.setPulse("ask")
       return
     }
-    if (s.step === "end") this.endDemo(demoLine(s, label), demoHint(s, label))
+    if (s.step === "end") {
+      // The finale (Hoover): the guided part ends on the pick itself, and the building opens exactly as a free-roam
+      // pick would (its card and narration), so the visitor is simply exploring now.
+      const finale = !!id && (DEMO_STOPS[s.stop] ? DEMO_STOPS[s.stop].cards.length === 0 : false)
+      if (finale) {
+        this.endDemo("", demoHint(s, label))
+        this.guide.stopSpeaking()
+        this.segAt[id] = 0
+        this.tellAbout(id)
+        return
+      }
+      this.endDemo(demoLine(s, label), demoHint(s, label))
+    }
   }
 
   /** The guided part is over (finished or skipped): everything unlocks. */
@@ -2349,7 +2361,8 @@ export class RetrospecsController extends BaseScriptComponent {
       this.infoPanel.setArchiveInvite(true) // free roam: any collage on screen can be opened now
     }
     print("[Retrospecs] demo: free roam")
-    this.say(line, caption)
+    if (line) this.say(line, caption)
+    else this.setStatus(caption)
   }
 
   /** Both pinches held DEMO_SKIP_HOLD_SEC: skip the guided demo (opening the map first if needed). */

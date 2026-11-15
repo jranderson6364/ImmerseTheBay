@@ -6,7 +6,7 @@ Built for Immerse the Bay 2026 (Stanford XR hackathon, November 13–15) on Snap
 
 **[Open the Retrospecs Lens project](Retrospecs/)** · **[Lens Studio project file](Retrospecs/Retrospecs.esproj)** · **[Source code](Retrospecs/Assets/Retrospecs/)** · **[Devpost](https://devpost.com/software/retrospecs-t451hs)**
 
-The complete submission is in [`Retrospecs/`](Retrospecs/). Open `Retrospecs.esproj` in Lens Studio 5.15.4 to run the Lens. The other top-level folders are research and earlier prototypes from the hackathon.
+The complete submission is in [`Retrospecs/`](Retrospecs/). Open `Retrospecs.esproj` in Lens Studio 5.15.4 to run the Lens. Earlier prototypes are collected in [`unneeded/`](unneeded/).
 
 ## Judges, start here
 
@@ -20,14 +20,11 @@ The complete submission is in [`Retrospecs/`](Retrospecs/). Open `Retrospecs.esp
 
 ## Repository map
 
-| Path | Status | What it is |
-| --- | --- | --- |
-| [`Retrospecs/`](Retrospecs/README.md) | **Active, the submission** | The Lens project, its tests, its offline bakers ([`tools/`](Retrospecs/tools/README.md)) and its design notes. |
-| [`docs/`](docs/README.md) | Notes | Concept, pitch, research and event notes. The [index](docs/README.md) separates current docs from early brainstorms. |
-| `out/` | Notes | Submission drafts (Devpost copy) and preview renders. |
-| `scripts/` | Utility | A render test for the parked Pocket KO prototype. |
-| [`Partsight/`](Partsight/README.md) | Earlier prototype | Our first build this weekend. It's kept for reference and isn't part of the submission. Why we moved on: [docs/partsight-decision.md](docs/partsight-decision.md). |
-| [`parked/PocketKO/`](parked/PocketKO/STATUS.md) | Parked prototype | Everyday objects become fighting moves. It's kept for reference and isn't part of the submission. |
+| Path | What it is |
+| --- | --- |
+| [`Retrospecs/`](Retrospecs/README.md) | **The submission:** Lens Studio project, source, assets, tests and setup instructions. |
+| [`docs/`](docs/README.md) | Retrospecs and event notes, plus the history of how the idea was chosen. |
+| [`unneeded/`](unneeded/README.md) | Archived Partsight and Pocket KO prototypes and an Orbis test utility. None are required to run Retrospecs. |
 
 ## Working practices
 

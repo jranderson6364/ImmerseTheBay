@@ -1,6 +1,6 @@
 /**
  * Generates Partsight's unit meshes as OBJ files (MIT, no third-party assets).
- * Run from the repo root: bun Partsight/tools/gen-unit-meshes.ts
+ * Run from the repo root: bun unneeded/Partsight/tools/gen-unit-meshes.ts
  *
  * Every mesh fits the unit cube [-0.5, 0.5]^3 so the renderer can scale it to dims_mm directly.
  * Round shapes have their axis along +X (matches PartSpec.ts).

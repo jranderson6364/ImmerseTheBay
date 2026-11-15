@@ -1,6 +1,6 @@
 """Stand-in for the glasses: sends a finisher to the relay and counts the frames it gets back.
 
-python parked/PocketKO/relay/fake_lens.py --image out/ko/seed.jpg --steer-after 7
+python unneeded/PocketKO/relay/fake_lens.py --image out/ko/seed.jpg --steer-after 7
 Writes the last received frame to out/ko/lens_last_frame.jpg.
 """
 

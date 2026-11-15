@@ -1,6 +1,6 @@
 """Record a short Orbis-Stable cottage stream to a local MP4.
 
-Run from the repository root: python scripts/test_orbis_cottage.py
+Run from the repository root: python unneeded/scripts/test_orbis_cottage.py
 Requires: pip install reactor-sdk opencv-python
 """
 
@@ -12,7 +12,7 @@ import cv2
 from reactor_sdk import Reactor, ReactorStatus
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "out" / "orbis-cottage-test.mp4"
 PROMPT = (
     "A cozy stone cottage with a mossy roof sits beside a wildflower garden "

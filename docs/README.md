@@ -31,5 +31,5 @@ These are in roughly chronological order. Each later decision supersedes the ear
 | [idea-evolution-results.md](idea-evolution-results.md) | Generated, prior-art-checked and scored idea rounds. |
 | [place-stories-concept.md](place-stories-concept.md) | An early place-guide concept, the seed of Retrospecs. |
 | [pump-xray-decision.md](pump-xray-decision.md) | Superseded by Partsight. |
-| [partsight-decision.md](partsight-decision.md) | Partsight, our first build (`Partsight/`). |
+| [partsight-decision.md](partsight-decision.md) | Partsight, our first build ([archived project](../unneeded/Partsight/)). |
 | [needs-research.md](needs-research.md) · [focus-adblock-networking-ideas.md](focus-adblock-networking-ideas.md) · [ghost-light-concept.md](ghost-light-concept.md) · [seatcheck-concept.md](seatcheck-concept.md) | Saturday-morning pivots that we considered and set aside. |

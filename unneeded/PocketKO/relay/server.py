@@ -1,8 +1,8 @@
 """Pocket KO relay: runs Orbis on the laptop and streams the KO cinematic to the glasses and a jumbotron page.
 
-Run from the repo root:   python parked/PocketKO/relay/server.py
+Run from the repo root:   python unneeded/PocketKO/relay/server.py
 Then open http://localhost:8765 on the laptop (the jumbotron) and point the Lens at ws://<laptop-ip>:8765/ws
-(or a wss:// tunnel, see parked/PocketKO/README.md).
+(or a wss:// tunnel, see unneeded/PocketKO/README.md).
 
 Protocol (JSON over WebSocket /ws):
   Lens -> relay   {"type": "hello", "role": "lens"}

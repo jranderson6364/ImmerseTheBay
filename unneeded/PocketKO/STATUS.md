@@ -15,7 +15,7 @@ Parked November 14, 2026 at the user's request. This is an **unfinished prototyp
 
 ## What was actually tested
 
-- `bun test parked/PocketKO/tests`: **11 passed, 0 failed** after parking.
+- `bun test unneeded/PocketKO/tests`: **11 passed, 0 failed** after parking.
 - Earlier in this session, the Pocket KO Lens scripts produced zero project-file TypeScript errors against Lens Studio 5.15 declarations. This checks types, not editor or device behavior.
 - Orbis accepted the API key, generated a seeded cartoon KO, and responded to a live `set_prompt` steer. A laptop fake client received frames from the relay; the browser jumbotron and preview displayed a round. Earlier observations were roughly 2 seconds to Orbis ready and 4–6 seconds to first frame, depending on test.
 - After moving the files, this environment's `python.exe` launcher could not start, so the Python entry points were **not rerun** from the new path. Their repository-root path calculations were updated.
@@ -30,8 +30,8 @@ Parked November 14, 2026 at the user's request. This is an **unfinished prototyp
 
 ## To resume later
 
-1. Open `parked/PocketKO/PocketKO.esproj` in Lens Studio and complete the wiring table in `README.md`.
-2. Start the relay from the repo root with `python parked/PocketKO/relay/server.py` and open `http://localhost:8765` on the laptop.
+1. Open `unneeded/PocketKO/PocketKO.esproj` in Lens Studio and complete the wiring table in `README.md`.
+2. Start the relay from the repo root with `python unneeded/PocketKO/relay/server.py` and open `http://localhost:8765` on the laptop.
 3. Push to Spectacles and test the camera, gesture, relay, and in-lens video paths before promising a live demo.
 
 This folder was intentionally parked; the browser preview is evidence of the concept, not evidence that the glasses build works.

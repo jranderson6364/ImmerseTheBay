@@ -1,7 +1,7 @@
 /**
  * Browser play-preview of Pocket KO, using the SAME Core (Moves, Game, Gesture) as the Lens.
  * The "passthrough" is a desk photo; keys stand in for real gestures; the KO is the real Orbis relay.
- * Build: bun build parked/PocketKO/tools/preview/main.ts --outfile parked/PocketKO/relay/static/play.js --external three
+ * Build: bun build unneeded/PocketKO/tools/preview/main.ts --outfile unneeded/PocketKO/relay/static/play.js --external three
  * Then open http://localhost:8765/play while the relay runs.
  *
  * Keys: E = scan next item · S slam · A/D swing · W poke · Q toss · K skip to finisher

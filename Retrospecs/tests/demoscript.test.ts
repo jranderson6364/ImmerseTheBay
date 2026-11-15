@@ -1,7 +1,7 @@
 import {describe, expect, test} from "bun:test"
 import {
   DEMO_ASK_TIMEOUT_SEC, DEMO_SKIP_HOLD_SEC, DEMO_STOPS, demoAnswerMaxSec, DemoState, demoSkipHint, isRestartDemoIntent, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget,
-  demoSegment, demoStart, demoStopId
+  demoSegment, demoStart, demoStopId, demoIsFinale
 } from "../Assets/Retrospecs/Core/DemoScript"
 import {cardById} from "../Assets/Retrospecs/Core/Cards"
 import {LANDMARKS} from "../Assets/Retrospecs/Data/CampusData"
@@ -24,7 +24,8 @@ describe("locked judge demo", () => {
       expect(LANDMARKS.some((l) => l.id === stop.id)).toBe(true)
       const segs = (NARRATION as any)[stop.id] as unknown[]
       expect(segs && segs.length).toBeTruthy()
-      expect(stop.cards.length).toBeGreaterThan(0)
+      // Only the finale (the last stop) may have no scripted cards: its pick ends the guided part.
+      if (stop !== DEMO_STOPS[DEMO_STOPS.length - 1]) expect(stop.cards.length).toBeGreaterThan(0)
       expect(stop.cards.length).toBeLessThanOrEqual(3) // keeps the demo near two minutes
       for (const i of stop.cards) expect(i >= 0 && i < segs.length).toBe(true)
     }
@@ -65,12 +66,13 @@ describe("locked judge demo", () => {
     s = demoNext(s, "answered")
     expect(s).toEqual({step: "aim", stop: 2, card: 0})
     expect(demoPickTarget(s)).toBe("hoover")
+    // Hoover is the finale: sent there, and the pick itself ends the guided part (no scripted Hoover cards).
+    expect(demoIsFinale(s)).toBe(true)
+    expect(demoLine(s, "Hoover Tower")).toMatch(/last stop.*yours to explore/i)
+    expect(demoHint(s, "Hoover Tower")).toMatch(/last stop.*explore on your own/i)
     s = demoNext(s, "picked")
-    for (let i = 1; i < DEMO_STOPS[2].cards.length; i++) s = demoNext(s, "cardPinch")
-    expect(demoHasNextStop(s)).toBe(false)
-    expect(demoHint(s, "Hoover Tower")).toMatch(/continue/i)
-    s = demoNext(s, "cardPinch")
     expect(s.step).toBe("end")
+    expect(demoStopId(s)).toBe("hoover")
     s = demoNext(s, "restart")
     expect(s).toEqual({step: "aim", stop: 0, card: 0})
   })
@@ -116,7 +118,7 @@ describe("locked judge demo", () => {
     expect(demoHint(ask, "Huang")).toMatch(/Ask Me More/)
     expect(demoNudgeLine(ask, "Huang")).toMatch(/Ask Me More/)
     expect(demoNext(ask, "answered").step).toBe("aim") // on to Hoover
-    const end = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.map(() => "cardPinch" as const), "archiveDone", "picked", ...DEMO_STOPS[1].cards.map(() => "cardPinch" as const), "answered", "picked", ...DEMO_STOPS[2].cards.map(() => "cardPinch" as const)])
+    const end = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.map(() => "cardPinch" as const), "archiveDone", "picked", ...DEMO_STOPS[1].cards.map(() => "cardPinch" as const), "answered", "picked"])
     expect(end.step).toBe("end")
     expect(demoHint(end, "")).toMatch(/all yours/i)
     expect(demoHint(end, "")).not.toMatch(/left/i)

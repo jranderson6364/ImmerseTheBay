@@ -12,7 +12,8 @@
  *          ... the same aim + cards for Huang ...
  *   ask    "Pinch Ask Me More"                           Huang only (`ask: true`): only the glowing Ask button, which
  *                                                        appears now (then a question chip or voice); the answer moves on
- *          ... then aim + cards for Hoover Tower ...
+ *   aim    "Last stop: Hoover Tower"                     the finale (`cards: []`): the pinch opens Hoover the normal
+ *                                                        free-roam way and the guided part ends right there
  *   end    "Now it's all yours"                         the guided part is over: everything unlocks (free roam)
  *
  * Presenter controls: hold BOTH pinches for 5 s at any step to skip straight to free roam (for filming), and say
@@ -29,7 +30,10 @@ export type DemoStep = "open" | "aim" | "cards" | "archive" | "ask" | "end" | "o
 export interface DemoStop {
   /** Landmark / card id. */
   id: string
-  /** Narration segment indices to show, in order (0 = overview). Two per stop keeps the three-stop demo near two and a half minutes. */
+  /**
+   * Narration segment indices to show, in order (0 = overview). Two per stop keeps the demo near two minutes. Empty
+   * on the finale: picking it ends the guided part, and the building opens as in free roam.
+   */
   cards: number[]
   /** After the cards, open the Archive Gallery (Core/Archive.ts) before moving on. */
   archive?: boolean
@@ -40,7 +44,7 @@ export interface DemoStop {
 export const DEMO_STOPS: DemoStop[] = [
   {id: "mainquad", cards: [0, 1], archive: true},
   {id: "huang", cards: [0, 2], ask: true},
-  {id: "hoover", cards: [0, 1]}
+  {id: "hoover", cards: []}
 ]
 
 /** A question the checked cards answer, so it works even when the venue Wi-Fi doesn't. */
@@ -103,7 +107,8 @@ export function demoNext(s: DemoState, ev: DemoEvent, stops: DemoStop[] = DEMO_S
     case "open":
       return ev === "mapOpened" ? {step: "aim", stop: 0, card: 0} : s
     case "aim":
-      return ev === "picked" ? {step: "cards", stop: s.stop, card: 0} : s
+      if (ev !== "picked") return s
+      return stops[s.stop] && stops[s.stop].cards.length ? {step: "cards", stop: s.stop, card: 0} : afterCards(s, stops)
     case "cards": {
       if (ev !== "cardPinch") return s
       const n = stops[s.stop] ? stops[s.stop].cards.length : 0
@@ -162,6 +167,11 @@ export function demoHasNextStop(s: DemoState, stops: DemoStop[] = DEMO_STOPS): b
   return s.stop + 1 < stops.length && !(stop && (stop.ask || stop.archive))
 }
 
+/** True on the finale: the last stop, with no scripted cards, whose pick hands over to free roam. */
+export function demoIsFinale(s: DemoState, stops: DemoStop[] = DEMO_STOPS): boolean {
+  return s.stop === stops.length - 1 && !!stops[s.stop] && stops[s.stop].cards.length === 0
+}
+
 /** True when the stop's last card leads to its Archive Gallery. */
 export function demoHasArchive(s: DemoState, stops: DemoStop[] = DEMO_STOPS): boolean {
   return !!stops[s.stop] && !!stops[s.stop].archive
@@ -181,6 +191,7 @@ export function demoHint(s: DemoState, label: string, onTarget = false, stops: D
       return "Pinch your thumb and index finger together to open the map."
     case "aim":
       if (onTarget) return `${t} is blue. Pinch now!`
+      if (demoIsFinale(s, stops)) return `Last stop: point at ${t}, then pinch and explore on your own`
       return s.stop === 0 ? `Point your right hand at ${t}, then pinch` : `Point at ${t}, then pinch`
     case "cards": {
       const n = stops[s.stop] ? stops[s.stop].cards.length : 1
@@ -209,6 +220,7 @@ export function demoLine(s: DemoState, label: string): string {
     case "open":
       return "Welcome to Retrospecs, your Stanford tour guide. Pinch your thumb and finger together to open the map."
     case "aim":
+      if (demoIsFinale(s)) return `Last stop, ${t}. Point at it and pinch, and then the campus is yours to explore.`
       return s.stop === 0
         ? `Point your right hand at ${t}. When it turns blue, pinch.`
         : `Next up, ${t}. Point at it and pinch.`

@@ -1,8 +1,8 @@
 """Pocket KO: test whether Orbis makes a funny, steerable KO cinematic.
 
 Run from the repo root:
-  python parked/PocketKO/tools/orbis_ko_test.py                       # prompt-only, saves a seed frame
-  python parked/PocketKO/tools/orbis_ko_test.py --seed out/ko/seed.jpg  # seed the world from a photo (set_image)
+  python unneeded/PocketKO/tools/orbis_ko_test.py                       # prompt-only, saves a seed frame
+  python unneeded/PocketKO/tools/orbis_ko_test.py --seed out/ko/seed.jpg  # seed the world from a photo (set_image)
 
 Writes out/ko/<name>.mp4, a few JPEG frames, timings, and the model's command schema.
 Requires: pip install reactor-sdk opencv-python

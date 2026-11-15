@@ -1,6 +1,6 @@
 /**
  * Pocket KO moves: Gemini prompt + schema, and a validator that keeps AI-invented moves fun and fair.
- * Pure TypeScript (no Lens globals): runs in Lens Studio and in `bun test parked/PocketKO/tests`.
+ * Pure TypeScript (no Lens globals): runs in Lens Studio and in `bun test unneeded/PocketKO/tests`.
  */
 
 export const GESTURES = ["slam", "swing", "poke", "toss"] as const

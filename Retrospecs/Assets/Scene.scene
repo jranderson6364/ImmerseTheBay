@@ -3507,8 +3507,9 @@
     compactBodyLineDeg: true
     storyCardWidthDeg: true
     minTargetDeg: true
-    archiveWidthDeg: true
-    archiveForwardCm: true
+    archivePrintHeightCm: true
+    archiveGapCm: true
+    archiveAnimSec: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -3556,8 +3557,9 @@
       compactBodyLineDeg: 0.760000
       storyCardWidthDeg: 20.299999
       minTargetDeg: !<float> 3.000000
-      archiveWidthDeg: !<float> 34.000000
-      archiveForwardCm: !<float> 14.000000
+      archivePrintHeightCm: !<float> 24.000000
+      archiveGapCm: !<float> 4.000000
+      archiveAnimSec: 0.450000
   ScriptTypes:
     "":
       {}

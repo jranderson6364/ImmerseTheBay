@@ -12,11 +12,11 @@ The concept and rationale are in [CONCEPT.md](CONCEPT.md). The current build log
 
 | Path | What |
 | --- | --- |
-| `Assets/PocketKO/Core/` | Pure TS, unit-tested (`bun test parked/PocketKO/tests`): `Moves.ts` (Gemini prompt, schema, validator; fragile items forced to a gentle poke, unsafe items nerfed), `Gesture.ts` (wrist-velocity slam/swing/poke/toss), `Game.ts` (round state machine: cooldown, staleness, new-object combos, stun/slip/burn/multi/knockback, finisher, results). |
+| `Assets/PocketKO/Core/` | Pure TS, unit-tested (`bun test unneeded/PocketKO/tests`): `Moves.ts` (Gemini prompt, schema, validator; fragile items forced to a gentle poke, unsafe items nerfed), `Gesture.ts` (wrist-velocity slam/swing/poke/toss), `Game.ts` (round state machine: cooldown, staleness, new-object combos, stun/slip/burn/multi/knockback, finisher, results). |
 | `Assets/PocketKO/Scripts/` | Lens components: `PocketKOController` (main), `Monster` (squash-and-stretch blob), `Fx` (sparks, confetti, damage popups), `RelayClient` (WebSocket + JPEG to texture), `Toon` (helpers). |
 | `relay/server.py` | Laptop relay. It runs Orbis, paints the Glorp onto the seed photo (the glasses camera can't see AR content), streams frames to the glasses at about 6–7 fps over WebSocket, and serves the **jumbotron** at `http://localhost:8765` and the **browser play-preview** at `/play`. |
 | `relay/fake_lens.py` | Stand-in for the glasses: sends a finisher and counts the frames that come back. |
-| `tools/preview/main.ts` | Browser preview of the in-glasses view, using the same Core. Build: `bun build parked/PocketKO/tools/preview/main.ts --outfile parked/PocketKO/relay/static/play.js --external three --target browser` |
+| `tools/preview/main.ts` | Browser preview of the in-glasses view, using the same Core. Build: `bun build unneeded/PocketKO/tools/preview/main.ts --outfile unneeded/PocketKO/relay/static/play.js --external three --target browser` |
 | `tools/orbis_ko_test.py` | Standalone Orbis KO prompt tester (writes MP4s and frames to `out/ko/`). |
 
 **Verified on the laptop (Nov 14):**
@@ -33,7 +33,7 @@ pip install reactor-sdk opencv-python aiohttp
 ```
 
 ```bash
-python parked/PocketKO/relay/server.py
+python unneeded/PocketKO/relay/server.py
 ```
 
 - Open `http://localhost:8765` full-screen on the laptop. That's the jumbotron. Its **Test KO** button runs a KO without the glasses.
@@ -46,7 +46,7 @@ python parked/PocketKO/relay/server.py
 
 ## One-time Lens Studio setup (about 15 min)
 
-1. Open `parked/PocketKO/PocketKO.esproj` in Lens Studio 5.15+.
+1. Open `unneeded/PocketKO/PocketKO.esproj` in Lens Studio 5.15+.
 2. **Remote Service Gateway token:** Window → Remote Service Gateway Token → paste it into the `RemoteServiceGatewayCredentials` object.
 3. **Project Settings → Experimental APIs: ON.** It's needed for camera + internet together, and for `ws://`.
 4. Select the object with the sample's `SceneController` and **disable that component**. Keep `DepthCache`, `ASRController` and `SpeechUI`.

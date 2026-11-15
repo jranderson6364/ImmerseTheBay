@@ -1,6 +1,6 @@
 # Partsight Lens
 
-Hold an everyday object and press Scan. A to-scale exploded diagram appears on the real object. Pull your hands apart to explode it, pinch a part to hear what it does, and ask questions by voice. The design rationale is in [docs/partsight-decision.md](../docs/partsight-decision.md).
+Hold an everyday object and press Scan. A to-scale exploded diagram appears on the real object. Pull your hands apart to explode it, pinch a part to hear what it does, and ask questions by voice. The design rationale is in [docs/partsight-decision.md](../../docs/partsight-decision.md).
 
 This Lens Studio project is built on Snap's MIT-licensed [Depth Cache sample](https://github.com/specs-devs/samples). It reuses the sample's camera + depth pairing, ASR, and Remote Service Gateway setup. The original sample README is [DEPTH-CACHE-README.md](DEPTH-CACHE-README.md), and its license and terms are in [LICENSE-SNAP-SAMPLE.md](LICENSE-SNAP-SAMPLE.md).
 
@@ -13,15 +13,15 @@ This Lens Studio project is built on Snap's MIT-licensed [Depth Cache sample](ht
 | `Assets/Partsight/Scripts/PartsightGemini.ts` | Remote Service Gateway Gemini calls: image to spec, and grounded Q&A. |
 | `Assets/Partsight/Scripts/PartsightRenderer.ts` | Builds the diagram: unit meshes scaled to mm, staggered explode, labels and leader lines, pinch selection, step animations. |
 | `Assets/Partsight/Scripts/PartsightController.ts` | Scan flow, depth-based measurement and placement, two-hand explode/rotate, voice commands, TTS. |
-| `Assets/Partsight/Meshes/ps_*.obj` | Unit meshes (box, rounded box, cylinder, tube, capsule, cone, sphere, torus, U-shape, spring, gear). Regenerate with `bun Partsight/tools/gen-unit-meshes.ts`. |
-| `tests/` | `bun test Partsight/tests` |
+| `Assets/Partsight/Meshes/ps_*.obj` | Unit meshes (box, rounded box, cylinder, tube, capsule, cone, sphere, torus, U-shape, spring, gear). Regenerate with `bun unneeded/Partsight/tools/gen-unit-meshes.ts`. |
+| `tests/` | `bun test unneeded/Partsight/tests` |
 | `Assets/Scripts`, `Assets/Prefabs`, … | The Depth Cache sample, unchanged. |
 
 ## One-time setup in Lens Studio (about 20 minutes)
 
 You need Lens Studio 5.15.4+ and the loaner Specs on Snap OS 5.64+.
 
-1. **Open** `Partsight/Partsight.esproj`. Lens Studio imports the `.obj` meshes automatically.
+1. **Open** `unneeded/Partsight/Partsight.esproj`. Lens Studio imports the `.obj` meshes automatically.
 2. **Gateway token:** Window → Remote Service Gateway Token → generate one. Paste it into the scene's `RemoteServiceGatewayCredentials` object. Never commit the token.
 3. **Experimental APIs:** Project Settings → enable Experimental APIs. The camera and internet must work together in one Lens, which is fine for an unpublished device push.
 4. **Disable the sample's flow:** select the object that has `SceneController` and uncheck that component. Keep `DepthCache`, `ASRController`, and `SpeechUI` enabled; the mic button in `SpeechUI` now feeds Partsight's voice commands.

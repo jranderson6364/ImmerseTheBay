@@ -1,4 +1,4 @@
-// Run: bun test Partsight/tests
+// Run: bun test unneeded/Partsight/tests
 import {describe, expect, test} from "bun:test"
 import {
   MAX_PARTS,

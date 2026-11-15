@@ -55,7 +55,7 @@ Visko's honest risk: Orbis is the climax, not the whole experience. The pitch is
 | --- | --- |
 | **A: game core (Lens)** | Monster model and animation (hit flash, squash, recoil, KO pose), HP and damage numbers, round state, variety combo, results card. |
 | **B: objects and hands (Lens)** | Capture → Gemini move JSON with a validator that clamps stats and enum-checks the gesture (reuses the Partsight validator pattern), effects attached to the hand keypoint, wrist-velocity gesture detection. |
-| **C: finisher (laptop + Lens)** | Python Orbis server (extends `scripts/test_orbis_cottage.py`): WebSocket from the Lens with object name + camera still → `set_image` + prompt → stream. Laptop jumbotron window first, then a JPEG-over-wss relay to an in-lens portal (spike). Voice steering → `set_prompt`. |
+| **C: finisher (laptop + Lens)** | Python Orbis server (extends `unneeded/scripts/test_orbis_cottage.py`): WebSocket from the Lens with object name + camera still → `set_image` + prompt → stream. Laptop jumbotron window first, then a JPEG-over-wss relay to an in-lens portal (spike). Voice steering → `set_prompt`. |
 
 **Gates**
 
