@@ -58,7 +58,7 @@ import {TV_WALL, sharedWall} from "../Core/Focus"
 import {NudgeOutput, NudgeTarget, mapNudge, newNudgeState, offsetsFromLocal, stepNudge} from "../Core/LookNudge"
 import {RespawnRules, farFromMap, newRespawnState, stepRespawn} from "../Core/Respawn"
 import {LiveTurn, isAskFurtherIntent, presentLive, stripAskFurtherCommand} from "../Core/AskLive"
-import {SuggestedQuestion, buildingMentioned, chatHeading, isTourCommand, locateOnlyTarget, suggestedQuestions} from "../Core/AskBubble"
+import {SuggestedQuestion, buildingMentioned, chatHeading, isRecenterIntent, isTourCommand, locateOnlyTarget, suggestedQuestions} from "../Core/AskBubble"
 import {AskChat} from "./AskChat"
 import {setBubbleTarget} from "./AskBridge"
 import {playSfx} from "../Core/Sfx"
@@ -1345,7 +1345,7 @@ export class RetrospecsController extends BaseScriptComponent {
       return
     }
     // Recenter works in every mode, the locked demo included: it only re-aligns the map, it doesn't advance anything.
-    if (/\bre[- ]?cent(er|re)(ing)?\b|\bfix my (position|location)\b/.test(t)) return this.recenter()
+    if (isRecenterIntent(t)) return this.recenter()
     if (this.demoMode && isRestartDemoIntent(t)) return this.restartDemo()
     if (this.demoActive()) return this.demoUtterance(raw, t)
     if (/\b(demo|tutorial|how does this work|show me how)\b/.test(t)) return this.restartCoach()
@@ -1577,6 +1577,11 @@ export class RetrospecsController extends BaseScriptComponent {
   private askFromBubble(raw: string) {
     this.bubbleListening = false
     const question = (raw || "").trim()
+    // "Recenter" works at any step, the guided demo included: it only re-aligns the map (GPS + Gemini / compass).
+    if (isRecenterIntent(question)) {
+      if (this.chat) this.chat.hide()
+      return this.handleUtterance(question)
+    }
     // Presenter: "restart demo" works at any step, free roam included (the mic only opens from Ask now).
     if (this.demoMode && isRestartDemoIntent(question)) {
       if (this.chat) this.chat.hide()

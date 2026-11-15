@@ -116,6 +116,14 @@ export function suggestedQuestions(card: Card | null | undefined, heard: string[
 }
 
 /**
+ * "Recenter" / "re-center" / "fix my position": re-align the map with GPS (where you are) and Gemini's view of the
+ * building you're looking at, or the compass (which way the map faces). Works at any step, the guided demo included.
+ */
+export function isRecenterIntent(raw: string): boolean {
+  return /\bre[- ]?cent(er|re)(ing)?\b|\bfix my (position|location)\b/.test((raw || "").toLowerCase())
+}
+
+/**
  * True for spoken tour commands ("next spot", "what's that", "go back", "recalibrate", "I like art", ...) that the
  * Ask mic hands to the tour instead of looking up on the web. Mirrors the command list in the controller's
  * handleUtterance.
@@ -125,6 +133,7 @@ export function isTourCommand(raw: string): boolean {
   return (
     /\b(tutorial|how does this work|show me how)\b|^(show me the |start the )?demo\.?$/.test(t) ||
     /\b(recalibrate|calibrate)\b/.test(t) ||
+    isRecenterIntent(t) ||
     // Whole utterance only: "what is this building made of?" is a question, not "identify what I'm looking at".
     /^(what('?s| is) (that|this)( building| place)?|what am i looking at)\.?$/.test(t) ||
     /\b(explode|take it apart|show me again)\b/.test(t) ||

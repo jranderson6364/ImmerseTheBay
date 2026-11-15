@@ -69,3 +69,14 @@ describe("locateOnlyTarget", () => {
     expect(l("show me where it is")).toBe("")
   })
 })
+
+describe("recenter by voice", () => {
+  test("recenter phrasings are recognised and routed to the tour, not the web", () => {
+    const {isRecenterIntent, isTourCommand} = require("../Assets/Retrospecs/Core/AskBubble")
+    for (const s of ["recenter", "Re-center the map", "recentre please", "fix my position", "fix my location"]) {
+      expect(isRecenterIntent(s)).toBe(true)
+      expect(isTourCommand(s)).toBe(true)
+    }
+    for (const s of ["what's in the center of the quad?", "when was Hoover built?"]) expect(isRecenterIntent(s)).toBe(false)
+  })
+})
