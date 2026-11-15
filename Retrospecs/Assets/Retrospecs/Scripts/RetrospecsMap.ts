@@ -10,6 +10,7 @@
 import {BUILDINGS, LANDMARKS, BakedLandmark} from "../Data/CampusData"
 import {PATHS} from "../Data/PathsData"
 import {tidyLabel} from "./LabelStyle"
+import {PICK_PAD_M, isCenterpiece, labelColorFor, labelScaleFor} from "../Core/Centerpieces"
 import {buildLandmarkModel} from "../Core/LandmarkModels"
 import {CARDS, cardById} from "../Core/Cards"
 import {EN, V3, bearingDeg, bearingToMapDir, distanceM, enToMap, formatDistance, latLonToEN} from "../Core/Geo"
@@ -20,7 +21,7 @@ import {
 import {WorldLabel} from "../../Scripts/WorldLabel"
 import {FocusTuning, backgroundLook, easeInOut, footprintRadiusM, landmarkLook, stepBlend} from "../Core/Focus"
 import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
-import {WorldPickCandidate, XZ, outerRingEN, pickOnMap} from "../Core/Pick"
+import {ColumnPickCandidate, WorldPickCandidate, XZ, outerRingEN, pickAlongRay, pickOnMap} from "../Core/Pick"
 
 export type LandmarkState = "dim" | "seen" | "lit" | "focus"
 
@@ -65,6 +66,9 @@ interface BackgroundPart {
 }
 
 // Additive display: black is invisible, brightness is opacity.
+/** Per-building focus scale (overrides Focus Scale). Main Quad's footprint is huge, so at 1.8x it buried its neighbours. */
+const FOCUS_SCALE_FOR: Record<string, number> = {mainquad: 1.15}
+
 const COLORS: Record<string, [number, number, number, number]> = {
   // "Cardinal pop" (toned down), background dim level 4: the campus is a near-wireframe of faint sandstone fills
   // with quiet sand outlines carrying each building's shape. The selected building is solid Stanford cardinal
@@ -94,6 +98,10 @@ const COLORS: Record<string, [number, number, number, number]> = {
   foot: [0.24, 0.23, 0.2, 1], // foot paths: faint
   // Landmark states (body colour). Unselected landmarks stay calm; "focus" is the one that pops.
   dim: [0.34, 0.3, 0.25, 1], // selectable, not yet heard: ghost sandstone (its brighter outline marks it)
+  // Centerpieces (Core/Centerpieces.ts) at rest: warmer and brighter than the other landmarks, still not cardinal.
+  featureDim: [0.62, 0.48, 0.3, 1],
+  featureSeen: [0.66, 0.52, 0.32, 1],
+  featureOutline: [1.0, 0.85, 0.52, 1],
   seen: [0.4, 0.34, 0.25, 1], // already heard: slightly warmer ghost
   lit: [0.85, 0.68, 0.36, 1], // lit by an answer: soft gold
   focus: [0.82, 0.23, 0.27, 1], // selected: Stanford cardinal (#D23A44), not neon
@@ -195,6 +203,9 @@ export class RetrospecsMap extends BaseScriptComponent {
   @input @hint("Extra lift of the focused building (map cm)") focusLiftCm: number = 1.2
   @input @hint("Height scale of every other building while focused. Smaller, not gone.") backgroundScale: number = 0.35
   @input @hint("Brightness of everything else while focused (additive display: lower = more see-through)") backgroundDim: number = 0.35
+  // New input (not saved in the scene yet, so this default applies over the saved Focus Scale / Background Scale).
+  @input @hint("ON: the map never moves on selection: the chosen building only changes colour (no growing, lifting or shrinking the rest), so footprints stay where the cursor expects them. OFF: grow / shrink as before.") stationaryFocus: boolean = true
+  @input @hint("Stationary focus: brightness of everything else (higher than Background Dim, so neighbours stay easy to aim at)") stationaryDim: number = 0.6
   @input @hint("Seconds to go into focus") focusInSec: number = 0.6
   @input @hint("Seconds to come back out") focusOutSec: number = 0.6
   @input @hint("Soft ring at the focused building's base") showFocusHalo: boolean = true
@@ -347,13 +358,12 @@ export class RetrospecsMap extends BaseScriptComponent {
     // Restore the previous one's body colour, label size and tag; the new one is painted every frame in onUpdate.
     if (prev) {
       this.setState(prev.id, prev.state)
-      if (prev.label) prev.label.getTransform().setLocalScale(vec3.one().uniformScale(this.labelScale))
-      if (prev.labelText) prev.labelText.textFill.color = new vec4(1, 1, 1, 1)
+      this.restLabel(prev)
     }
     const l = this.landmarks[next]
     if (l) {
       this.applyOutline(l)
-      if (l.label) l.label.getTransform().setLocalScale(vec3.one().uniformScale(this.labelScale * 1.5))
+      if (l.label) l.label.getTransform().setLocalScale(vec3.one().uniformScale(this.labelScale * labelScaleFor(l.id) * 1.4))
       if (l.labelText) l.labelText.textFill.color = new vec4(COLORS.hover[0], COLORS.hover[1], COLORS.hover[2], 1)
     }
   }
@@ -361,7 +371,22 @@ export class RetrospecsMap extends BaseScriptComponent {
   private outlineColor(l: LandmarkView, dim: number): number[] {
     if (l.id === this.hoverId && l.state !== "focus") return COLORS.hover
     if (l.state === "focus") return COLORS.focusEdge
-    return this.dimmed(COLORS.landmarkOutline, dim)
+    return this.dimmed(isCenterpiece(l.id) ? COLORS.featureOutline : COLORS.landmarkOutline, dim)
+  }
+
+  /** Body colour for a state: centerpieces glow warmer at rest ("dim" / "seen"). */
+  private bodyColor(id: string, state: LandmarkState): number[] {
+    if (isCenterpiece(id) && state === "dim") return COLORS.featureDim
+    if (isCenterpiece(id) && state === "seen") return COLORS.featureSeen
+    return COLORS[state]
+  }
+
+  private restLabel(l: LandmarkView) {
+    if (l.label) l.label.getTransform().setLocalScale(vec3.one().uniformScale(this.labelScale * labelScaleFor(l.id)))
+    if (l.labelText) {
+      const c = labelColorFor(l.id)
+      l.labelText.textFill.color = new vec4(c[0], c[1], c[2], 1)
+    }
   }
 
   private applyOutline(l: LandmarkView) {
@@ -386,7 +411,7 @@ export class RetrospecsMap extends BaseScriptComponent {
     if (offMap) {
       // Pinned marker is built below.
     } else if (model) {
-      const r = this.meshObject(this.root, "lm_" + id, model.body, COLORS.dim)
+      const r = this.meshObject(this.root, "lm_" + id, model.body, this.bodyColor(id, "dim"))
       obj = r.obj
       material = r.material
       if (model.accent && model.accent.idx.length) this.meshObject(r.obj, "lm_" + id + "_roof", model.accent, COLORS.landmarkRoof)
@@ -397,7 +422,7 @@ export class RetrospecsMap extends BaseScriptComponent {
       const b = BUILDINGS[baked.building]
       topCm = buildingHeightCm(b, opts)
       footprintCm = Math.max(0.8, footprintRadiusM(b[3], baked.east, baked.north) * this.cmPerM)
-      const r = this.meshObject(this.root, "lm_" + id, buildSingleBuilding(b, opts), COLORS.dim)
+      const r = this.meshObject(this.root, "lm_" + id, buildSingleBuilding(b, opts), this.bodyColor(id, "dim"))
       obj = r.obj
       material = r.material
       // A slightly wider outline than the background so landmarks stand out. Own object and material, so
@@ -411,14 +436,14 @@ export class RetrospecsMap extends BaseScriptComponent {
     } else if (baked) {
       // Point landmark (Memorial Church): a small glowing post.
       topCm = Math.max(2, baked.heightM * this.cmPerM * this.verticalExaggeration)
-      const r = this.meshObject(this.root, "lm_" + id, buildTube([{x: map.x, y: 0, z: map.z}, {x: map.x, y: topCm, z: map.z}], 1.2), COLORS.dim)
+      const r = this.meshObject(this.root, "lm_" + id, buildTube([{x: map.x, y: 0, z: map.z}, {x: map.x, y: topCm, z: map.z}], 1.2), this.bodyColor(id, "dim"))
       obj = r.obj
       material = r.material
     }
     const placed = map
     if (offMap) {
       // Pinned to the map edge in its true direction (placement computed above).
-      const m = this.meshObject(this.root, "lm_" + id, buildTube([{x: placed.x, y: 0, z: placed.z}, {x: placed.x, y: 5, z: placed.z}], 1.0), COLORS.dim)
+      const m = this.meshObject(this.root, "lm_" + id, buildTube([{x: placed.x, y: 0, z: placed.z}, {x: placed.x, y: 5, z: placed.z}], 1.0), this.bodyColor(id, "dim"))
       obj = m.obj
       material = m.material
       topCm = 5
@@ -433,7 +458,11 @@ export class RetrospecsMap extends BaseScriptComponent {
       obj.setParent(pivot)
       obj.getTransform().setLocalPosition(new vec3(-placed.x, 0, -placed.z))
     }
-    const label = this.makeLabel(this.root, card ? card.label : id, new vec3(placed.x, topCm + 2.5, placed.z))
+    const label = this.makeLabel(this.root, card ? card.label : id, new vec3(placed.x, topCm + 2.5, placed.z), labelScaleFor(id))
+    if (label.text) {
+      const c = labelColorFor(id)
+      label.text.textFill.color = new vec4(c[0], c[1], c[2], 1)
+    }
     const b = baked && baked.building >= 0 ? BUILDINGS[baked.building] : null
     const ringEN = b ? outerRingEN(b[3], b[4]) : []
     const poly = ringEN.length && !offMap ? ringEN.map((v) => ({x: (v.e - this.center.e) * this.cmPerM, z: -(v.n - this.center.n) * this.cmPerM})) : []
@@ -472,7 +501,7 @@ export class RetrospecsMap extends BaseScriptComponent {
     const l = this.landmarks[id]
     if (!l) return
     l.state = state
-    if (l.material) this.setColor(l.material, this.dimmed(COLORS[state], this.landmarkDim(l)))
+    if (l.material) this.setColor(l.material, this.dimmed(this.bodyColor(id, state), this.landmarkDim(l)))
     this.applyOutline(l)
   }
 
@@ -495,7 +524,7 @@ export class RetrospecsMap extends BaseScriptComponent {
   /** Focused building's footprint radius at full focus, map cm. Use it to keep extras off the grown building. */
   focusClearanceCm(id: string): number {
     const l = this.landmarks[id]
-    return l ? l.footprintCm * Math.max(1, this.tuning().focusScale) : 0
+    return l ? l.footprintCm * Math.max(1, this.tuning(id).focusScale) : 0
   }
 
   /**
@@ -507,7 +536,7 @@ export class RetrospecsMap extends BaseScriptComponent {
     if (!l || !this.root) return null
     const t = this.root.getTransform()
     const w = t.getWorldTransform()
-    const tune = this.tuning()
+    const tune = this.tuning(id)
     const top = l.topCm * tune.focusScale + tune.focusLiftCm
     return {
       base: w.multiplyPoint(new vec3(l.map.x, 0, l.map.z)),
@@ -516,9 +545,14 @@ export class RetrospecsMap extends BaseScriptComponent {
     }
   }
 
-  private tuning(): FocusTuning {
+  /** Focus tuning; with `id`, that building's own focus scale (FOCUS_SCALE_FOR: Main Quad grows much less). */
+  private tuning(id?: string): FocusTuning {
+    if (this.stationaryFocus) {
+      return {focusScale: 1, focusLiftCm: 0, backgroundScale: 1, backgroundDim: Math.max(0, Math.min(1, this.stationaryDim))}
+    }
+    const own = id && FOCUS_SCALE_FOR[id] > 0 ? FOCUS_SCALE_FOR[id] : this.focusScale
     return {
-      focusScale: Math.max(0.1, this.focusScale),
+      focusScale: Math.max(0.1, own),
       focusLiftCm: this.focusLiftCm,
       backgroundScale: Math.max(0.02, Math.min(1, this.backgroundScale)),
       backgroundDim: Math.max(0, Math.min(1, this.backgroundDim))
@@ -530,7 +564,7 @@ export class RetrospecsMap extends BaseScriptComponent {
   }
 
   private landmarkDim(l: LandmarkView): number {
-    return landmarkLook(easeInOut(this.bgT), easeInOut(l.focusT), this.tuning()).dim
+    return landmarkLook(easeInOut(this.bgT), easeInOut(l.focusT), this.tuning(l.id)).dim
   }
 
   private dimmed(rgba: number[], k: number): number[] {
@@ -558,20 +592,20 @@ export class RetrospecsMap extends BaseScriptComponent {
       l.focusT = stepBlend(l.focusT, target, dt, target > l.focusT ? this.focusInSec : this.focusOutSec)
       if (l.focusT !== target) moving = true
       const fb = easeInOut(l.focusT)
-      const look = landmarkLook(bg, fb, tune)
+      const look = landmarkLook(bg, fb, this.tuning(id))
       if (l.pivot) {
         const pt = l.pivot.getTransform()
         pt.setLocalScale(new vec3(look.scaleXZ, look.scaleY, look.scaleXZ))
         pt.setLocalPosition(new vec3(l.map.x, look.liftCm, l.map.z))
       }
       // The pulse in onUpdate owns the colour of a landmark in the "focus" state.
-      if (l.material && l.state !== "focus") this.setColor(l.material, this.dimmed(COLORS[l.state], look.dim))
+      if (l.material && l.state !== "focus") this.setColor(l.material, this.dimmed(this.bodyColor(id, l.state), look.dim))
       if (l.outlineMaterial) this.setColor(l.outlineMaterial, this.outlineColor(l, look.dim))
       if (l.label) {
         l.label.getTransform().setLocalPosition(new vec3(l.map.x, l.topCm * look.scaleY + look.liftCm + 2.5, l.map.z))
         // The info panel carries the focused building's name, so its small map label steps aside.
         l.label.enabled = fb < 0.5
-        if (l.labelText) this.setTextBrightness(l.labelText, look.dim)
+        if (l.labelText) this.setTextBrightness(l.labelText, look.dim, labelColorFor(id))
       }
       this.updateHalo(l, fb)
     }
@@ -592,14 +626,14 @@ export class RetrospecsMap extends BaseScriptComponent {
       l.halo.getTransform().setLocalPosition(new vec3(l.map.x, 0, l.map.z))
     }
     l.halo.enabled = true
-    const radius = (l.footprintCm * this.tuning().focusScale + 1.2) * Math.max(0.05, fb)
+    const radius = (l.footprintCm * this.tuning(l.id).focusScale + 1.2) * Math.max(0.05, fb)
     l.halo.getTransform().setLocalScale(new vec3(radius, 1, radius))
     if (l.haloMaterial) this.setColor(l.haloMaterial, this.dimmed(COLORS.focusEdge, 0.8 * fb))
   }
 
-  private setTextBrightness(t: Text, k: number) {
+  private setTextBrightness(t: Text, k: number, rgb: number[] = [1, 1, 1]) {
     try {
-      t.textFill.color = new vec4(k, k, k, 1)
+      t.textFill.color = new vec4(rgb[0] * k, rgb[1] * k, rgb[2] * k, 1)
     } catch (e) {
       // Text without a fill: leave as is.
     }
@@ -677,12 +711,14 @@ export class RetrospecsMap extends BaseScriptComponent {
    * Landmark under the cursor at a map-local point (cm): the one whose footprint the point falls in or nearest to,
    * with `slackCm` of grace beyond the footprint edge so small buildings are still easy to hit.
    */
-  pickUnderCursor(local: vec3, slackCm = 2): string | null {
+  pickUnderCursor(local: vec3, slackCm = 2, eyeLocal?: vec3): string | null {
+    if (eyeLocal) return pickAlongRay(eyeLocal, local, this.mapPickCandidates(), slackCm)
     return pickOnMap({x: local.x, z: local.z}, this.mapPickCandidates(), slackCm)
   }
 
-  /** Landmark at a map-local point (cm), within `maxCm` of its footprint. */
-  pickAtMapPoint(local: vec3, maxCm = 4): string | null {
+  /** Landmark at a map-local point (cm), within `maxCm` of its footprint; through the buildings' heights with `eyeLocal`. */
+  pickAtMapPoint(local: vec3, maxCm = 4, eyeLocal?: vec3): string | null {
+    if (eyeLocal) return pickAlongRay(eyeLocal, local, this.mapPickCandidates(), maxCm)
     return pickOnMap({x: local.x, z: local.z}, this.mapPickCandidates(), maxCm)
   }
 
@@ -690,13 +726,19 @@ export class RetrospecsMap extends BaseScriptComponent {
    * Footprints for picking. Real outlines, so a point on Hoover never lands on the Main Quad's big bounding circle.
    * Point landmarks and edge pins are small discs.
    */
-  private mapPickCandidates() {
+  private mapPickCandidates(): ColumnPickCandidate[] {
+    const bg = easeInOut(this.bgT)
     return Object.keys(this.landmarks).map((id) => {
       const l = this.landmarks[id]
       // The focused building grows about its base, so its outline grows with it (scaled, not a bounding circle).
-      const k = id === this.focusId ? Math.max(1, this.tuning().focusScale) : 1
+      const k = id === this.focusId ? Math.max(1, this.tuning(id).focusScale) : 1
       const poly = k === 1 ? l.poly : l.poly.map((v) => ({x: l.map.x + (v.x - l.map.x) * k, z: l.map.z + (v.z - l.map.z) * k}))
-      return {id, center: {x: l.map.x, z: l.map.z}, poly, radius: poly.length ? 0 : 1.5 * k}
+      // Hard-to-hit landmarks (Hoover's footprint is tiny next to the Quad) get a disc of PICK_PAD_M around them.
+      const pad = PICK_PAD_M[id] > 0 ? PICK_PAD_M[id] * this.cmPerM * k : 0
+      // Current height (grown when focused, shrunk while another building is), for picks along the ray.
+      const look = landmarkLook(bg, easeInOut(l.focusT), this.tuning(id))
+      const topCm = l.topCm * look.scaleY + look.liftCm
+      return {id, center: {x: l.map.x, z: l.map.z}, poly, radius: poly.length ? pad : Math.max(1.5 * k, pad), priority: isCenterpiece(id), topCm}
     })
   }
 
@@ -704,7 +746,7 @@ export class RetrospecsMap extends BaseScriptComponent {
   worldPickCandidates(): WorldPickCandidate[] {
     return Object.keys(this.landmarks).map((id) => {
       const l = this.landmarks[id]
-      return {id, en: l.en, ring: l.ringEN, radiusM: 8, heightM: l.heightM}
+      return {id, en: l.en, ring: l.ringEN, radiusM: 8, heightM: l.heightM, padM: PICK_PAD_M[id] || 0}
     })
   }
 
@@ -799,7 +841,7 @@ export class RetrospecsMap extends BaseScriptComponent {
       const look = hovered ? "hover" : l.state === "focus" ? "focus" : "plain"
       if (tag.text && tag.look !== look) {
         tag.look = look
-        const c = hovered ? COLORS.hover : l.state === "focus" ? COLORS.focusEdge : [1, 1, 1, 1]
+        const c = hovered ? COLORS.hover : l.state === "focus" ? COLORS.focusEdge : labelColorFor(id)
         tag.text.textFill.color = new vec4(c[0], c[1], c[2], 1)
         tag.text.text = (cardById(id) ? cardById(id).label : id) + (hovered ? "  · pinch" : "")
       }

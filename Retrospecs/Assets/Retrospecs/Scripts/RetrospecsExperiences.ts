@@ -50,6 +50,7 @@ export class RetrospecsExperiences extends BaseScriptComponent {
   @input @hint("Size (cm across) when show() gets scaleCm <= 0") defaultScaleCm: number = 40
   @input @hint("Label size multiplier (world, independent of experience scale)") labelScale: number = 0.25
   @input @hint("Pop-in time (s)") popSeconds: number = 0.4
+  @input @hint("Colour multiplier (0-1). Lower recedes on the additive display, so it stays in the background.") brightness: number = 0.6
 
   private root: SceneObject = null
   private exp: Experience = null
@@ -185,7 +186,8 @@ export class RetrospecsExperiences extends BaseScriptComponent {
       m = this.material.clone()
       const c = EXP_COLORS[group]
       try {
-        m.mainPass.baseColor = new vec4(c[0], c[1], c[2], c[3])
+        const b = Math.max(0, Math.min(1, this.brightness))
+        m.mainPass.baseColor = new vec4(c[0] * b, c[1] * b, c[2] * b, c[3])
       } catch (e) {
         // Material without a Base Color: leave as is.
       }

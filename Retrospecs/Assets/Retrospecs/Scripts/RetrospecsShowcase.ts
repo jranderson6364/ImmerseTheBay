@@ -69,6 +69,7 @@ export class RetrospecsShowcase extends BaseScriptComponent {
   @input @hint("Label size multiplier (world, independent of model scale)") labelScale: number = 0.25
   @input @hint("Leader line length beyond the part centre (world cm)") leaderCm: number = 9
   @input @hint("Leader line thickness (world cm)") leaderWidthCm: number = 0.18
+  @input @hint("Colour multiplier (0-1). Lower recedes on the additive display, so it stays in the background.") brightness: number = 0.6
 
   private root: SceneObject = null
   private spin: SceneObject = null
@@ -283,7 +284,8 @@ export class RetrospecsShowcase extends BaseScriptComponent {
       m = this.material.clone()
       const c = PRODUCT_COLORS[group]
       try {
-        m.mainPass.baseColor = new vec4(c[0], c[1], c[2], c[3])
+        const b = Math.max(0, Math.min(1, this.brightness))
+        m.mainPass.baseColor = new vec4(c[0] * b, c[1] * b, c[2] * b, c[3])
       } catch (e) {
         // Material without a Base Color: leave as is.
       }

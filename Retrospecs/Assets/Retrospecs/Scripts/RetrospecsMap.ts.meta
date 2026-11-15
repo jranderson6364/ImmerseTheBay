@@ -50,6 +50,8 @@
     showRoads: false
     showWorldTags: false
     sightlineLabelPerCm: false
+    stationaryDim: false
+    stationaryFocus: false
     useLandmarkModels: false
     verticalExaggeration: false
     wallInsetCm: false
@@ -94,6 +96,8 @@
       focusLiftCm: 1.200000
       backgroundScale: 0.350000
       backgroundDim: 0.350000
+      stationaryFocus: true
+      stationaryDim: 0.600000
       focusInSec: 0.600000
       focusOutSec: 0.600000
       showFocusHalo: true
@@ -133,6 +137,8 @@
     - '// @input float focusLiftCm = 1.2 {"hint":"Extra lift of the focused building (map cm)"}'
     - '// @input float backgroundScale = 0.35 {"hint":"Height scale of every other building while focused. Smaller, not gone."}'
     - '// @input float backgroundDim = 0.35 {"hint":"Brightness of everything else while focused (additive display: lower = more see-through)"}'
+    - '// @input bool stationaryFocus = true {"hint":"ON: the map never moves on selection: the chosen building only changes colour (no growing, lifting or shrinking the rest), so footprints stay where the cursor expects them. OFF: grow / shrink as before."}'
+    - '// @input float stationaryDim = 0.6 {"hint":"Stationary focus: brightness of everything else (higher than Background Dim, so neighbours stay easy to aim at)"}'
     - '// @input float focusInSec = 0.6 {"hint":"Seconds to go into focus"}'
     - '// @input float focusOutSec = 0.6 {"hint":"Seconds to come back out"}'
     - "// @input bool showFocusHalo = true {\"hint\":\"Soft ring at the focused building's base\"}"

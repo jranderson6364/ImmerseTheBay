@@ -12,6 +12,7 @@ Built on Snap's MIT-licensed [Depth Cache sample](https://github.com/specs-devs/
 | `Assets/Retrospecs/Core/Geo.ts` | Lat/long to local metres, bearings, wall-pinch calibration math. Pure TypeScript, unit-tested. |
 | `Assets/Retrospecs/Core/MapMesh.ts` | Footprints to MeshBuilder arrays (roofs and walls, chunks kept under 65k vertices), plus tubes and arcs. Unit-tested. |
 | `Assets/Retrospecs/Core/Cards.ts` | **The only facts the guide may speak**, each with a source URL. Edit facts here. |
+| `tools/render_story_decks.py` | Renders the four centerpiece decks plus one or two illustrated cards for every other selectable building, using the sourced facts in `Cards.ts`. Run `python Retrospecs/tools/render_story_decks.py` after editing them. |
 | `Assets/Retrospecs/Core/Guide.ts` | Gemini prompt and schema, the validator (drops invented buildings, facts and numbers), profile themes, fact picker, point-to-guess scoring. Unit-tested. |
 | `Assets/Retrospecs/Scripts/RetrospecsMap.ts` | Builds the map at runtime, plus highlights, labels, threads, arcs and sightline pillars. |
 | `Assets/Retrospecs/Core/AskLive.ts` | Ask further: grounded-answer prompt, reply parsing (Gemini grounding and OpenAI citations), speech cleanup, "from the web" labelling. Unit-tested. |
@@ -46,14 +47,15 @@ Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is th
 
    Each one is optional: if it isn't wired, the controller skips it. The Camera's **Far** clip must be 100000 so tags on distant real buildings render. `Scene.scene` already has this, but check the Inspector if Lens Studio still shows 1000. On the controller, turn `moneyOnMap` **off** outdoors so the pile is life-size; leave it on for the indoor table demo.
 
-6. **Preview check:** in the Preview panel, click once to calibrate, treating the camera's facing as the start-point direction. The floor map appears about 140 cm in front of the camera; look down to see it. Click again while looking at a building: it lights up and the logger shows `[Retrospecs] say: …`. Text-to-speech and Gemini need the gateway token.
+6. **Preview check:** in the Preview panel, click once to calibrate, treating the camera's facing as the start-point direction. The fixed floor map is about 2.3 m across, centred 106 cm ahead, so you stand near its back edge. Click again while looking at a building: it lights up and the logger shows `[Retrospecs] say: …`. Text-to-speech and Gemini need the gateway token.
 7. **Device:** pair the Specs and push the Lens. Logger lines start with `[Retrospecs]`.
 
 ## Controls
 
 | Input | What happens |
 | --- | --- |
-| **Calibrate** (first thing) | At the default start point, stand where the North-South and East-West walkways cross just east of Huang, face east between Physics and Moore, and pinch once. The pink arrow at “You are here” follows your facing direction. With `useStartPoint` off, use two wall pinches at the surveyed spot instead. |
+| **Indoor demo** (`indoorDemo` on the controller, default ON) | For judging indoors. No calibration: any pinch opens the map in front of you. A short coach then walks a first-timer through it, as a tip under the caption: (1) "Raise your right hand. Aim its ray at Hoover Tower, the gold one." Only Hoover can be selected in this step: other buildings don't turn blue, the tip names the building the cursor is on and steers back to Hoover, a wrong pinch gets a spoken nudge, and voice shortcuts and left pinch are off until Hoover is picked. When the cursor reaches Hoover it turns blue and the tip says "Pinch now!". (2) once the card opens, "Pinch the card for more · Next spot · X to close", (3) after one more action, "You've got it…", which fades after 8 s. Only the first two steps are spoken. Say "demo" or "show me how" to run it again. Turn it OFF when filming outdoors to get the start-point calibration below. |
+| **Calibrate** (first thing, `indoorDemo` off) | At the default start point, stand where the North-South and East-West walkways cross just east of Huang, face east between Physics and Moore, and pinch once. The pink arrow at “You are here” follows your facing direction. With `useStartPoint` off, use two wall pinches at the surveyed spot instead. |
 | **Right pinch** | Tells you about the building you're looking at: on the map if you look down, or the real direction if you look out. |
 | **Right pinch (short)** | If the fact has a product (Huang: graphics card or toy-block server; Gates: server; Spilker: GPS satellite; Packard/HP Garage: audio oscillator), an exploded model floats in front of you while it speaks. If the building has a sourced gift, a pile of $1 bills with a 1.75 m person for scale appears: on the map indoors, or life-size outdoors. |
 | **Right pinch (hold ≥ 0.6 s)** or say "what's that" | Outdoors: GPS plus Gemini identify the real building in view. It gets a nametag and roofline sweep: solid cyan when the camera confirms it, dashed amber when it's only a GPS estimate. Its fact is spoken and its gift pile stands beside it. |
@@ -62,18 +64,22 @@ Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is th
 | **Point and pinch** (in a quiz) | Stretch your arm toward the building, then pinch. You're scored in degrees, the true direction arcs out, and a new fact unlocks. |
 | **Both hands pinch and twist** | Nudges the map's rotation if it's misaligned. |
 | "lift" / "table" · "floor" | Map at table height in front of you · back on the floor. |
+| **Look down, hold both pinches** (only after walking away from the map) | Once you're at least 6 m from the map's centre and have walked 8 m from where it was placed, looking down (35° or more) shows "Pinch with both hands to bring it here". Hold both pinches for 0.8 s and the map is rebuilt around where you now stand (calibration spot plus how far you've walked), in front of you. The calibrated rotation, table/floor choice and size stay the same. While the hint shows, single pinches do nothing. It never appears at the table. Tune it in the "Bring the map here" group (`respawnEnabled` etc.). |
 | "I'm a … / I like …" | Sets your profile. "Your Stanford" lights up. |
 | "Which buildings are named after tech founders?" | AI answer (constellation of buildings). Falls back to a local answer if the network is down. |
 | "look it up" · "look up …" · "search …" · "what else …" · "dig deeper" | **Ask further.** A live web answer about the building in focus, from Gemini with Google Search grounding (OpenAI's web-search model is the fallback). It goes beyond the baked narration and the checked cards, and is told what you've already heard so it doesn't repeat. The answer goes on the focus card with its source domains. It's spoken with a "From what I found online" prefix, so it can't pass for a checked fact; if no search actually ran, it says "This isn't in my checked notes". Takes about 5–7 s. |
 | Any question about the building in focus that the cards don't cover | Falls through to ask further automatically (`askFurther` on the controller). For 45 s afterwards, follow-ups like "when was that?" stay on the web path. "tell me more" still plays the next narration segment. |
 | "something new" · "quiz me" · "recalibrate" · "reset tour" | As named. |
+| **Explore More** on the illustrated Huang or HP Garage card | Plays the next story segment for that stop. The complete card is a PNG, including its text and artwork. |
+| **X on the card** (point the ray at it and pinch) | Closes the card, stops the guide talking, and brings the whole map back. |
+| **Next Stop** beside the illustrated card · "next" · "next spot" · "somewhere else" · "skip" | Moves on to another stop without aiming: centerpieces first (Hoover, Huang, HP Garage, Memorial Church), then narrated or illustrated buildings, then the rest, nearest first within each group. Starts with that building's overview. |
 
 ### Map tuning (`RetrospecsMap` Inspector)
 
 | Input | Default | What it does |
 | --- | --- | --- |
 | `radiusM` | 700 | Real metres shown. Hoover (662 m) and Cantor (641 m) need at least ~670. Any landmark beyond it is pinned to the disc edge in its true direction. |
-| `scaleDenominator` | 600 | Map scale 1:N. 700 m at 1:600 is a disc about 2.3 m across. Change both together to keep the physical size (radius cm = `radiusM` × 100 / N). |
+| `scaleDenominator` | 600 | Map geometry scale 1:N. The fixed placement applies a 1× world scale, making the 700 m disc about 2.3 m across. |
 | `showOutlines` / `outlineWidthCm` | on / 0.2 | Bright pale-ice edge strip around every roof (and courtyard), with a short lip down the wall. Landmarks get a warm-white one 25% wider. 0.15–0.25 reads best. |
 | `showCornerLines` | on | Thin vertical lines at corners sharper than 45°. Turn off if the map looks busy. |
 | `wallInsetCm` | 0.04 | Pulls walls slightly inside the roof edge so the roof and outline overhang them. |
@@ -88,7 +94,7 @@ Paths come from `Data/PathsData.ts`, baked by `bun Retrospecs/tools/bake-paths.t
 ## Calibration at the venue (do this before the judges arrive)
 
 - **Default start point:** `useStartPoint` is on. Stand at the walkway intersection just east of Huang (`startLat` / `startLon` in `RetrospecsController`), face east along the East-West Axis between Physics and Moore, and pinch once. `startFacingDeg` is 104.8°. Mark the exact standing spot and verify the facing direction on site; these coordinates and direction have not yet been tested there.
-- **Check alignment:** the “You are here” pin should be at the intersection, and the map's East-West walkway should line up with the real one. Look toward Hoover Tower (about 93° from Huang) as a second directional check. Walk a few metres and confirm the map stays in place. If yaw is off, use the two-hand twist; if the origin is off, adjust the marked spot or `startLat` / `startLon` before the demo.
+- **Check alignment:** the “You are here” pin should be at the intersection, and the map's East-West walkway should line up with the real one. Look toward Hoover Tower (about 93° from Huang) as a second directional check. Walk a few metres and confirm the map stays in place. If alignment is off, adjust the marked spot or `startLat` / `startLon` before the demo.
 - **Wall fallback:** turn `useStartPoint` off to use two wall pinches at `surveyLat` / `surveyLon` (Huang by default). Set `facingHint` to the wall face you use. The wall directions are 15° / 105° / 195° / 285°.
 
 ## Device test checklist (do these first, in order)

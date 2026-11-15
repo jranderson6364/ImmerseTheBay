@@ -20,6 +20,35 @@ import {
   wallSlots, yawOf
 } from "../Core/Focus"
 import {MeshChunk} from "../Core/MapMesh"
+import {
+  CompactLayout, SPECTACLES, STORY_CARD, cmForDeg, compactCardSize, compactLayout, compactTextWidth, crossChunk, degForCm, inRect,
+  storyCardHits, storyCardScale
+} from "../Core/CardLayout"
+import {SIK} from "SpectaclesInteractionKit.lspkg/SIK"
+import {InteractorInputType} from "SpectaclesInteractionKit.lspkg/Core/Interactor/Interactor"
+import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
+import {storyCardTexture} from "./StoryDeck"
+import {storyHologram} from "./StoryHolograms"
+
+/** What the card's buttons do (the controller acts on it). */
+export type PanelButton = "close" | "next" | "more" | ""
+
+// Compact card text sizes (the scene's saved title/body sizes are for the old tall card).
+const COMPACT_SIZES = {title: 64, namesake: 44, body: 52, small: 38, button: 46}
+// Button colours: bright, so they read on the additive display; hovered = brighter and cyan-white.
+const BUTTON_COLORS = {
+  closeFill: [0.55, 0.12, 0.14, 1], closeFillHover: [0.95, 0.25, 0.28, 1],
+  closeMark: [1, 0.92, 0.9, 1], closeMarkHover: [1, 1, 1, 1],
+  nextFill: [0.36, 0.26, 0.1, 1], nextFillHover: [0.75, 0.55, 0.2, 1],
+  nextText: [1.0, 0.88, 0.62, 1], nextTextHover: [1, 1, 1, 1],
+  rim: [0.95, 0.82, 0.58, 1], rimHover: [0.7, 1.0, 1.0, 1]
+}
+
+interface ButtonView {
+  kind: "close" | "next" | "more"
+  hit: {x0: number; y0: number; x1: number; y1: number}
+  parts: {part: FadePart; base: number[]; hover: number[]}[]
+}
 
 // Additive display: black is see-through, brightness is opacity. A dim fill gives the screen a body; the bright frame,
 // accent bar and graphic carry the shape.
@@ -38,6 +67,45 @@ const PANEL_COLORS: Record<string, number[]> = {
   credit: [1.0, 0.82, 0.55, 1]
 }
 
+// World-space Text metrics per point of `size` (cm), measured on the 60 cm screen: line pitch and average character
+// width. Used to pick sizes and box heights in code instead of VerticalOverflow.Shrink in fixed boxes, which kept the
+// body text small and is the suspect for the title and namesake not showing.
+const LINE_CM_PER_PT = 0.032
+const CHAR_CM_PER_PT = 0.0112
+// Text drawn at size 100 didn't render at all in the preview (the title went missing); 72 did, 80 is untested. Every
+// panel text is capped here, so an Inspector value or the number graphic's 1.2x can't make text vanish.
+const MAX_TEXT_SIZE = 80
+
+function wrappedLines(s: string, charsPerLine: number): number {
+  let lines = 1
+  let len = 0
+  for (const word of s.split(/\s+/).filter((x) => !!x)) {
+    const add = len === 0 ? word.length : len + 1 + word.length
+    if (add <= charsPerLine || len === 0) {
+      len = add
+    } else {
+      lines++
+      len = word.length
+    }
+    while (len > charsPerLine) {
+      lines++
+      len -= charsPerLine
+    }
+  }
+  return lines
+}
+
+/** Largest size up to `size` whose wrapped lines fit `w` x `maxH` cm; with the line count and the height it takes. */
+function fitText(s: string, w: number, maxH: number, size: number): {size: number; lines: number; h: number} {
+  let sz = Math.min(size, MAX_TEXT_SIZE)
+  for (;;) {
+    const lines = wrappedLines(s, Math.max(1, Math.floor(w / (CHAR_CM_PER_PT * sz))))
+    const h = lines * LINE_CM_PER_PT * sz
+    if (h <= maxH || sz <= 12) return {size: sz, lines, h}
+    sz = Math.max(12, sz * 0.92)
+  }
+}
+
 interface FadePart {
   material?: Material
   text?: Text
@@ -52,6 +120,7 @@ interface ArtItem {
 /** Nazeli's Lens-ready art, loaded by path when the Inspector slots are empty (see Art/nazeli_samples/README.md). */
 let builtinArt: ArtItem[] = null
 let builtinMaterial: Material = null
+let builtinStoryMaterial: Material = null
 
 function tryAsset(load: () => Asset, label: string): Asset {
   try {
@@ -69,11 +138,17 @@ function loadBuiltinArt(): ArtItem[] {
   // Literal paths (relative to this script) so the asset references are visible to Lens Studio.
   const anim = tryAsset(() => requireAsset("../Art/hpgarage/hpgarage_nazeli_anim.mp4"), "hpgarage anim")
   const garage = tryAsset(() => requireAsset("../Art/hpgarage/hpgarage_nazeli_art.png"), "hpgarage art")
+  // Placeholder: this clip shows the HP characters, not Page and Brin. Swap in a redraw when it arrives.
+  const huangAnim = tryAsset(() => requireAsset("../Art/huang/huang_nazeli_anim.mp4"), "huang anim")
   const huang = tryAsset(() => requireAsset("../Art/huang/huang_nazeli_art.png"), "huang art")
   if (anim) builtinArt.push({id: "hpgarage", tex: anim as Texture})
   if (garage) builtinArt.push({id: "hpgarage", tex: garage as Texture})
+  if (huangAnim) builtinArt.push({id: "huang", tex: huangAnim as Texture})
   if (huang) builtinArt.push({id: "huang", tex: huang as Texture})
-  print(`[Retrospecs] art: built-in Nazeli art loaded: hpgarage anim ${!!anim}, hpgarage still ${!!garage}, huang ${!!huang}`)
+  print(
+    `[Retrospecs] art: built-in Nazeli art loaded: hpgarage anim ${!!anim}, hpgarage still ${!!garage}, ` +
+      `huang anim ${!!huangAnim}, huang still ${!!huang}`
+  )
   return builtinArt
 }
 
@@ -83,6 +158,13 @@ function loadBuiltinMaterial(): Material {
   builtinMaterial = m ? (m as Material) : null
   print(`[Retrospecs] art: built-in media material loaded: ${!!builtinMaterial}`)
   return builtinMaterial
+}
+
+function loadStoryMaterial(): Material {
+  if (builtinStoryMaterial) return builtinStoryMaterial
+  const m = tryAsset(() => requireAsset("../../Materials/StoryCardAlpha.mat"), "StoryCardAlpha.mat")
+  builtinStoryMaterial = m ? (m as Material) : null
+  return builtinStoryMaterial
 }
 
 @component
@@ -106,13 +188,18 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   @input @hint("Main screen centre below eye height (cm)") screenDropCm: number = 14
   @input @hint("Re-centre the screens when you turn this far away (degrees)") followAngleDeg: number = 40
   @input @hint("...or walk this far (cm)") followDistanceCm: number = 45
+  // New inputs (not saved in the scene yet, so these defaults apply even though the scene overrides the ones above).
+  @input @hint("Keep the screens fixed in the room where they appear (walk up to them). Off = lazy follow.") worldLocked: boolean = true
+  @input @hint("Multiplies Screen Distance: 1.85 puts the 130 cm screen about 2.4 m away") distanceScale: number = 1.85
+  @input @hint("Multiplies the screen's size (text and art grow with it) so it stays readable farther back") sizeScale: number = 1.5
   @input @hint("Seconds to fly out / back") appearSec: number = 0.6
   @input @hint("Fly out of the building (on) or fade in at the wall (off)") flyFromBuilding: boolean = true
 
-  @input @hint("Largest text sizes: text wraps, then shrinks only if it overflows its box") titleTextSize: number = 100
-  @input namesakeTextSize: number = 58
-  @input bodyTextSize: number = 50
-  @input smallTextSize: number = 40
+  // About 0.032 cm of line pitch per point: body 72 is a 2.3 cm line at the 130 cm screen distance. Capped at 80.
+  @input @hint("Largest text sizes (max 80: larger text didn't render). Text wraps and the card grows to fit.") titleTextSize: number = 80
+  @input namesakeTextSize: number = 64
+  @input bodyTextSize: number = 72
+  @input smallTextSize: number = 50
 
   // Artist media (Nazeli's illustrations and animation), shown as a large framed screen on top of the card.
   @input @hint("Show artist art screens. Turn off to compare with the plain card.") showMedia: boolean = true
@@ -132,6 +219,20 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   @input @hint("Raise the screen this much when it has art, so the art and the title share the central view (cm)") artLiftCm: number = 8
   @input @hint("Seconds per art piece when a building has several") artCycleSec: number = 8
 
+  // Compact card (new inputs, so the scene's saved values for the old tall card don't apply).
+  @input @hint("Short, wide card: art on the left, words on the right, X to close, Next spot button. Off = the old tall card.") compactCard: boolean = true
+  @input @hint("Compact card: degrees below eye level for its centre, so it sits between the horizon and the floor map") compactPitchDeg: number = 12
+  @input @hint("(Legacy, unused: see Card Distance)") compactDistanceScale: number = 1.45
+  @input @hint("(Legacy, unused: see Compact Width Deg)") compactWidthCm: number = 90
+
+  // Angular sizing (Snap's Spectacles positioning and sizing guide, see Core/CardLayout.ts SPECTACLES). These are new
+  // inputs, so the scene's saved values for the legacy ones above don't apply.
+  @input @hint("Compact and story cards: distance from the eyes (cm). Snap: far field is 60-160 cm, about 1 m is most comfortable for detail.") cardDistanceCm: number = 140
+  @input @hint("Compact card width (degrees). Snap's usable binocular width is about 27.") compactWidthDeg: number = 24
+  @input @hint("Compact card body line height (degrees). Sets the text size, and with it the card's scale.") compactBodyLineDeg: number = 0.76
+  @input @hint("Illustrated story card width (degrees, the whole texture including Next Stop)") storyCardWidthDeg: number = 20.3
+  @input @hint("Smallest button hit area (degrees). Snap: at least 2, about 3 is best.") minTargetDeg: number = 3
+
   private root: SceneObject = null
   private parts: FadePart[] = []
   private t = 0
@@ -139,6 +240,11 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   private anchor: vec3 = null
   private faceToward: vec3 = null
   private videos: VideoTextureProvider[] = []
+  private workbench: SceneObject = null
+  private imageCard = false
+  /** World scale and local width (cm) of the card being shown, set by each build. */
+  private cardScale = 1
+  private cardWidthLocal = 60
   private artObjs: SceneObject[] = []
   private artIndex = 0
   private artClock = 0
@@ -147,6 +253,10 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   private lift = 0
   /** Fly between the building and the wall (fresh show and hide); off when only the card content changes. */
   private fly = true
+  /** Compact card: buttons (card-local hit boxes), the card's ray target, and the button under the ray. */
+  private buttons: ButtonView[] = []
+  private hitTarget: Interactable = null
+  private hovered: PanelButton = ""
 
   onAwake() {
     this.createEvent("UpdateEvent").bind(() => this.onUpdate())
@@ -165,19 +275,73 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     return this.target > 0
   }
 
+  /** A room-locked, walk-up HP workbench beside the back corner of the map. */
+  placeWorkbench(mapRoot: SceneObject, camera: SceneObject, floorY: number, mapRadiusCm: number) {
+    if (this.workbench) this.workbench.destroy()
+    const tex = tryAsset(() => requireAsset("../Art/hpgarage/hpgarage_nazeli_anim.mp4"), "HP workbench video") as Texture
+    const mat = this.mediaMaterial || loadBuiltinMaterial()
+    if (!tex || !mat || !mapRoot || !camera) return
+    const center = mapRoot.getTransform().getWorldPosition()
+    const eye = camera.getTransform().getWorldPosition()
+    const toward = new vec3(eye.x - center.x, 0, eye.z - center.z).normalize()
+    const away = toward.uniformScale(-1)
+    const right = new vec3(away.z, 0, -away.x)
+    const pos = center.add(right.uniformScale(mapRadiusCm + 80)).add(away.uniformScale(mapRadiusCm * 0.3))
+    this.workbench = global.scene.createSceneObject("HP_workbench_walkup")
+    this.workbench.getTransform().setWorldPosition(new vec3(pos.x, floorY + 105, pos.z))
+    this.workbench.getTransform().setWorldRotation(quat.angleAxis(Math.atan2(eye.x - pos.x, eye.z - pos.z), vec3.up()))
+    const visual = this.meshObject(this.workbench, quadsChunk([{x0: -155, y0: -90, x1: 155, y1: 90}], 0))
+    const screen = mat.clone()
+    screen.mainPass.baseTex = tex
+    screen.mainPass.twoSided = true
+    visual.mainMaterial = screen
+    try {
+      const video = tex.control as VideoTextureProvider
+      video.volume = 0
+      const play = () => {
+        try {
+          if (video.status === VideoStatus.Playing) return
+          video.play(-1)
+        } catch (e) {
+          print("[Retrospecs] HP workbench video play failed: " + e)
+        }
+      }
+      if (video.status === VideoStatus.Preparing) video.onPlaybackReady.add(play)
+      else play()
+    } catch (e) {
+      print("[Retrospecs] HP workbench video start failed: " + e)
+    }
+    print("[Retrospecs] HP workbench: 310 x 180 cm, beside map back corner")
+  }
+
+  showWorkbench(visible: boolean) {
+    if (this.workbench) this.workbench.enabled = visible
+  }
+
   /** Builds the screen for `card` / `fact` (fact may be null: name and namesake only) and flies it out. */
-  show(card: Card, fact: Fact | null, anchorWorld: vec3, faceToward?: vec3, sourceLine?: string) {
+  show(card: Card, fact: Fact | null, anchorWorld: vec3, faceToward?: vec3, sourceLine?: string, storyIndex = 0) {
     if (!card || !this.material) return
     const wasShowing = !!this.root && this.target > 0
     this.clear()
+    const storyTexture = sourceLine ? null : storyCardTexture(card.id, storyIndex)
+    this.imageCard = !!storyTexture
     this.publishConfig()
     this.anchor = anchorWorld
     this.faceToward = faceToward || null
     this.root = global.scene.createSceneObject("RetrospecsInfoPanel")
-    this.build(card, fact, sourceLine)
-    TV_WALL.mainWidthCm = this.screenWidthCm
+    if (storyTexture) this.buildImageCard(storyTexture, card.id, storyIndex)
+    else if (this.compactCard) this.buildCompact(card, fact, sourceLine)
+    else {
+      this.cardScale = this.sizeScale > 0 ? this.sizeScale : 1
+      this.cardWidthLocal = this.screenWidthCm
+      this.build(card, fact, sourceLine)
+    }
+    const s = this.size()
+    TV_WALL.mainWidthCm = this.cardWidthLocal * s
+    const D = TV_WALL.distanceCm
+    print(`[Retrospecs] card: ${(this.cardWidthLocal * s).toFixed(1)} x ${(this.blockHeight * s).toFixed(1)} cm at ${D.toFixed(0)} cm = ${degForCm(this.cardWidthLocal * s, D).toFixed(1)} x ${degForCm(this.blockHeight * s, D).toFixed(1)} deg`)
     // The block is lifted by `lift` inside the root: publish the height that puts its bottom edge where it really is.
-    TV_WALL.mainHeightCm = Math.max(10, this.blockHeight - 2 * this.lift)
+    TV_WALL.mainHeightCm = Math.max(10, this.blockHeight - 2 * this.lift) * s
     // Place the wall in front of the wearer the first time; moving focus between buildings keeps it where it is.
     if (!sharedWall.active) {
       const eye = this.eye()
@@ -205,11 +369,19 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   // -------------------------------------------------------------------------
   // Wall placement
 
+  private size(): number {
+    return this.cardScale > 0 ? this.cardScale : 1
+  }
+
   private publishConfig() {
-    TV_WALL.distanceCm = Math.max(60, this.screenDistanceCm)
-    TV_WALL.dropCm = this.screenDropCm
-    TV_WALL.followDeg = this.followAngleDeg
-    TV_WALL.followCm = this.followDistanceCm
+    const angular = this.compactCard || this.imageCard
+    const d = angular ? 1 : this.distanceScale > 0 ? this.distanceScale : 1
+    TV_WALL.distanceCm = angular ? Math.max(SPECTACLES.farFieldMinCm, this.cardDistanceCm) : Math.max(60, this.screenDistanceCm * d)
+    // Compact: a fixed angle below eye level (between the horizon and the floor map). Old card: same angle as before.
+    TV_WALL.dropCm = this.compactCard || this.imageCard ? TV_WALL.distanceCm * Math.tan((Math.max(0, this.compactPitchDeg) * Math.PI) / 180) : this.screenDropCm * d
+    // World-locked: the wall never re-centres, so the screens stay put and grow as you walk up to them.
+    TV_WALL.followDeg = this.worldLocked ? 1e6 : this.followAngleDeg
+    TV_WALL.followCm = this.worldLocked ? 1e9 : this.followDistanceCm
   }
 
   private eye(): vec3 {
@@ -241,7 +413,262 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       return
     }
     this.cycleArt(dt)
+    this.updateButtons()
     this.apply(dt)
+  }
+
+  // -------------------------------------------------------------------------
+  // Buttons (compact card)
+
+  /**
+   * The card button under the right-hand ray (or the Preview mouse), "" if none. The whole card is one ray target;
+   * the hit point is mapped into card cm and tested against each button's (generous) hit box.
+   */
+  buttonUnderRay(): PanelButton {
+    if (!this.root || !this.hitTarget || this.target <= 0 || !this.buttons.length) return ""
+    let interactors
+    try {
+      interactors = SIK.InteractionManager.getTargetingInteractors()
+    } catch (e) {
+      return ""
+    }
+    const inv = this.root.getTransform().getInvertedWorldTransform()
+    for (const it of interactors) {
+      if (!(it.inputType & (InteractorInputType.RightHand | InteractorInputType.Mouse))) continue
+      const info = it.targetHitInfo
+      if (!info || info.interactable !== this.hitTarget || !info.hit) continue
+      const p = inv.multiplyPoint(info.hit.position)
+      for (const b of this.buttons) if (inRect(b.hit, p.x, p.y)) return b.kind
+    }
+    return ""
+  }
+
+  /** True while the ray is anywhere on the card (a pinch there must not select a building behind it). */
+  rayOnCard(): boolean {
+    if (!this.root || !this.hitTarget || this.target <= 0) return false
+    try {
+      for (const it of SIK.InteractionManager.getTargetingInteractors()) {
+        if (!(it.inputType & (InteractorInputType.RightHand | InteractorInputType.Mouse))) continue
+        const info = it.targetHitInfo
+        if (info && info.interactable === this.hitTarget) return true
+      }
+    } catch (e) {
+      // SIK not ready.
+    }
+    return false
+  }
+
+  private updateButtons() {
+    if (!this.buttons.length) return
+    const h = this.buttonUnderRay()
+    if (h === this.hovered) return
+    this.hovered = h
+    for (const b of this.buttons) for (const p of b.parts) p.part.rgba = b.kind === h ? p.hover : p.base
+  }
+
+  /** One thin box collider over the card with an SIK Interactable (indirect), so the ray cursor lands on it. */
+  private makeHitTarget(r: Rect2) {
+    try {
+      const o = global.scene.createSceneObject("panel_ray_target")
+      o.setParent(this.root)
+      o.getTransform().setLocalPosition(new vec3((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, 0.2))
+      const collider = o.createComponent("Physics.ColliderComponent") as ColliderComponent
+      collider.fitVisual = false
+      const box = Shape.createBoxShape()
+      box.size = new vec3(Math.abs(r.x1 - r.x0), Math.abs(r.y1 - r.y0), 1)
+      collider.shape = box
+      // Collider before Interactable: SIK collects the colliders when the Interactable registers.
+      const it = o.createComponent(Interactable.getTypeName()) as Interactable
+      it.targetingMode = 2 // TargetingMode.Indirect
+      this.hitTarget = it
+    } catch (e) {
+      print("[Retrospecs] card buttons: ray target unavailable: " + e)
+    }
+  }
+
+  /** Adds a part and remembers it for hover recolouring. */
+  private buttonPart(b: ButtonView, before: number, base: number[], hover: number[]) {
+    for (let i = before; i < this.parts.length; i++) b.parts.push({part: this.parts[i], base, hover})
+  }
+
+  private buildImageCard(tex: Texture, cardId: string, storyIndex: number) {
+    const mat = loadStoryMaterial()
+    if (!mat) return
+    // The 1200 x 1280 texture maps to a 67.5 x 72 cm panel (local), scaled so it spans storyCardWidthDeg. The portrait
+    // card is on the left; the separate Next Stop button occupies the texture's right-hand extension.
+    const D = TV_WALL.distanceCm
+    this.cardScale = storyCardScale(this.storyCardWidthDeg > 0 ? this.storyCardWidthDeg : 20.3, D)
+    this.cardWidthLocal = STORY_CARD.widthCm
+    const hw = STORY_CARD.widthCm / 2, hh = STORY_CARD.heightCm / 2
+    const rect = {x0: -hw, y0: -hh, x1: hw, y1: hh}
+    const visual = this.meshObject(this.root, quadsChunk([rect], 0))
+    const material = mat.clone()
+    material.mainPass.baseTex = tex
+    material.mainPass.twoSided = true
+    visual.mainMaterial = material
+    if (storyIndex === 0 && cardId !== "hpgarage") {
+      const video = storyHologram(cardId)
+      const videoMat = this.mediaMaterial || loadBuiltinMaterial()
+      if (video && videoMat) {
+        // Sits wholly inside the illustration region of the baked story card.
+        const r = {x0: -27, y0: -0.2, x1: 12.4, y1: 21.9}
+        const movie = this.meshObject(this.root, quadsChunk([r], 0.08))
+        const m = videoMat.clone()
+        m.mainPass.baseTex = video
+        m.mainPass.twoSided = true
+        movie.mainMaterial = m
+        this.startVideo(video, cardId)
+      }
+    }
+    // Hit areas grown to at least minTargetDeg (the drawn buttons in the art are smaller; Snap counts the collider).
+    const hits = storyCardHits(cmForDeg(Math.max(SPECTACLES.minTargetDeg, this.minTargetDeg), D) / this.cardScale)
+    this.buttons = [
+      {kind: "close", hit: hits.close, parts: []},
+      {kind: "more", hit: hits.more, parts: []},
+      {kind: "next", hit: hits.next, parts: []}
+    ]
+    this.blockHeight = STORY_CARD.heightCm
+    this.lift = 0
+    this.makeHitTarget({x0: rect.x0 - 3, y0: rect.y0 - 3, x1: rect.x1 + 3, y1: rect.y1 + 3})
+    print("[Retrospecs] complete illustrated story card ready")
+  }
+
+  /**
+   * The compact card: a short, wide screen. Art column on the left (Nazeli's art, when the building has it), title
+   * with a big X close button, the namesake on one line, the spoken fact, and a "Next spot" button. Every word is
+   * Card / Fact text, the caller's source line, or a button label.
+   */
+  private buildCompact(card: Card, fact: Fact | null, sourceLine?: string) {
+    // Sized by angle: the body line sets the scale (text reads the same at any distance), the width the rest.
+    const size = compactCardSize(
+      this.compactWidthDeg > 0 ? this.compactWidthDeg : 24,
+      this.compactBodyLineDeg > 0 ? this.compactBodyLineDeg : 0.76,
+      TV_WALL.distanceCm,
+      LINE_CM_PER_PT * COMPACT_SIZES.body
+    )
+    const W = Math.max(40, size.width)
+    this.cardScale = size.scale
+    this.cardWidthLocal = W
+    const art = this.artFor(card.id)
+    const aspect = art.length ? this.artBox(art).w / Math.max(0.01, this.artBox(art).h) : 0
+    const textW = compactTextWidth(W, art.length > 0)
+    const titleW = textW - 9 // keep the title clear of the close button
+    const S = COMPACT_SIZES
+    const title = fitText(card.name, titleW, LINE_CM_PER_PT * S.title * 2.05, S.title)
+    const namesake = card.namesake ? fitText(card.namesake, textW, LINE_CM_PER_PT * S.namesake * 1.05, S.namesake) : null
+    const body = fact ? fitText(fact.text, textW, 15, S.body) : null
+    const source = sourceLine ? fitText(sourceLine, textW, 4, S.small) : null
+    const L: CompactLayout = compactLayout({
+      width: W,
+      titleH: title.h * 1.08,
+      namesakeH: namesake ? namesake.h * 1.08 : 0,
+      bodyH: body ? body.h * 1.08 : 0,
+      sourceH: source ? source.h * 1.08 : 0,
+      artAspect: aspect
+    })
+    this.blockHeight = L.card.y1 - L.card.y0
+    this.lift = 0
+    this.quads("fill", [L.card], PANEL_COLORS.fill, -0.05)
+    this.quads("frame", frameRects(L.card, 0.3), PANEL_COLORS.frame, 0)
+    this.quads("accent", [L.accent], PANEL_COLORS.accent, 0.01)
+
+    const tx = (L.text.x0 + L.text.x1) / 2
+    const titleH = title.h * 1.08
+    this.text("title", card.name, L.text.x0 + titleW / 2, L.titleTop - titleH / 2, titleW, titleH, title.size, PANEL_COLORS.title, HorizontalAlignment.Left)
+    if (namesake) {
+      const h = namesake.h * 1.08
+      this.text("namesake", card.namesake, tx, L.namesakeTop - h / 2, textW, h, namesake.size, PANEL_COLORS.namesake, HorizontalAlignment.Left)
+    }
+    if (body) {
+      const h = body.h * 1.08
+      this.text("fact", fact.text, tx, L.bodyTop - h / 2, textW, h, body.size, PANEL_COLORS.body, HorizontalAlignment.Left)
+    }
+    if (source) {
+      const h = source.h * 1.08
+      this.text("source", sourceLine, tx, L.sourceTop - h / 2, textW, h, source.size, PANEL_COLORS.caption, HorizontalAlignment.Left)
+    }
+
+    // Close: a solid red-ish square with a bold white X and a bright rim. Big hit box.
+    const close: ButtonView = {kind: "close", hit: L.closeHit, parts: []}
+    let n = this.parts.length
+    this.quads("close_fill", [L.close], BUTTON_COLORS.closeFill, 0.03)
+    this.buttonPart(close, n, BUTTON_COLORS.closeFill, BUTTON_COLORS.closeFillHover)
+    n = this.parts.length
+    this.quads("close_rim", frameRects(L.close, 0.35), BUTTON_COLORS.rim, 0.04)
+    this.buttonPart(close, n, BUTTON_COLORS.rim, BUTTON_COLORS.rimHover)
+    n = this.parts.length
+    this.chunkPart("close_x", crossChunk(L.close, 1.1, 0.05), BUTTON_COLORS.closeMark)
+    this.buttonPart(close, n, BUTTON_COLORS.closeMark, BUTTON_COLORS.closeMarkHover)
+
+    // Next spot: an amber pill with its label.
+    const next: ButtonView = {kind: "next", hit: L.nextHit, parts: []}
+    n = this.parts.length
+    this.quads("next_fill", [L.next], BUTTON_COLORS.nextFill, 0.03)
+    this.buttonPart(next, n, BUTTON_COLORS.nextFill, BUTTON_COLORS.nextFillHover)
+    n = this.parts.length
+    this.quads("next_rim", frameRects(L.next, 0.3), BUTTON_COLORS.rim, 0.04)
+    this.buttonPart(next, n, BUTTON_COLORS.rim, BUTTON_COLORS.rimHover)
+    n = this.parts.length
+    const nw = L.next.x1 - L.next.x0, nh = L.next.y1 - L.next.y0
+    this.text("next_label", "Next spot  >", (L.next.x0 + L.next.x1) / 2, (L.next.y0 + L.next.y1) / 2, nw - 1, nh * 0.7, S.button, BUTTON_COLORS.nextText, HorizontalAlignment.Center)
+    this.buttonPart(next, n, BUTTON_COLORS.nextText, BUTTON_COLORS.nextTextHover)
+    this.buttons = [close, next]
+    this.hovered = ""
+
+    if (L.art && L.artBox) this.buildCompactArt(art, L)
+    // Ray target over the whole card, plus the hit boxes' overhang past the edge.
+    this.makeHitTarget({x0: L.card.x0 - 3, y0: L.card.y0 - 3, x1: L.card.x1 + 3, y1: L.card.y1 + 3})
+  }
+
+  /** Art column of the compact card: one piece at a time (cycling), framed, with the credit under it. */
+  private buildCompactArt(art: ArtItem[], L: CompactLayout) {
+    const mat = this.mediaMaterial || loadBuiltinMaterial()
+    if (!mat) {
+      print("[Retrospecs] art: no media material (wire Media Material = Materials/CaptureTexture.mat)")
+      return
+    }
+    const box = L.artBox
+    this.quads("art_fill", [box], PANEL_COLORS.artFill, -0.04)
+    this.quads("art_frame", frameRects(box, 0.3), PANEL_COLORS.frame, 0)
+    const bw = box.x1 - box.x0 - 1.2, bh = box.y1 - box.y0 - 1.2
+    const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2
+    art.forEach((a, i) => {
+      const r = fitMedia(this.aspectOf(a.tex), bw, bh)
+      const holder = global.scene.createSceneObject("panel_art_" + i)
+      holder.setParent(this.root)
+      const o = global.scene.createSceneObject("panel_art_media_" + i)
+      o.setParent(holder)
+      const visual = this.meshObject(o, quadsChunk([{x0: cx - r.w / 2, y0: cy - r.h / 2, x1: cx + r.w / 2, y1: cy + r.h / 2}], 0.02))
+      const m = mat.clone()
+      try {
+        m.mainPass.baseTex = a.tex
+        m.mainPass.twoSided = true
+      } catch (e) {
+        print("[Retrospecs] art: media material has no baseTex: " + e)
+      }
+      visual.mainMaterial = m
+      this.startVideo(a.tex, a.id)
+      holder.enabled = i === 0
+      this.artObjs.push(holder)
+    })
+    this.artIndex = 0
+    this.artClock = 0
+    if (L.credit) {
+      const c = L.credit
+      this.text("credit", ARTIST_CREDIT, (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, c.x1 - c.x0, c.y1 - c.y0, COMPACT_SIZES.small, PANEL_COLORS.credit, HorizontalAlignment.Center)
+    }
+    print(`[Retrospecs] art (compact card): ${art.length} piece(s) in a ${(box.x1 - box.x0).toFixed(1)} x ${(box.y1 - box.y0).toFixed(1)} cm column`)
+  }
+
+  /** A fading mesh part from a ready-made chunk (the X). */
+  private chunkPart(name: string, chunk: MeshChunk, rgba: number[]) {
+    if (!chunk.idx.length) return
+    const o = global.scene.createSceneObject("panel_" + name)
+    o.setParent(this.root)
+    const visual = this.meshObject(o, chunk)
+    const m = this.material.clone()
+    visual.mainMaterial = m
+    this.parts.push({material: m, rgba})
   }
 
   /** Position, facing, scale and fade for the current blend. */
@@ -258,7 +685,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     const centre = vec3.lerp(from, goal, k)
     const tr = this.root.getTransform()
     tr.setWorldPosition(centre)
-    tr.setWorldScale(vec3.one().uniformScale(0.12 + 0.88 * k))
+    tr.setWorldScale(vec3.one().uniformScale(this.size() * (0.12 + 0.88 * k)))
     // Face the wall's eye point (not the live head), so the screen holds still like a TV.
     const o = sharedWall.origin
     const d = new vec3(o.x - centre.x, o.y - centre.y, o.z - centre.z)
@@ -291,15 +718,18 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     const pad = 3.2
     const inner = W - pad * 2
     const accentH = 1.0
-    const titleH = 6.6
-    const namesakeH = card.namesake ? 4.4 : 0
+    // Heights follow the wrapped text: title and namesake up to two lines each, the fact up to about 22 cm.
+    const title = fitText(card.name, inner, LINE_CM_PER_PT * this.titleTextSize * 2.05, this.titleTextSize)
+    const namesake = card.namesake ? fitText(card.namesake, inner, LINE_CM_PER_PT * this.namesakeTextSize * 2.05, this.namesakeTextSize) : null
+    const body = fact ? fitText(fact.text, inner, 22, this.bodyTextSize) : null
+    const titleH = title.h * 1.08
+    const namesakeH = namesake ? namesake.h * 1.08 : 0
     const art = this.artFor(card.id)
     // On the art buildings her art screen takes the graphic's place, which keeps the screen inside the view.
     const g = sourceLine || art.length ? null : panelGraphic(fact)
-    const factLen = fact ? fact.text.length : 0
-    const bodyH = fact ? (factLen > 260 ? 19 : factLen > 160 ? 16 : 13) : 0
+    const bodyH = body ? body.h * 1.08 : 0
     const graphicH = g ? 10 : 0
-    const sourceH = sourceLine ? 3.2 : 0
+    const sourceH = sourceLine ? fitText(sourceLine, inner, 6, this.smallTextSize).h * 1.08 : 0
 
     let cardH = accentH + 2.2 + titleH + 0.6 + namesakeH + 2.4
     if (fact) cardH += bodyH + 1.2
@@ -320,10 +750,10 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     this.quads("accent", [{x0, y0: y1 - accentH, x1, y1}], PANEL_COLORS.accent, 0.01)
 
     let y = y1 - accentH - 2.2
-    this.text("title", card.name, 0, y - titleH / 2, inner, titleH, this.titleTextSize, PANEL_COLORS.title, HorizontalAlignment.Left)
+    this.text("title", card.name, 0, y - titleH / 2, inner, titleH, title.size, PANEL_COLORS.title, HorizontalAlignment.Left)
     y -= titleH + 0.6
     if (card.namesake) {
-      this.text("namesake", card.namesake, 0, y - namesakeH / 2, inner, namesakeH, this.namesakeTextSize, PANEL_COLORS.namesake, HorizontalAlignment.Left)
+      this.text("namesake", card.namesake, 0, y - namesakeH / 2, inner, namesakeH, namesake.size, PANEL_COLORS.namesake, HorizontalAlignment.Left)
       y -= namesakeH
     }
     y -= 1.0
@@ -332,7 +762,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     this.quads("divider_lead", [{x0: x0 + pad, y0: y - 0.2, x1: x0 + pad + 7, y1: y + 0.2}], PANEL_COLORS.accent, 0.02)
     y -= 1.4
     if (fact) {
-      this.text("fact", fact.text, 0, y - bodyH / 2, inner, bodyH, this.bodyTextSize, PANEL_COLORS.body, HorizontalAlignment.Left, VerticalAlignment.Top)
+      this.text("fact", fact.text, 0, y - bodyH / 2, inner, bodyH, body.size, PANEL_COLORS.body, HorizontalAlignment.Left)
       y -= bodyH + 1.2
     }
     if (g) {
@@ -352,9 +782,30 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       [this.media3Id, this.media3Texture], [this.media4Id, this.media4Texture]
     ]
     const wired = slots.filter(([id, tex]) => id === cardId && !!tex).map(([id, tex]) => ({id, tex}))
-    if (wired.length) return wired
-    if (cardId !== "huang" && cardId !== "hpgarage") return []
-    return loadBuiltinArt().filter((a) => a.id === cardId)
+    if (cardId !== "huang" && cardId !== "hpgarage") return wired
+    // Wired slots first, then any built-in piece they don't already cover. (The scene's Huang slot holds only the
+    // still, which used to hide the Huang animation.)
+    const nameOf = (t: Texture) => {
+      try {
+        return t.name || ""
+      } catch (e) {
+        return ""
+      }
+    }
+    const have = wired.map((a) => nameOf(a.tex)).filter((s) => !!s)
+    const extra = loadBuiltinArt().filter((a) => a.id === cardId && have.indexOf(nameOf(a.tex)) < 0)
+    // Keep the emailed illustration visible with the words. The HP animation has its own life-size scene.
+    // Huang's current animation depicts the HP founders, so do not show it as Page and Brin.
+    return wired.concat(extra).filter((a) => !this.isVideo(a.tex))
+  }
+
+  private isVideo(tex: Texture): boolean {
+    try {
+      const c = tex.control as any
+      return !!c && typeof c.play === "function"
+    } catch (e) {
+      return false
+    }
   }
 
   private aspectOf(tex: Texture): number {
@@ -362,9 +813,10 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       const w = tex.getWidth(), h = tex.getHeight()
       if (w > 0 && h > 0) return w / h
     } catch (e) {
-      // A video before its first frame cannot report its size: 16:9 (the HP animation is 640 x 360).
+      // A video before its first frame cannot report its size. Both Nazeli animations are 640 x 368 (360 padded with
+      // 4 px of black top and bottom: Spectacles wants both sides a multiple of 16; black is see-through).
     }
-    return 16 / 9
+    return 640 / 368
   }
 
   /** Art area height (the tallest piece at its fitted size). */
@@ -411,21 +863,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
         print("[Retrospecs] art: media material has no baseTex: " + e)
       }
       visual.mainMaterial = m
-      // Video textures: loop, muted, from the start each time the card opens.
-      try {
-        const vp = a.tex.control as VideoTextureProvider
-        if (vp && typeof (vp as any).play === "function") {
-          try {
-            vp.volume = 0
-          } catch (e) {
-            // No volume control: the Lens copy has no audio track anyway.
-          }
-          vp.play(-1)
-          this.videos.push(vp)
-        }
-      } catch (e) {
-        // Still image.
-      }
+      this.startVideo(a.tex, a.id)
       holder.enabled = i === 0
       this.artObjs.push(holder)
     })
@@ -433,6 +871,63 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     this.artClock = 0
     this.text("credit", ARTIST_CREDIT, 0, bottomY - 1.6 - 0.1, this.artMaxWidthCm, 3.0, this.smallTextSize, PANEL_COLORS.credit, HorizontalAlignment.Center)
     print(`[Retrospecs] art screen: ${art.length} piece(s), ${box.w.toFixed(1)} x ${box.h.toFixed(1)} cm, credit "${ARTIST_CREDIT}"`)
+  }
+
+  /**
+   * Loops a video texture (muted). The asset has Auto Play on, so it may already be playing (play() then throws, which
+   * used to drop the video silently), or still preparing (play() before it's ready does nothing on device). Restart
+   * when stopped, wait for onPlaybackReady while preparing, and log the state so a device run shows what happened.
+   */
+  private startVideo(tex: Texture, id: string) {
+    let vp: VideoTextureProvider = null
+    try {
+      const c = tex.control as any
+      if (c && typeof c.play === "function" && "status" in c) vp = c as VideoTextureProvider
+    } catch (e) {
+      return
+    }
+    if (!vp) return
+    try {
+      vp.volume = 0
+    } catch (e) {
+      // No volume control: the clips have no audio track anyway.
+    }
+    const playNow = (why: string) => {
+      try {
+        if (vp.status === VideoStatus.Playing) vp.stop()
+      } catch (e) {
+        // Not playing.
+      }
+      try {
+        vp.play(-1)
+        print(`[Retrospecs] art video ${id}: playing (${why})`)
+      } catch (e) {
+        print(`[Retrospecs] art video ${id}: play failed (${why}): ${e}`)
+      }
+    }
+    let status = -1
+    try {
+      status = vp.status
+    } catch (e) {
+      // Unknown.
+    }
+    print(`[Retrospecs] art video ${id}: status ${status} (Playing=${VideoStatus.Playing}, Preparing=${VideoStatus.Preparing})`)
+    if (status === VideoStatus.Preparing) {
+      // Once only: play() fires onPlaybackReady again, which used to restart the clip every few frames (frozen look).
+      let started = false
+      try {
+        vp.onPlaybackReady.add(() => {
+          if (started) return
+          started = true
+          playNow("ready")
+        })
+      } catch (e) {
+        playNow("no ready event")
+      }
+    } else {
+      playNow("status " + status)
+    }
+    this.videos.push(vp)
   }
 
   private cycleArt(dt: number) {
@@ -499,7 +994,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
 
   private text(
     name: string, s: string, cx: number, cy: number, w: number, h: number, size: number, rgba: number[],
-    align: HorizontalAlignment, valign: VerticalAlignment = VerticalAlignment.Center
+    align: HorizontalAlignment
   ) {
     const o = global.scene.createSceneObject("panel_text_" + name)
     o.setParent(this.root)
@@ -508,13 +1003,16 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       const t = o.createComponent("Component.Text") as Text
       if (this.font) t.font = this.font
       t.text = s
-      t.size = Math.max(4, Math.round(size))
+      // Size picked here to fit the box (no Shrink, which dropped lines); top-aligned in a box as tall as the lines,
+      // centred on the slot, so short labels still sit in the middle of their space.
+      const fit = fitText(s, w, h, size)
+      const bh = Math.min(h, fit.h * 1.08)
+      t.size = Math.max(4, Math.round(fit.size))
       t.horizontalAlignment = align
-      t.verticalAlignment = valign
-      t.worldSpaceRect = Rect.create(-w / 2, w / 2, -h / 2, h / 2)
+      t.verticalAlignment = VerticalAlignment.Top
+      t.worldSpaceRect = Rect.create(-w / 2, w / 2, -bh / 2, bh / 2)
       t.horizontalOverflow = HorizontalOverflow.Wrap
-      // Wrap, and shrink only when the wrapped lines overflow the box (sizeToFit would also scale short text up).
-      t.verticalOverflow = VerticalOverflow.Shrink
+      t.verticalOverflow = VerticalOverflow.Overflow
       t.sizeToFit = false
       try {
         t.outlineSettings.enabled = true
@@ -555,6 +1053,9 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     }
     this.videos = []
     this.artObjs = []
+    this.buttons = []
+    this.hitTarget = null
+    this.hovered = ""
     if (this.root) this.root.destroy()
     this.root = null
     this.parts = []

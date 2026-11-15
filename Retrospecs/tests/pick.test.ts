@@ -74,3 +74,4 @@ describe("world pick", () => {
     expect(pickByBearing(center, view, worldCands(), 0)).toBe("spilker")
   })
 })
+

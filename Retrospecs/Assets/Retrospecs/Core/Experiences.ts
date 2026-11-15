@@ -33,6 +33,9 @@
  *            names appear except in the clark.1 label. The open labs and bridges are not shown: no card fact
  *            mentions them.
  *            Both use the "Cardinal pop (toned down)" palette: cardinal hero, soft gold accent, linen neutrals.
+ *   moore    A crystal under study. A 3 x 3 x 3 lattice turns on a pedestal, a probe beam scatters off it onto a
+ *            screen where a grid of diffraction spots lights up, and one atom hops into a neighbouring vacancy and
+ *            back. Only the moore.2 lab name is labelled; lattice size and spot layout are visual only. Same palette.
  *   Rejected: a falling-spire-only idea for the Quad (no card fact for it), and HP product names and years (none
  *   verified from a primary source in time, so the devices stay generic).
  *
@@ -1333,9 +1336,119 @@ function clark(): Experience {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Moore: a crystal under study (moore.2, the Geballe Laboratory for Advanced Materials)
+//
+// A 3 x 3 x 3 lattice turns slowly on a pedestal. A probe beam comes in from the left, rays scatter to a screen on
+// the right and a grid of spots lights up there (a diffraction pattern, drawn as an idealised picture). Mid-loop one
+// atom hops into the vacancy beside it, and hops back near the end. Lattice size and spot layout are visual only.
+
+export const MOORE_LOOP = 9
+const MO_C = v3(0, 19, 0) // lattice centre
+const MO_A = 5.2 // lattice spacing
+const MO_ATOM = 1.25
+const MO_VAC = v3(MO_A, MO_A, MO_A) // the empty site (lattice frame)
+const MO_HOP = v3(0, MO_A, MO_A) // the atom that hops into it
+const MO_SCREEN_X = 21
+const MO_BEAM_X0 = -24
+
+/** 0 at the atom's own site, 1 once it has hopped into the vacancy. */
+export function mooreHop(t: number): number {
+  const tl = frac(t / MOORE_LOOP) * MOORE_LOOP
+  return easeInOutCubic(ramp(tl, 3.6, 4.4)) * (1 - easeInOutCubic(ramp(tl, 7.6, 8.4)))
+}
+
+function moore(): Experience {
+  const atoms: Primitive[] = []
+  const bonds: TubeSpec[] = []
+  const key = (p: Vec3) => `${p.x},${p.y},${p.z}`
+  const skip = new Set([key(MO_VAC), key(MO_HOP)])
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+    const p = v3(i * MO_A, j * MO_A, k * MO_A)
+    if (!skip.has(key(p))) atoms.push(sphere(MO_ATOM, p.x, p.y, p.z, 12, 8))
+    if (i < 1) bonds.push({points: [p, v3(p.x + MO_A, p.y, p.z)], width: 0.16})
+    if (j < 1) bonds.push({points: [p, v3(p.x, p.y + MO_A, p.z)], width: 0.16})
+    if (k < 1) bonds.push({points: [p, v3(p.x, p.y, p.z + MO_A)], width: 0.16})
+  }
+  const stand: Primitive[] = [
+    box(50, 1, 14, 0, 0.5, 0),
+    cyl(2.2, MO_C.y - MO_A * 1.6 - 1, "y", 0, (MO_C.y - MO_A * 1.6 + 1) / 2, 0, 16),
+    cyl(4.5, 0.8, "y", 0, MO_C.y - MO_A * 1.6, 0, 20),
+    // Screen post and source housing.
+    box(1, MO_C.y - 7, 1, MO_SCREEN_X, (MO_C.y - 7) / 2 + 1, 0),
+    box(1, MO_C.y - 2, 1, MO_BEAM_X0 - 2, (MO_C.y - 2) / 2 + 1, 0)
+  ]
+  const source: Primitive[] = [box(5, 4, 4, MO_BEAM_X0 - 2, MO_C.y, 0), cyl(1.2, 1.5, "x", MO_BEAM_X0 + 1, MO_C.y, 0, 12)]
+  const screen: TubeSpec[] = [{points: [v3(0, -7, -7), v3(0, 7, -7), v3(0, 7, 7), v3(0, -7, 7), v3(0, -7, -7)], width: 0.3}]
+  const spots: Primitive[] = []
+  for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
+    if ((a + b) % 2 !== 0) continue
+    const r = a === 0 && b === 0 ? 0.9 : 0.55
+    spots.push(sphere(r, 0, a * 2.6, b * 2.6, 8, 6))
+  }
+  // Scattered rays, from the lattice centre to a few of the spots (node origin at the lattice centre).
+  const rays: TubeSpec[] = []
+  for (const [a, b] of [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1], [2, 0], [-2, 0]]) {
+    rays.push({points: [v3(0, 0, 0), v3(MO_SCREEN_X, a * 2.6, b * 2.6)], width: 0.1})
+  }
+  const nodes: ExpNode[] = [
+    {name: "stand", color: "linen", prims: stand},
+    {name: "source", color: "cardinal", prims: source},
+    {name: "bonds", color: "sand", tubes: bonds},
+    {name: "atoms", color: "linen", prims: atoms},
+    {name: "hopper", color: "cardinal", prims: [sphere(MO_ATOM * 1.15, 0, 0, 0, 12, 8)]},
+    {name: "vacancy", color: "softgold", tubes: [{points: circle(v3(0, 0, 0), MO_ATOM * 1.1, "z", 24), width: 0.12}]},
+    {name: "beam", color: "softgold", tubes: [{points: [v3(0, 0, 0), v3(-MO_BEAM_X0, 0, 0)], width: 0.35}]},
+    {name: "rays", color: "softgold", tubes: rays},
+    {name: "screen", color: "linen", tubes: screen},
+    {name: "spots", color: "softgold", prims: spots}
+  ]
+  return {
+    id: "moore",
+    title: "A crystal under study",
+    landmarkIds: ["moore"],
+    idea: "Materials research looks inside crystals: a probe beam scatters into a pattern that reveals the lattice, and defects like a vacancy move atom by atom.",
+    factIds: ["moore.2"],
+    nodes,
+    labels: [
+      sourced("Geballe Laboratory for Advanced Materials", "moore.2", v3(0, 42, 0), 0.3),
+      generic("a crystal lattice", v3(0, 33, 4), 0.8),
+      generic("probe beam", v3(-14, MO_C.y + 4, 3), 1.2),
+      generic("diffraction pattern", v3(MO_SCREEN_X, MO_C.y + 10, 2), 1.9),
+      generic("an atom hops into a vacancy", v3(0, 6, 8), 3.6, 6.6)
+    ],
+    loop: MOORE_LOOP,
+    settle: 0,
+    poses(t: number): Pose[] {
+      const tl = frac(t / MOORE_LOOP) * MOORE_LOOP
+      const grow = Math.max(HIDDEN, easeInOutCubic(ramp(t, 0, 0.7)))
+      // Turns back and forth over a quarter turn, so the front face stays readable.
+      const rot = qMul(qAxis(Y, 30 + 35 * Math.sin((TAU * t) / MOORE_LOOP)), qAxis(X, -14))
+      const at = (p: Vec3) => add(MO_C, qRot(rot, p))
+      const hop = mooreHop(t)
+      const beamOn = t < 0.9 ? 0 : 1
+      const beam = Math.max(HIDDEN, ramp(t, 0.9, 1.4))
+      const shine = beamOn * ramp(t, 1.4, 1.9) * (0.85 + 0.15 * Math.sin(TAU * 1.5 * tl))
+      return [
+        pose(v3(0, 0, 0)),
+        pose(v3(0, 0, 0)),
+        pose(MO_C, rot, grow),
+        pose(MO_C, rot, grow),
+        pose(at(lerp3(MO_HOP, MO_VAC, hop)), rot, grow * (1 + 0.15 * bump(hop * 2 - 0.5))),
+        // The vacancy ring sits on whichever site is empty.
+        pose(at(lerp3(MO_VAC, MO_HOP, hop > 0.5 ? 1 : 0)), rot, Math.max(HIDDEN, grow * (1 - bump(hop * 2 - 0.5)))),
+        pose(v3(MO_BEAM_X0, MO_C.y, 0), QI, v3(beam, 1, 1)),
+        pose(MO_C, QI, Math.max(HIDDEN, shine)),
+        pose(v3(MO_SCREEN_X, MO_C.y, 0), QI, grow),
+        pose(v3(MO_SCREEN_X, MO_C.y, 0), QI, Math.max(HIDDEN, shine))
+      ]
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Registry and helpers
 
-export const EXPERIENCES: Experience[] = [huang(), gates(), spilker(), y2e2(), hoover(), memchu(), hp(), varian(), clark()]
+export const EXPERIENCES: Experience[] = [huang(), gates(), spilker(), y2e2(), hoover(), memchu(), hp(), varian(), clark(), moore()]
 
 /** Experience for a card id (several cards may share one, e.g. the HP trio), or undefined. */
 export function experienceFor(cardId: string): Experience | undefined {

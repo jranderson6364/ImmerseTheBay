@@ -963,6 +963,11 @@
     ttsVoice: true
     timeoutSec: true
     logTimings: true
+    liveModel: true
+    liveTimeoutSec: true
+    liveFallbackOpenAI: true
+    liveFallbackModel: true
+    narrationClips: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -972,6 +977,12 @@
       ttsVoice: coral
       timeoutSec: !<float> 8.000000
       logTimings: true
+      liveModel: gemini-2.5-flash
+      liveTimeoutSec: !<float> 18.000000
+      liveFallbackOpenAI: true
+      liveFallbackModel: gpt-4o-mini-search-preview
+      narrationClips: !<reference.AudioTrackAsset[]>
+        []
   ScriptTypes:
     "":
       {}
@@ -2013,10 +2024,17 @@
     bikeLaneWidthCm: true
     useLandmarkModels: true
     sightlineLabelPerCm: true
+    showWorldTags: true
+    worldTagCount: true
+    worldTagMaxM: true
+    worldTagRenderM: true
+    worldTagPerCm: true
     focusScale: true
     focusLiftCm: true
     backgroundScale: true
     backgroundDim: true
+    stationaryFocus: true
+    stationaryDim: true
     focusInSec: true
     focusOutSec: true
     showFocusHalo: true
@@ -2043,10 +2061,17 @@
       labelScale: 1.200000
       useLandmarkModels: true
       sightlineLabelPerCm: 0.009000
+      showWorldTags: true
+      worldTagCount: !<float> 10.000000
+      worldTagMaxM: !<float> 500.000000
+      worldTagRenderM: !<float> 30.000000
+      worldTagPerCm: 0.006000
       focusScale: 1.800000
       focusLiftCm: 1.200000
       backgroundScale: 0.350000
       backgroundDim: 0.350000
+      stationaryFocus: true
+      stationaryDim: 0.600000
       focusInSec: 0.600000
       focusOutSec: 0.600000
       showFocusHalo: true
@@ -3452,11 +3477,27 @@
     panelWidthCm: true
     panelHeightCm: true
     panelGapCm: true
-    riseCm: true
+    screenWidthCm: true
+    screenDistanceCm: true
+    screenDropCm: true
+    followAngleDeg: true
+    followDistanceCm: true
+    worldLocked: true
+    distanceScale: true
+    sizeScale: true
     appearSec: true
-    titleSize: true
-    bodySize: true
-    tiltToViewer: true
+    flyFromBuilding: true
+    showMedia: true
+    media4Id: true
+    media4Texture: true
+    artMaxWidthCm: true
+    artMaxHeightCm: true
+    artLiftCm: true
+    artCycleSec: true
+    compactCard: true
+    compactPitchDeg: true
+    compactDistanceScale: true
+    compactWidthCm: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -3467,11 +3508,38 @@
       panelWidthCm: !<float> 30.000000
       panelHeightCm: !<float> 24.000000
       panelGapCm: !<float> 6.000000
-      riseCm: !<float> 10.000000
+      screenWidthCm: !<float> 60.000000
+      screenDistanceCm: !<float> 130.000000
+      screenDropCm: !<float> 14.000000
+      followAngleDeg: !<float> 40.000000
+      followDistanceCm: !<float> 45.000000
+      worldLocked: true
+      distanceScale: 1.850000
+      sizeScale: 1.500000
       appearSec: 0.500000
-      titleSize: !<float> 48.000000
-      bodySize: !<float> 32.000000
-      tiltToViewer: true
+      flyFromBuilding: true
+      titleTextSize: !<float> 72.000000
+      namesakeTextSize: !<float> 72.000000
+      bodyTextSize: !<float> 80.000000
+      smallTextSize: !<float> 52.000000
+      showMedia: true
+      mediaMaterial: !<reference.Material> 24d22b30-ee6f-4146-ae89-d1bdf121c9a0
+      media1Id: huang
+      media1Texture: !<reference.Texture> bc2340c9-0a56-466f-9c2c-de23d27eea40
+      media2Id: hpgarage
+      media2Texture: !<reference.Texture> bca7f831-f412-4e08-b4a4-131cfaacafbc
+      media3Id: hpgarage
+      media3Texture: !<reference.Texture> 3b87c09c-386b-46fc-96e3-450bd0e6f6d7
+      media4Id: ""
+      media4Texture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
+      artMaxWidthCm: !<float> 56.000000
+      artMaxHeightCm: !<float> 30.000000
+      artLiftCm: !<float> 8.000000
+      artCycleSec: !<float> 8.000000
+      compactCard: true
+      compactPitchDeg: !<float> 12.000000
+      compactDistanceScale: 1.450000
+      compactWidthCm: !<float> 64.000000
   ScriptTypes:
     "":
       {}
@@ -3779,6 +3847,7 @@
   Enabled: true
   ScriptAsset: !<reference> 3e8d7d5b-5900-4674-8984-599c8b28cf1b
   ScriptInputsDefault:
+    indoorDemo: true
     useStartPoint: true
     startLat: true
     startLon: true
@@ -3796,7 +3865,6 @@
     youAreHereScale: true
     handleRadiusCm: true
     handleGrabCm: true
-    startMapScale: true
     statusText: true
     showStatusLabel: true
     autoQuiz: true
@@ -3806,10 +3874,15 @@
     showcaseScaleCm: true
     showcaseForwardCm: true
     longPinchSec: true
+    askFurther: true
+    liveFollowUpSec: true
     experienceScaleCm: true
     focusIdleSec: true
     showcaseNearBuilding: true
     focusSideGapCm: true
+    ambientExtras: true
+    ambientScaleCm: true
+    pickSlackCm: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -3818,6 +3891,7 @@
       map: !<MappingBased.AssignableType> 6aa8fb30-8844-4926-a168-6518b16cf66c
       guide: !<MappingBased.AssignableType_1> 2b4da72b-e995-4d0c-8386-f07796c86516
       asr: !<MappingBased.AssignableType_2> 6767c277-2c0a-44a4-ac63-db02d284997c
+      indoorDemo: true
       useStartPoint: true
       startLat: 37.428188
       startLon: -122.173531
@@ -3828,7 +3902,7 @@
       wallBearing: !<float> 15.000000
       facingHint: !<float> 105.000000
       eyeHeightCm: !<float> 160.000000
-      floorForwardCm: !<float> 140.000000
+      floorForwardCm: !<float> 106.000000
       tableHeightCm: !<float> 85.000000
       tableForwardCm: !<float> 55.000000
       startLifted: false
@@ -3836,7 +3910,7 @@
       youAreHereScale: 1.800000
       handleRadiusCm: !<float> 4.000000
       handleGrabCm: !<float> 10.000000
-      startMapScale: 0.650000
+      startMapScale: !<float> 1.000000
       statusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
       showStatusLabel: true
       autoQuiz: true
@@ -3851,11 +3925,18 @@
       showcaseForwardCm: !<float> 75.000000
       longPinchSec: 0.600000
       infoPanel: !<MappingBased.AssignableType_7> d2499f8a-348d-4cbe-a49e-d480e610a993
+      askFurther: true
+      liveFollowUpSec: !<float> 45.000000
       experiences: !<reference.ScriptComponent> d5ae9837-4c54-4750-87aa-6e1fad8f2903
       experienceScaleCm: !<float> 30.000000
       focusIdleSec: !<float> 25.000000
       showcaseNearBuilding: true
       focusSideGapCm: !<float> 4.000000
+      ambientExtras: true
+      ambientSideDeg: !<float> 22.000000
+      ambientDistanceCm: !<float> 155.000000
+      ambientScaleCm: !<float> 26.000000
+      pickSlackCm: !<float> 6.000000
   ScriptTypes:
     "":
       {}

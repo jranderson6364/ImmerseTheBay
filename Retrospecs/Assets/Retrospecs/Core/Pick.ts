@@ -65,6 +65,8 @@ export interface MapPickCandidate {
   poly: XZ[]
   /** Fallback radius (cm) when there is no polygon, or a grown radius for the focused building. */
   radius: number
+  /** Centerpiece: when the point is inside it and an ordinary landmark at once, the centerpiece wins. */
+  priority?: boolean
 }
 
 /**
@@ -74,6 +76,7 @@ export interface MapPickCandidate {
 export function pickOnMap(p: XZ, cands: MapPickCandidate[], slackCm = 2): string | null {
   let insideId: string = null
   let insideArea = Infinity
+  let insidePriority = false
   let nearId: string = null
   let nearGap = slackCm
   for (const c of cands) {
@@ -97,9 +100,12 @@ export function pickOnMap(p: XZ, cands: MapPickCandidate[], slackCm = 2): string
       area = Math.PI * c.radius * c.radius
     }
     if (inside) {
-      if (area < insideArea) {
+      const pri = !!c.priority
+      // Priority first (a centerpiece beats an ordinary landmark), then the smallest footprint.
+      if ((pri && !insidePriority) || (pri === insidePriority && area < insideArea)) {
         insideArea = area
         insideId = c.id
+        insidePriority = pri
       }
     } else if (gap < nearGap) {
       nearGap = gap
@@ -107,6 +113,39 @@ export function pickOnMap(p: XZ, cands: MapPickCandidate[], slackCm = 2): string
     }
   }
   return insideId || nearId
+}
+
+export interface ColumnPickCandidate extends MapPickCandidate {
+  /** Current roof height on the map (cm above the map surface). */
+  topCm: number
+}
+
+/**
+ * Landmark the wearer is pointing at on the map, following the ray through the buildings' heights: aiming at the
+ * shaft of a tall tower (Hoover) used to land on the floor well behind it, because only the floor hit was tested.
+ * Walks the ray from the tallest roof down to the floor; the first footprint (or pad) the ray is inside, among
+ * buildings at least that tall, wins (it is the nearest thing along the ray). Otherwise the floor pick with slack.
+ * `eye` and `hit` are map-local (cm); `hit` is where the ray meets the map surface.
+ */
+export function pickAlongRay(eye: {x: number; y: number; z: number}, hit: {x: number; y: number; z: number}, cands: ColumnPickCandidate[], slackCm = 2, steps = 40): string | null {
+  const floor = {x: hit.x, z: hit.z}
+  const dy = hit.y - eye.y
+  if (!(dy < -1e-4) || !cands.length) return pickOnMap(floor, cands, slackCm)
+  let maxTop = 0
+  for (const c of cands) maxTop = Math.max(maxTop, c.topCm)
+  const t0 = Math.max(0, (maxTop - eye.y) / dy)
+  const t1 = Math.max(t0, (Math.min(hit.y, 0) - eye.y) / dy)
+  for (let i = 0; i <= steps; i++) {
+    const t = t0 + ((t1 - t0) * i) / steps
+    const x = eye.x + (hit.x - eye.x) * t
+    const y = eye.y + dy * t
+    const z = eye.z + (hit.z - eye.z) * t
+    const tall = cands.filter((c) => c.topCm >= y)
+    if (!tall.length) continue
+    const id = pickOnMap({x, z}, tall, 0)
+    if (id) return id
+  }
+  return pickOnMap(floor, cands, slackCm)
 }
 
 export interface WorldPickCandidate {
@@ -119,6 +158,8 @@ export interface WorldPickCandidate {
   radiusM: number
   /** Roof height (m). Looking above a near building's roof sees past it (Hoover Tower behind the Quad). */
   heightM: number
+  /** Extra radius (m) that widens the arc, for landmarks that are hard to aim at (Hoover Tower). */
+  padM?: number
 }
 
 export interface BearingArc {
@@ -140,6 +181,7 @@ export function bearingArc(me: EN, c: WorldPickCandidate): BearingArc {
   } else {
     half = (Math.atan2(c.radiusM, Math.max(1, distM)) * 180) / Math.PI
   }
+  if (c.padM && c.padM > 0) half = Math.max(half, (Math.atan2(c.padM, Math.max(1, distM)) * 180) / Math.PI)
   // Never thinner than 2 degrees (a far tower is still aimable) and never a full circle.
   return {center: centre, half: Math.max(2, Math.min(80, half)), distM}
 }

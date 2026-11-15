@@ -13,9 +13,9 @@ const SAMPLE_TIMES: number[] = []
 for (let t = 0; t <= 30; t += 0.1) SAMPLE_TIMES.push(t)
 
 describe("experiences: registry", () => {
-  test("nine experiences covering the key buildings", () => {
-    expect(EXPERIENCES.map((e) => e.id)).toEqual(["huang", "gates", "spilker", "y2e2", "hoover", "memchu", "hp", "varian", "clark"])
-    for (const id of ["huang", "gates", "spilker", "y2e2", "hoover", "memchu", "varian", "clark"]) expect(experienceFor(id).id).toBe(id)
+  test("ten experiences covering the key buildings", () => {
+    expect(EXPERIENCES.map((e) => e.id)).toEqual(["huang", "gates", "spilker", "y2e2", "hoover", "memchu", "hp", "varian", "clark", "moore"])
+    for (const id of ["huang", "gates", "spilker", "y2e2", "hoover", "memchu", "varian", "clark", "moore"]) expect(experienceFor(id).id).toBe(id)
     for (const id of ["packard", "hewlett", "hpgarage"]) expect(experienceFor(id).id).toBe("hp")
     expect(experienceFor("allen")).toBeUndefined()
     expect(experienceFor("nope")).toBeUndefined()

@@ -26,6 +26,11 @@
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
+    ambientDistanceCm: false
+    ambientDropCm: false
+    ambientExtras: false
+    ambientScaleCm: false
+    ambientSideDeg: false
     askFurther: false
     asr: false
     autoQuiz: false
@@ -40,6 +45,7 @@
     guide: false
     handleGrabCm: false
     handleRadiusCm: false
+    indoorDemo: false
     infoPanel: false
     liveFollowUpSec: false
     locator: false
@@ -50,6 +56,7 @@
     moneyOnMap: false
     overlay: false
     persistProgress: false
+    pickSlackCm: false
     showStatusLabel: false
     showcase: false
     showcaseForwardCm: false
@@ -83,6 +90,7 @@
       map: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
       guide: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       asr: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      indoorDemo: true
       useStartPoint: true
       startLat: 37.428188
       startLon: -122.173531
@@ -123,6 +131,12 @@
       focusIdleSec: !<float> 25.000000
       showcaseNearBuilding: true
       focusSideGapCm: !<float> 4.000000
+      ambientExtras: true
+      ambientSideDeg: !<float> 60.000000
+      ambientDistanceCm: !<float> 170.000000
+      ambientScaleCm: !<float> 26.000000
+      ambientDropCm: !<float> 105.000000
+      pickSlackCm: !<float> 6.000000
   ScriptTypes:
     -
       {}
@@ -132,6 +146,9 @@
     - // @input AssignableType map
     - // @input AssignableType_1 guide
     - // @input AssignableType_2 asr
+    - '// @ui {"widget":"group_start", "label":"Indoor demo"}'
+    - '// @input bool indoorDemo = true {"hint":"ON (judging indoors): no calibration, any pinch opens the map, then a short coach shows how to pick a building and use the card. OFF (filming outdoors): the start-point calibration below."}'
+    - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Start point (one-pinch calibration)"}'
     - '// @input bool useStartPoint = true {"hint":"ON: stand on the known start point, face down the street, pinch once. OFF: the wall-pinch calibration at the survey spot below."}'
     - '// @input float startLat = 37.4281869 {"hint":"Default: where the North-South Axis (OSM: Via Crespi) crosses the East-West Axis, just east of Huang (OSM)."}'
@@ -147,15 +164,15 @@
     - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Placement"}'
     - '// @input float eyeHeightCm = 160 {"hint":"Head height above the floor when standing (cm)"}'
-    - "// @input float floorForwardCm = 140 {\"hint\":\"How far in front of you the floor map's centre sits (cm)\"}"
-    - '// @input float tableHeightCm = 85 {"hint":"Map height above the floor in table mode (cm)"}'
-    - '// @input float tableForwardCm = 55 {"hint":"How far in front of you the table-mode map sits (cm)"}'
-    - // @input bool startLifted
+    - '// @input float floorForwardCm = 106 {"hint":"Map centre ahead, so the wearer stands near its back edge (cm)"}'
+    - '// @input float tableHeightCm = 100 {"hint":"Map height above the floor in table mode (cm). 100 = a bit above a desk, so you look down about 40 degrees."}'
+    - "// @input float tableForwardCm = 80 {\"hint\":\"How far in front of you the table-mode map's centre sits (cm). Keep it above the map radius (58 cm at size 0.5) so the near edge is in front of you.\"}"
+    - '// @input bool startLifted = true {"hint":"ON: start with the map floating at table height in front of you. OFF: on the floor around you."}'
     - '// @input float youAreHereHeightCm = 16 {"hint":"Height of the floating \"You are here\" tag above your pin on the map (map cm)"}'
     - // @input float youAreHereScale = 1.8
     - '// @input float handleRadiusCm = 4 {"hint":"Move/resize handle on the map rim: size and how close a pinch must be to grab it (cm)"}'
     - // @input float handleGrabCm = 10
-    - '// @input float startMapScale = 0.65 {"hint":"Map size when it first unfolds (1 = 2.3 m across). Resize later with two hands or \"bigger\"/\"smaller\"."}'
+    - '// @input float startMapScale = 0.5 {"hint":"Starting map size (1 = about 2.3 m across, 0.5 = about 1.2 m, a tabletop)."}'
     - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Optional"}'
     - // @input Component.Text statusText
@@ -183,4 +200,10 @@
     - '// @input float focusIdleSec = 25 {"hint":"Leave focus this many seconds after the guide stops talking (0 = never)"}'
     - '// @input bool showcaseNearBuilding = true {"hint":"ON: exploded model floats beside the focused building, right of the card. OFF: in front of you as before."}'
     - '// @input float focusSideGapCm = 4 {"hint":"Gap between the card and the side objects (world cm)"}'
+    - '// @input bool ambientExtras = true {"hint":"ON: the 3D experience and exploded model sit off to the sides, out of the way: look around to find them. OFF: flanking the card."}'
+    - '// @input float ambientSideDeg = 28 {"hint":"Ambient extras: degrees to the left / right of the card"}'
+    - '// @input float ambientDistanceCm = 300 {"hint":"Ambient extras: distance from the eyes (cm) and size (cm)"}'
+    - // @input float ambientScaleCm = 34
+    - '// @input float ambientDropCm = 105 {"hint":"Ambient extras: how far below eye level (cm)"}'
+    - '// @input float pickSlackCm = 6 {"hint":"Map cursor forgiveness: a pinch this close to a building (map cm) still picks it"}'
     - '// @ui {"widget":"group_end"}'

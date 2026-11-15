@@ -28,10 +28,19 @@
   ScriptInputsHidden:
     appearSec: false
     artCycleSec: false
+    artLiftCm: false
     artMaxHeightCm: false
     artMaxWidthCm: false
     bodyTextSize: false
     camera: false
+    cardDistanceCm: false
+    compactBodyLineDeg: false
+    compactCard: false
+    compactDistanceScale: false
+    compactPitchDeg: false
+    compactWidthCm: false
+    compactWidthDeg: false
+    distanceScale: false
     flyFromBuilding: false
     followAngleDeg: false
     followDistanceCm: false
@@ -46,6 +55,7 @@
     media4Id: false
     media4Texture: false
     mediaMaterial: false
+    minTargetDeg: false
     namesakeTextSize: false
     panelGapCm: false
     panelHeightCm: false
@@ -54,8 +64,11 @@
     screenDropCm: false
     screenWidthCm: false
     showMedia: false
+    sizeScale: false
     smallTextSize: false
+    storyCardWidthDeg: false
     titleTextSize: false
+    worldLocked: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -76,6 +89,9 @@
       screenDropCm: !<float> 14.000000
       followAngleDeg: !<float> 40.000000
       followDistanceCm: !<float> 45.000000
+      worldLocked: true
+      distanceScale: 1.850000
+      sizeScale: 1.500000
       appearSec: 0.500000
       flyFromBuilding: true
       titleTextSize: !<float> 100.000000
@@ -94,7 +110,17 @@
       media4Texture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
       artMaxWidthCm: !<float> 56.000000
       artMaxHeightCm: !<float> 30.000000
+      artLiftCm: !<float> 8.000000
       artCycleSec: !<float> 8.000000
+      compactCard: true
+      compactPitchDeg: !<float> 12.000000
+      compactDistanceScale: 1.450000
+      compactWidthCm: !<float> 64.000000
+      cardDistanceCm: !<float> 140.000000
+      compactWidthDeg: !<float> 24.000000
+      compactBodyLineDeg: 0.760000
+      storyCardWidthDeg: 20.299999
+      minTargetDeg: !<float> 3.000000
   ScriptTypes:
     -
       {}
@@ -111,12 +137,15 @@
     - '// @input float screenDropCm = 14 {"hint":"Main screen centre below eye height (cm)"}'
     - '// @input float followAngleDeg = 40 {"hint":"Re-centre the screens when you turn this far away (degrees)"}'
     - '// @input float followDistanceCm = 45 {"hint":"...or walk this far (cm)"}'
+    - '// @input bool worldLocked = true {"hint":"Keep the screens fixed in the room where they appear (walk up to them). Off = lazy follow."}'
+    - '// @input float distanceScale = 1.85 {"hint":"Multiplies Screen Distance: 1.85 puts the 130 cm screen about 2.4 m away"}'
+    - "// @input float sizeScale = 1.5 {\"hint\":\"Multiplies the screen's size (text and art grow with it) so it stays readable farther back\"}"
     - '// @input float appearSec = 0.6 {"hint":"Seconds to fly out / back"}'
     - '// @input bool flyFromBuilding = true {"hint":"Fly out of the building (on) or fade in at the wall (off)"}'
-    - '// @input float titleTextSize = 100 {"hint":"Largest text sizes: text wraps, then shrinks only if it overflows its box"}'
-    - // @input float namesakeTextSize = 58
-    - // @input float bodyTextSize = 50
-    - // @input float smallTextSize = 40
+    - "// @input float titleTextSize = 80 {\"hint\":\"Largest text sizes (max 80: larger text didn't render). Text wraps and the card grows to fit.\"}"
+    - // @input float namesakeTextSize = 64
+    - // @input float bodyTextSize = 72
+    - // @input float smallTextSize = 50
     - '// @input bool showMedia = true {"hint":"Show artist art screens. Turn off to compare with the plain card."}'
     - '// @input Asset.Material mediaMaterial {"hint":"Material with a baseTex slot (Assets/Materials/CaptureTexture.mat). If empty, loaded by path."}'
     - // @input string media1Id
@@ -128,5 +157,15 @@
     - // @input string media4Id
     - // @input Asset.Texture media4Texture
     - '// @input float artMaxWidthCm = 56 {"hint":"Largest art size (cm)"}'
-    - // @input float artMaxHeightCm = 30
+    - // @input float artMaxHeightCm = 24
+    - '// @input float artLiftCm = 8 {"hint":"Raise the screen this much when it has art, so the art and the title share the central view (cm)"}'
     - '// @input float artCycleSec = 8 {"hint":"Seconds per art piece when a building has several"}'
+    - '// @input bool compactCard = true {"hint":"Short, wide card: art on the left, words on the right, X to close, Next spot button. Off = the old tall card."}'
+    - '// @input float compactPitchDeg = 12 {"hint":"Compact card: degrees below eye level for its centre, so it sits between the horizon and the floor map"}'
+    - '// @input float compactDistanceScale = 1.45 {"hint":"(Legacy, unused: see Card Distance)"}'
+    - '// @input float compactWidthCm = 90 {"hint":"(Legacy, unused: see Compact Width Deg)"}'
+    - '// @input float cardDistanceCm = 140 {"hint":"Compact and story cards: distance from the eyes (cm). Snap: far field is 60-160 cm, about 1 m is most comfortable for detail."}'
+    - "// @input float compactWidthDeg = 24 {\"hint\":\"Compact card width (degrees). Snap's usable binocular width is about 27.\"}"
+    - "// @input float compactBodyLineDeg = 0.76 {\"hint\":\"Compact card body line height (degrees). Sets the text size, and with it the card's scale.\"}"
+    - '// @input float storyCardWidthDeg = 20.3 {"hint":"Illustrated story card width (degrees, the whole texture including Next Stop)"}'
+    - '// @input float minTargetDeg = 3 {"hint":"Smallest button hit area (degrees). Snap: at least 2, about 3 is best."}'

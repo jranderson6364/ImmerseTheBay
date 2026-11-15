@@ -4,9 +4,9 @@
  * Flow
  *  1. CALIBRATE  Face a wall of known direction and pinch a point on its LEFT, then its RIGHT. The wall's compass
  *                bearing comes from the building's OSM footprint (Huang's walls run at 15/105/195/285 deg), and
- *                `facingHint` picks which face you're looking at. Two-hand twist nudges the yaw afterwards.
- *  2. TOUR       The map unfolds on the floor, centred on you. Right pinch = "tell me about what I'm looking at"
- *                (real building or one on the map). Left pinch = ask by voice. Say "lift" / "floor".
+ *                `facingHint` picks which face you're looking at.
+ *  2. TOUR       The fixed map unfolds on the floor with the wearer inside its back half. Right pinch =
+ *                "tell me about what I'm looking at" (real building or one on the map). Left pinch = ask by voice.
  *  3. GUESS      (disabled: QUIZ_ENABLED) After each building: "Point to where you think X is, then pinch." Scored in
  *                degrees; the true direction arcs out on the map and a sightline pillar appears in the room.
  *
@@ -34,12 +34,18 @@ import {FocusLayout, focusLayout} from "../Core/Focus"
 import {pickByBearing} from "../Core/Pick"
 import {HoverState, SWITCH_DWELL_SEC, SelectionAction, SelectionInput, decideSelection, focusIdleExpired, hoverHeldSec, isLocked, newHoverState, selectionTarget, stepHover} from "../Core/Selection"
 import {narrationFor} from "../Data/NarrationData"
+import {STORY_CARD_COUNTS, storyCardFactId} from "./StoryDeck"
+import {PanelButton} from "./RetrospecsInfoPanel"
+import {isNextSpotIntent, nextSpot, spotTier} from "../Core/NextSpot"
+import {CENTERPIECES, isCenterpiece} from "../Core/Centerpieces"
+import {CoachAim, CoachEvent, CoachStep, DONE_HOLD_SEC, coachAim, coachAllowsPick, coachHint, coachLine, coachNext, coachWrongPickLine, suggestedBuilding} from "../Core/Coach"
+import {sharedWall} from "../Core/Focus"
+import {RespawnRules, farFromMap, newRespawnState, stepRespawn} from "../Core/Respawn"
 import {LIVE_PREFIX_GENERAL, LIVE_PREFIX_WEB, LOOKING_UP_LINE, LiveTurn, isAskFurtherIntent, presentLive, stripAskFurtherCommand} from "../Core/AskLive"
 
 type Mode = "calibrate" | "tour" | "guess"
 
 const STORE_KEY = "sightlines.v1" // pre-rename key, kept so saved calibration survives
-const THINKING_LINE = "Let me check my notes."
 /** "Point to X, then pinch" quiz. Off for now (content first); the code stays for a later interactive pass.
  *  This overrides the scene's autoQuiz input and the "quiz / guess / test me" voice command. */
 const QUIZ_ENABLED = false
@@ -52,6 +58,9 @@ export class RetrospecsController extends BaseScriptComponent {
   @input guide: RetrospecsGuide
   @input @allowUndefined asr: ASRController
 
+  @ui.group_start("Indoor demo")
+  @input @hint("ON (judging indoors): no calibration, any pinch opens the map, then a short coach shows how to pick a building and use the card. OFF (filming outdoors): the start-point calibration below.") indoorDemo: boolean = true
+  @ui.group_end
   @ui.group_start("Start point (one-pinch calibration)")
   @input @hint("ON: stand on the known start point, face down the street, pinch once. OFF: the wall-pinch calibration at the survey spot below.") useStartPoint: boolean = true
   @input @hint("Default: where the North-South Axis (OSM: Via Crespi) crosses the East-West Axis, just east of Huang (OSM).") startLat: number = 37.4281869
@@ -69,15 +78,15 @@ export class RetrospecsController extends BaseScriptComponent {
 
   @ui.group_start("Placement")
   @input @hint("Head height above the floor when standing (cm)") eyeHeightCm: number = 160
-  @input @hint("How far in front of you the floor map's centre sits (cm)") floorForwardCm: number = 140
-  @input @hint("Map height above the floor in table mode (cm)") tableHeightCm: number = 85
-  @input @hint("How far in front of you the table-mode map sits (cm)") tableForwardCm: number = 55
-  @input startLifted: boolean = false
+  @input @hint("Map centre ahead, so the wearer stands near its back edge (cm)") floorForwardCm: number = 106
+  @input @hint("Map height above the floor in table mode (cm). 100 = a bit above a desk, so you look down about 40 degrees.") tableHeightCm: number = 100
+  @input @hint("How far in front of you the table-mode map's centre sits (cm). Keep it above the map radius (58 cm at size 0.5) so the near edge is in front of you.") tableForwardCm: number = 80
+  @input @hint("ON: start with the map floating at table height in front of you. OFF: on the floor around you.") startLifted: boolean = true
   @input @hint("Height of the floating \"You are here\" tag above your pin on the map (map cm)") youAreHereHeightCm: number = 16
   @input youAreHereScale: number = 1.8
   @input @hint("Move/resize handle on the map rim: size and how close a pinch must be to grab it (cm)") handleRadiusCm: number = 4
   @input handleGrabCm: number = 10
-  @input @hint("Map size when it first unfolds (1 = 2.3 m across). Resize later with two hands or \"bigger\"/\"smaller\".") startMapScale: number = 0.65
+  @input @hint("Starting map size (1 = about 2.3 m across, 0.5 = about 1.2 m, a tabletop).") startMapScale: number = 0.5
   @ui.group_end
 
   @ui.group_start("Optional")
@@ -111,6 +120,22 @@ export class RetrospecsController extends BaseScriptComponent {
   @input @hint("Leave focus this many seconds after the guide stops talking (0 = never)") focusIdleSec: number = 25
   @input @hint("ON: exploded model floats beside the focused building, right of the card. OFF: in front of you as before.") showcaseNearBuilding: boolean = true
   @input @hint("Gap between the card and the side objects (world cm)") focusSideGapCm: number = 4
+  // New inputs (not saved in the scene yet, so these defaults apply).
+  @input @hint("ON: the 3D experience and exploded model sit off to the sides, out of the way: look around to find them. OFF: flanking the card.") ambientExtras: boolean = true
+  // Pushed well behind the card (which floats ~130 cm away) so the animations read as background, not competition.
+  @input @hint("Ambient extras: degrees to the left / right of the card") ambientSideDeg: number = 28
+  @input @hint("Ambient extras: distance from the eyes (cm) and size (cm)") ambientDistanceCm: number = 300
+  @input ambientScaleCm: number = 34
+  @input @hint("Ambient extras: how far below eye level (cm)") ambientDropCm: number = 105
+  @input @hint("Map cursor forgiveness: a pinch this close to a building (map cm) still picks it") pickSlackCm: number = 6
+  @ui.group_end
+
+  @ui.group_start("Bring the map here (walked away from it)")
+  @input @hint("Offer to respawn the map when you've walked far from it, look down, and pinch with both hands") respawnEnabled: boolean = true
+  @input @hint("Only when you're at least this far (m) from the map's centre") respawnMinMapDistM: number = 6
+  @input @hint("...and have walked at least this far (m) since the map was placed") respawnMinWalkedM: number = 8
+  @input @hint("...and are looking at least this far below the horizon (degrees)") respawnLookDownDeg: number = 35
+  @input @hint("Hold both pinches this long (s) to respawn") respawnHoldSec: number = 0.8
   @ui.group_end
 
   private mode: Mode = "calibrate"
@@ -123,6 +148,10 @@ export class RetrospecsController extends BaseScriptComponent {
   private guessTarget = ""
   private unfoldT = -1
   private twist: {lastYaw: number; lastDist: number} = null
+  /** Bring-the-map-here gesture (Core/Respawn), and where the wearer stood when the map was last placed. */
+  private respawn = newRespawnState()
+  private respawnShown = ""
+  private mapPlacedFrom: vec3 = null
   private positions: Record<string, EN> = {}
   private isEditor = global.deviceInfoSystem.isEditor()
   private statusHolder: SceneObject = null
@@ -137,6 +166,14 @@ export class RetrospecsController extends BaseScriptComponent {
   private lastSpokeAt = -1
   private lastSelectAt = -1
   private hover: HoverState = newHoverState()
+  /** Indoor demo coach (Core/Coach): the step, the building it points people at, when "done" began, whether the
+   * cursor is on a building (the pick tip changes), and the last caption (the tip is appended under it). */
+  private coachStep: CoachStep = "off"
+  private coachSuggest = ""
+  private coachDoneAt = -1
+  private coachAimNow: CoachAim = "none"
+  private coachAimOther = ""
+  private caption = ""
 
   onAwake() {
     this.createEvent("OnStartEvent").bind(() => this.onStart())
@@ -161,7 +198,9 @@ export class RetrospecsController extends BaseScriptComponent {
     this.makeStatusLabel()
     this.setupInfoPanel()
     this.prefetchStartup()
+    if (this.indoorDemo) this.coachStep = "start"
     this.setStatus(this.calibrateInstruction())
+    if (this.indoorDemo) this.guide.speakParts([coachLine("start")])
   }
 
   // -------------------------------------------------------------------------
@@ -202,7 +241,32 @@ export class RetrospecsController extends BaseScriptComponent {
     // highlight doesn't flicker between adjacent buildings as the ray wobbles.
     const now = getTime()
     stepHover(this.hover, raw, now)
+    if (this.coachStep === "pick") return this.updateCoachAim()
     this.map.setHover(this.shownHover(now))
+  }
+
+  /** Coach pick step: only the target lights blue (blue = "a pinch picks this"), and the tip says where the cursor is. */
+  private updateCoachAim() {
+    const id = this.hover.id
+    this.map.setHover(id === this.coachSuggest ? id : "")
+    const aim = coachAim(id, this.coachSuggest)
+    const other = aim === "other" && cardById(id) ? cardById(id).label : ""
+    if (aim === this.coachAimNow && other === this.coachAimOther) return
+    this.coachAimNow = aim
+    this.coachAimOther = other
+    this.setStatus(this.caption)
+  }
+
+  /** Coach pick step: a pinch / tap selects only the target; anything else gets a nudge back toward it. */
+  private coachPick() {
+    const now = getTime()
+    if (this.lastSelectAt >= 0 && now - this.lastSelectAt < 0.3) return // bounce
+    this.lastSelectAt = now
+    const pickId = this.hover.id || this.cursorLandmark() || this.gazedLandmark()
+    if (coachAllowsPick(this.coachStep, pickId, this.coachSuggest)) return this.tellAbout(this.coachSuggest)
+    const target = cardById(this.coachSuggest)
+    const other = pickId && cardById(pickId) ? cardById(pickId).label : ""
+    this.say(coachWrongPickLine(target ? target.label : "the gold building", other), other ? `Not ${other}` : "Nothing aimed at yet")
   }
 
   /** Cyan = what a pinch would pick. While a selection is locked, another building only lights once it has been
@@ -245,12 +309,20 @@ export class RetrospecsController extends BaseScriptComponent {
     const hand = SIK.HandInputData.getHand(which)
     if (!hand || !hand.isTracked()) return
     const other = SIK.HandInputData.getHand(which === "left" ? "right" : "left")
-    if (other && other.isTracked() && other.isPinching()) return // two-hand twist, handled in update
+    if (other && other.isTracked() && other.isPinching()) return
+    // Walked away and looking down: a pinch is the start of the two-hand "bring the map here", not a pick or listen.
+    if (this.respawnOffered()) return
     if (this.mode === "calibrate") {
-      if (this.useStartPoint) return this.finishCalibration(this.viewHorizontal())
+      if (this.useStartPoint || this.indoorDemo) return this.finishCalibration(this.viewHorizontal())
       return this.addWallPoint(toV3(hand.indexTip.position))
     }
-    if (this.tryGrabHandle(which, hand.indexTip.position)) return
+    // Coach pick step: the right hand must select the target; the left hand does nothing yet.
+    if (this.coachStep === "pick") {
+      if (which === "right") this.coachPick()
+      return
+    }
+    // The card's own buttons come first: X closes, "Next spot" moves on. A pinch elsewhere on the card is "more".
+    if (which === "right" && this.cardPinch()) return
     // Left pinch always means "listen", so a question is never blocked by a pending quiz.
     if (which === "left" && this.asr) return this.listen()
     if (this.mode === "guess") return this.lockGuess(toV3(hand.indexKnuckle.position))
@@ -291,9 +363,62 @@ export class RetrospecsController extends BaseScriptComponent {
       const f = this.viewHorizontal()
       return this.lockGuess({x: cam.x + f.x * 60, y: cam.y, z: cam.z + f.z * 60})
     }
+    if (this.coachStep === "pick") return this.coachPick()
+    if (this.cardPinch()) return
     // Same lock-in rules as a pinch on device.
     const sel = this.selectionNow()
     this.runSelection(sel.action, selectionTarget(sel.action, sel.input))
+  }
+
+  /** Handles a pinch / tap aimed at the focus card. True if it was on the card (so it selects nothing behind it). */
+  private cardPinch(): boolean {
+    if (!this.infoPanel || this.mode !== "tour") return false
+    const btn: PanelButton = this.infoPanel.buttonUnderRay()
+    const onCard = !!btn || this.infoPanel.rayOnCard()
+    if (!onCard) return false
+    const now = getTime()
+    if (this.lastSelectAt >= 0 && now - this.lastSelectAt < 0.3) return true // bounce
+    this.lastSelectAt = now
+    this.rightDownAt = -1 // the release must not run a selection or the locator
+    if (btn === "close") this.closeCard()
+    else if (btn === "next") this.showNextSpot()
+    else if (this.focusMode) this.tellAbout(this.focusMode)
+    return true
+  }
+
+  /** X on the card: stop talking, put the card and the extras away, whole map back. */
+  private closeCard() {
+    this.guide.stopSpeaking()
+    this.hideExtras()
+    this.resetLights()
+    this.focus = "" // closed means closed: a stray pinch must not reopen it as "more"
+    this.coachEvent("closed")
+    this.setStatus("Closed. Point at a building and pinch, or say “next spot”.")
+  }
+
+  /** Buildings shown this round of "next spot" (and pinched ones), so it keeps finding somewhere new. */
+  private tourShown: string[] = []
+
+  /** "Show me somewhere else": the next stop without aiming. Richest stops first, nearest within each tier. */
+  private showNextSpot() {
+    if (this.mode !== "tour" || !this.map.root) return
+    const positions: Record<string, EN> = {}
+    for (const id of Object.keys(this.map.landmarks)) if (cardById(id) && this.positions[id]) positions[id] = this.positions[id]
+    const current = this.focusMode || this.focus
+    // Only this round's list: state.seen never clears, so using it made a full round bounce between two buildings.
+    let shown = this.tourShown
+    if (Object.keys(positions).every((id) => id === current || shown.indexOf(id) >= 0)) {
+      this.tourShown = [] // been everywhere: start a new round
+      shown = []
+    }
+    const tierOf = (id: string) => spotTier(isCenterpiece(id), narrationFor(id).length > 0 || id === "huang" || id === "hpgarage")
+    const id = nextSpot({currentId: current, from: this.me, positions, shown, tierOf})
+    if (!id) return this.setStatus("That's every stop on the tour.")
+    if (this.tourShown.indexOf(id) < 0) this.tourShown.push(id)
+    this.guide.stopSpeaking()
+    this.segAt[id] = 0 // a new stop starts with its overview
+    this.lastSelectAt = getTime()
+    this.tellAbout(id)
   }
 
   listen() {
@@ -344,15 +469,20 @@ export class RetrospecsController extends BaseScriptComponent {
     this.map.build(this.me, this.camera)
     if (this.overlay) this.overlay.setCenter(this.map.center)
     this.makeYouAreHere()
-    this.makeHandle()
     this.mapScale = this.startMapScale
     this.lifted = this.startLifted
     this.placeMap(true)
+    this.mapPlacedFrom = cam
+    if (this.infoPanel) {
+      this.infoPanel.placeWorkbench(this.map.root, this.camera, this.floorY, this.map.radiusM * this.map.cmPerM * this.mapScale)
+      this.infoPanel.showWorkbench(false)
+    }
     this.mode = "tour"
     this.unfoldT = 0
     const here = this.nearestLandmark(this.me)
     print(`[Retrospecs] calibrated: facing bearing ${bearing}, map yaw ${(this.mapYaw * 180 / Math.PI).toFixed(1)}°`)
     this.resetLights()
+    if (this.indoorDemo) return this.coachEvent("mapOpened")
     if (here) this.map.setState(here, "focus")
     const hereName = here ? cardById(here).name : "Stanford"
     this.say(`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, `You're at ${hereName}. Look at a building and pinch. Left pinch to ask.`)
@@ -373,8 +503,9 @@ export class RetrospecsController extends BaseScriptComponent {
       pos = new vec3(cam.x + f.x * this.floorForwardCm, this.floorY + 1, cam.z + f.z * this.floorForwardCm)
     }
     const t = this.map.root.getTransform()
-    if (resetCenter || this.lifted) t.setWorldPosition(pos)
-    else t.setWorldPosition(new vec3(t.getWorldPosition().x, pos.y, t.getWorldPosition().z))
+    // A twist (resetCenter false) only turns the map: a table map stays where it was dragged, a floor map stays on the floor.
+    if (resetCenter) t.setWorldPosition(pos)
+    else if (!this.lifted) t.setWorldPosition(new vec3(t.getWorldPosition().x, pos.y, t.getWorldPosition().z))
     t.setWorldRotation(rot)
     // The real-world frame is pinned where the wearer stood at calibration (map.center), set once and never moved,
     // so name tags and pinch targets stay on their buildings as the wearer walks. Lift/floor/twist only turn it.
@@ -398,6 +529,7 @@ export class RetrospecsController extends BaseScriptComponent {
   private setLifted(on: boolean) {
     this.lifted = on
     this.placeMap(true)
+    this.mapPlacedFrom = this.camera.getTransform().getWorldPosition()
     this.setStatus(on ? "Map lifted. Say “floor” to put it back." : "Map on the floor around you.")
   }
 
@@ -410,7 +542,7 @@ export class RetrospecsController extends BaseScriptComponent {
    */
   private cursorLandmark(): string {
     const target = this.map.cursorTarget
-    if (!target || !this.map.root || this.mode === "calibrate") return ""
+    if (!this.map.root || this.mode === "calibrate") return ""
     let interactors
     try {
       interactors = SIK.InteractionManager.getTargetingInteractors()
@@ -421,8 +553,29 @@ export class RetrospecsController extends BaseScriptComponent {
     for (const it of interactors) {
       if (!(it.inputType & (InteractorInputType.RightHand | InteractorInputType.Mouse))) continue
       const info = it.targetHitInfo
-      if (!info || info.interactable !== target || !info.hit) continue
-      const id = this.map.pickUnderCursor(inv.multiplyPoint(info.hit.position))
+      // Ray start (hand or mouse; the camera as a fallback), so aiming at a tall tower's shaft picks the tower.
+      let start: vec3 = null
+      try {
+        start = (it as any).startPoint as vec3
+      } catch (e) {
+        // No start point on this interactor.
+      }
+      if (!start) start = this.camera.getTransform().getWorldPosition()
+      const eye = inv.multiplyPoint(start)
+      let hit: vec3 = null
+      if (info && info.interactable === target && info.hit) hit = inv.multiplyPoint(info.hit.position)
+      else {
+        // SIK may hit a building collider before the disc. Intersect its aim ray with the map plane directly.
+        const dir = (it as any).direction as vec3
+        if (!dir) continue
+        const localDir = inv.multiplyDirection(dir)
+        if (localDir.y >= -0.001 || eye.y <= 0) continue
+        const t = -eye.y / localDir.y
+        hit = eye.add(localDir.uniformScale(t))
+        const r = this.map.radiusM * this.map.cmPerM
+        if (hit.x * hit.x + hit.z * hit.z > r * r) continue
+      }
+      const id = this.map.pickUnderCursor(hit, this.pickSlackCm, eye)
       if (id) return id
     }
     return ""
@@ -442,28 +595,15 @@ export class RetrospecsController extends BaseScriptComponent {
     return null
   }
 
-  /** Which landmark is the wearer looking at? The cursor first, then head gaze: down = on the map; out = the real direction. */
+  /** Which landmark is the cursor aimed at? The map cursor first, then the right-hand ray out into the real world.
+   * Head gaze never selects: without a tracked hand ray, nothing is aimed at. */
   private gazedLandmark(): string {
     const pointed = this.cursorLandmark()
     if (pointed) return pointed
-    const camT = this.camera.getTransform()
-    const cam = camT.getWorldPosition()
-    // Aim with the right-hand ray when it is tracked (what the wearer sees as the cursor), else the head.
-    const hand = this.handRayDir()
-    const dir = hand || camT.getWorldRotation().multiplyVec3(new vec3(0, 0, -1))
-    const mapY = this.map.root.getTransform().getWorldPosition().y
-    // Head looking down at the map (the hand ray already hits the map through its cursor target).
-    if (!hand && dir.y < -0.3) {
-      const t = (mapY - cam.y) / dir.y
-      if (t > 0) {
-        const hit = cam.add(dir.uniformScale(t))
-        const local = this.map.root.getTransform().getInvertedWorldTransform().multiplyPoint(hit)
-        const id = this.map.pickAtMapPoint(local, 5)
-        if (id) return id
-      }
-    }
+    const dir = this.handRayDir()
+    if (!dir) return ""
     // Hand pointing down at the floor but off the map's buildings: nothing out in the world is meant.
-    if (hand && dir.y < -0.45) return ""
+    if (dir.y < -0.45) return ""
     // Out in the world: the building whose real footprint covers the view direction, nearest first, but looking
     // up over a low roof (the Quad) finds the tall one behind it (Hoover). Instant and local: no network.
     const bearing = worldDirToBearing(toV3(dir), this.mapYaw)
@@ -473,7 +613,7 @@ export class RetrospecsController extends BaseScriptComponent {
 
   tellAboutGaze(picked = "") {
     const id = picked || this.gazedLandmark() || this.focus || this.nearestLandmark(this.me)
-    if (!id) return this.setStatus("Look at a building, on the map or out there, and pinch.")
+    if (!id) return this.setStatus("Point the cursor at a building, on the map or out there, and pinch.")
     this.tellAbout(id)
   }
 
@@ -490,26 +630,30 @@ export class RetrospecsController extends BaseScriptComponent {
     if (!segs.length) return this.tellFact(id)
     const card = cardById(id)
     const again = id === this.focus && this.focusMode === id
+    this.coachEvent(again ? "more" : "picked")
     let i = this.segAt[id] || 0
     if (i >= segs.length) i = 0 // heard it all: start over from the overview
     const seg = segs[i]
     this.segAt[id] = i + 1
-    // The card shows a sourced fact alongside: the next unheard one, else cycle through the card's facts.
-    const fact = nextFact(id, this.state.heard, themesFromProfile(this.state.profile)) || (card && card.facts.length ? card.facts[i % card.facts.length] : null)
+    // Centerpiece cards follow the baked narration segment exactly; other buildings keep the fact rotation.
+    const storyFact = storyCardFactId(id, i)
+    const fact = STORY_CARD_COUNTS[id]
+      ? (storyFact ? (factById(storyFact)?.fact || null) : null)
+      : nextFact(id, this.state.heard, themesFromProfile(this.state.profile)) || (card && card.facts.length ? card.facts[i % card.facts.length] : null)
     if (!again) {
       this.focusOn(id)
-      this.enterFocus(id, fact)
+      this.enterFocus(id, fact, i)
     } else {
       this.focusActiveAt = getTime()
       if (this.infoPanel && fact) {
         const frame = this.map.focusFrame(id)
-        if (frame) this.infoPanel.show(card, fact, frame.top, this.camera.getTransform().getWorldPosition())
+        if (frame) this.infoPanel.show(card, fact, frame.top, this.camera.getTransform().getWorldPosition(), undefined, i)
       }
     }
     if (fact) {
       this.markHeard(fact.id)
       this.showModelFor(fact.id)
-    }
+    } else if (this.showcase) this.showcase.hide()
     const more = i + 1 < segs.length ? `  ·  pinch again for more (${i + 1}/${segs.length})` : ""
     this.sayClip(seg.clip, seg.text, `${card ? card.label : id}${more}`)
     // Warm the next segment so "pinch again" starts instantly.
@@ -517,11 +661,15 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   private tellFact(id: string) {
-    const fact = nextFact(id, this.state.heard, themesFromProfile(this.state.profile))
+    const storyIndex = this.segAt[id] || 0
+    const deckFact = storyCardFactId(id, storyIndex)
+    const fact = deckFact ? (factById(deckFact)?.fact || null) : nextFact(id, this.state.heard, themesFromProfile(this.state.profile))
+    if (deckFact) this.segAt[id] = storyIndex + 1
     const card = cardById(id)
+    this.coachEvent(id === this.focus && this.focusMode === id ? "more" : "picked")
     // "More" on the building already in focus: keep its lights, money and experience; enterFocus just updates the card.
     if (!(id === this.focus && this.focusMode === id)) this.focusOn(id)
-    this.enterFocus(id, fact)
+    this.enterFocus(id, fact, storyIndex)
     if (!fact) {
       if (this.showcase) this.showcase.hide()
       this.say(`That's all my notes on ${card.name}. Look at another building and pinch.`, `${card.label}: all facts heard`, this.quizAfterSpeech(id))
@@ -538,6 +686,7 @@ export class RetrospecsController extends BaseScriptComponent {
     this.focus = id
     this.map.setState(id, "focus")
     if (this.state.seen.indexOf(id) < 0) this.state.seen.push(id)
+    if (this.tourShown.indexOf(id) < 0) this.tourShown.push(id) // pinched stops count for "next spot" too
     this.map.drawSightline(id)
     if (withMoney && this.money) this.money.showForLandmark(id, this.map, this.moneyOnMap, {mapExaggeration: this.moneyMapExaggeration, mapOffsetCm: this.moneyClearanceCm(id)})
     this.save()
@@ -554,6 +703,11 @@ export class RetrospecsController extends BaseScriptComponent {
     const mid = this.showcase.modelForFact(factId)
     if (!mid) return this.showcase.hide()
     const cam = this.camera.getTransform().getWorldPosition()
+    const ambient = this.focusMode ? this.ambientSpot(0.7, -this.ambientDropCm) : null
+    if (ambient) {
+      this.showcase.show(mid, ambient, cam, this.ambientScaleCm)
+      return
+    }
     const layout = this.showcaseNearBuilding && this.focusMode ? this.focusLayoutFor(this.focusMode) : null
     if (layout) {
       this.showcase.show(mid, new vec3(layout.showcase.x, layout.showcase.y, layout.showcase.z), cam, this.showcaseScaleCm)
@@ -579,7 +733,7 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   /** Enters (or moves) focus to `id`, with `fact` on the card (null: name and namesake only). */
-  private enterFocus(id: string, fact: Fact | null) {
+  private enterFocus(id: string, fact: Fact | null, storyIndex = 0) {
     const card = cardById(id)
     if (!card || !this.map.root || !this.map.landmarks[id]) return
     // Already in focus on this building: only refresh the card, no re-grow or experience re-animation.
@@ -592,14 +746,19 @@ export class RetrospecsController extends BaseScriptComponent {
     }
     const frame = this.map.focusFrame(id)
     const cam = this.camera.getTransform().getWorldPosition()
-    if (this.infoPanel && frame) this.infoPanel.show(card, fact, frame.top, cam)
+    if (this.infoPanel && frame) {
+      this.infoPanel.show(card, fact, frame.top, cam, undefined, storyIndex)
+      this.infoPanel.showWorkbench(id === "hpgarage")
+    }
     const exp = this.experiences as any
     if (exp && !same) {
       const layout = this.focusLayoutFor(id)
       try {
         if (exp.hide) exp.hide()
         // Experiences treat the anchor as their base and rise ~1.1x scale above it; the layout gives a centre.
-        if (layout && exp.show) exp.show(id, new vec3(layout.experience.x, layout.experience.y - this.experienceScaleCm * 0.55, layout.experience.z), cam, this.experienceScaleCm)
+        const amb = this.ambientSpot(-0.7, -this.ambientDropCm)
+        if (amb && exp.show) exp.show(id, new vec3(amb.x, amb.y - this.ambientScaleCm * 0.55, amb.z), cam, this.ambientScaleCm)
+        else if (layout && exp.show) exp.show(id, new vec3(layout.experience.x, layout.experience.y - this.experienceScaleCm * 0.55, layout.experience.z), cam, this.experienceScaleCm)
       } catch (e) {
         print("[Retrospecs] experiences hook failed: " + e)
       }
@@ -612,6 +771,7 @@ export class RetrospecsController extends BaseScriptComponent {
     this.focusMode = ""
     this.map.setFocus(null)
     if (this.infoPanel) this.infoPanel.hide()
+    if (this.infoPanel) this.infoPanel.showWorkbench(false)
     const exp = this.experiences as any
     if (exp && exp.hide) {
       try {
@@ -620,6 +780,15 @@ export class RetrospecsController extends BaseScriptComponent {
         print("[Retrospecs] experiences hide failed: " + e)
       }
     }
+  }
+
+  /** Position a 3D piece just below and beside the card, within the same field of view. */
+  private ambientSpot(side: number, dropCm = -48): vec3 | null {
+    if (!this.ambientExtras || !sharedWall.active) return null
+    const a = (Math.max(10, Math.min(110, this.ambientSideDeg)) * Math.PI) / 180
+    const d = Math.max(80, this.ambientDistanceCm)
+    const w = sharedWall.toWorld({x: side * d * Math.sin(a), y: dropCm, z: d * Math.cos(a)})
+    return new vec3(w.x, w.y, w.z)
   }
 
   /** Card above the building; exploded model to the wearer's right of it; the experience to the left. */
@@ -648,6 +817,7 @@ export class RetrospecsController extends BaseScriptComponent {
     if (focusIdleExpired(now, this.focusActiveAt, this.focusIdleSec, speaking)) {
       print("[Retrospecs] focus idle, restoring the map")
       this.hideExtras()
+      this.coachEvent("closed") // the card's gone, so its tip must go too
       return
     }
     const frame = this.map.focusFrame(this.focusMode)
@@ -704,7 +874,7 @@ export class RetrospecsController extends BaseScriptComponent {
   private prefetchStartup() {
     const here = this.nearestLandmark(this.me)
     const hereName = here ? cardById(here).name : "Stanford"
-    const lines = [`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, THINKING_LINE, LOOKING_UP_LINE, LIVE_PREFIX_WEB, LIVE_PREFIX_GENERAL]
+    const lines = [`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, LOOKING_UP_LINE, LIVE_PREFIX_WEB, LIVE_PREFIX_GENERAL]
     // Buildings with narration play their baked clips, so only warm the ones that would fall back to live speech.
     // (Warming every building's fact used to queue ~68 requests per start and trip the gateway's rate limit.)
     const themes = themesFromProfile(this.state.profile)
@@ -788,6 +958,7 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   private calibrateInstruction(): string {
+    if (this.indoorDemo) return "Welcome to Retrospecs"
     if (this.isEditor) return this.useStartPoint ? "Preview: tap to calibrate (camera facing = start-point direction)." : "Preview: tap to calibrate (uses the camera's facing)."
     return this.useStartPoint ? this.startInstruction : "Face the wall. Pinch a point on its LEFT, then its RIGHT."
   }
@@ -857,15 +1028,13 @@ export class RetrospecsController extends BaseScriptComponent {
     const t = (raw || "").toLowerCase().trim()
     if (!t) return
     if (this.mode === "calibrate") {
-      if (/\b(skip|ready|done)\b/.test(t)) this.finishCalibration(this.viewHorizontal())
+      if (/\b(skip|ready|done|start|open)\b/.test(t)) this.finishCalibration(this.viewHorizontal())
       return
     }
-    if (/\b(lift|raise|table)\b/.test(t)) return this.setLifted(true)
-    if (/\b(floor|lower|put it down)\b/.test(t)) return this.setLifted(false)
+    if (/\b(demo|tutorial|how does this work|show me how)\b/.test(t)) return this.restartCoach()
+    // Coach pick step: no shortcuts ("next spot" etc.) until the visitor has selected the target with the cursor.
+    if (this.coachStep === "pick") return this.setStatus(this.caption)
     if (/\b(recalibrate|calibrate)\b/.test(t)) return this.recalibrate()
-    if (/\b(bigger|larger|zoom in|grow)\b/.test(t)) return this.setMapScale(this.mapScale * 1.4, true)
-    if (/\b(smaller|zoom out|shrink)\b/.test(t)) return this.setMapScale(this.mapScale / 1.4, true)
-    if (/\b(normal|reset) size\b/.test(t)) return this.setMapScale(this.startMapScale, true)
     if (/\bwhat('?s| is) (that|this)\b|\bwhat am i looking at\b/.test(t)) return this.identifyReal()
     if (/\b(explode|take it apart|show me again)\b/.test(t) && this.showcase && this.showcase.isShowing()) return this.showcase.toggle()
     if (/^(close|hide|clear)( it| that| the model| everything)?\.?$/.test(t)) return this.hideExtras()
@@ -876,6 +1045,7 @@ export class RetrospecsController extends BaseScriptComponent {
     }
     if (/\breset (the )?tour\b/.test(t)) return this.resetTour()
     if (QUIZ_ENABLED && /\b(quiz|guess|test me)\b/.test(t)) return this.startGuess(this.focus)
+    if (isNextSpotIntent(t)) return this.showNextSpot()
     if (/\b(something new|tell me more|another (one|fact))\b/.test(t) && this.focus) return this.tellAbout(this.focus)
     if (/^(i'?m|i am|i like|i love|i want|i study|my )/.test(t)) return this.setProfile(raw)
     // Ask further: "look it up", "search …", "what else …" go to the live web for the building in focus.
@@ -965,7 +1135,6 @@ export class RetrospecsController extends BaseScriptComponent {
   private askGuide(question: string) {
     const focus = this.voiceTarget()
     this.setStatus("Thinking…")
-    this.guide.speak(THINKING_LINE) // cached at startup; the real answer interrupts it
     if (focus) this.map.setState(focus, "focus")
     this.guide
       .ask(question, focus, this.state.profile, this.state.heard)
@@ -1032,13 +1201,13 @@ export class RetrospecsController extends BaseScriptComponent {
       if (k >= 1) this.unfoldT = -1
     }
     this.followStatusLabel()
+    this.updateCoach()
     this.updateFocusMode()
     this.updateYouAreHere()
-    this.updateHandle()
+    this.updateRespawn()
     // Cyan highlight on whatever a pinch would pick right now (map cursor first, else the real building the hand
     // ray or head points at). Never in guess mode: it would give the answer away.
     this.updateHover()
-    if (this.mode !== "calibrate") this.updateTwist()
     this.debugCursor() // DEBUG-CURSOR (temporary)
   }
 
@@ -1059,6 +1228,96 @@ export class RetrospecsController extends BaseScriptComponent {
     const rt = this.map.root.getTransform()
     const end = cam.add(rt.getWorldPosition().sub(cam).uniformScale(1.5))
     Physics.createGlobalProbe().rayCast(cam, end, (hit) => print(`[dbg] probe cam->map: ${hit ? hit.collider.getSceneObject().name + " at " + hit.position.toString() + " registered=" + (SIK.InteractionManager.getInteractableByCollider(hit.collider) === t) : "nothing"} | map at ${rt.getWorldPosition().toString()} scale ${rt.getWorldScale().toString()} cam ${cam.toString()}`))
+  }
+
+  // -------------------------------------------------------------------------
+  // Bring the map here: walked far from the map, look down, pinch with both hands
+
+  private respawnRules(): RespawnRules {
+    return {minMapDistM: this.respawnMinMapDistM, minWalkedM: this.respawnMinWalkedM, minLookDownDeg: this.respawnLookDownDeg, holdSec: this.respawnHoldSec}
+  }
+
+  /** Horizontal distances (m) from the wearer to the map's centre and to where the map was last placed. */
+  private respawnDistances(): {mapDistM: number; walkedM: number} {
+    const cam = this.camera.getTransform().getWorldPosition()
+    const flat = (p: vec3) => Math.hypot(cam.x - p.x, cam.z - p.z) / 100
+    const mapDistM = this.map.root ? flat(this.map.root.getTransform().getWorldPosition()) : 0
+    return {mapDistM, walkedM: this.mapPlacedFrom ? flat(this.mapPlacedFrom) : 0}
+  }
+
+  /** Degrees the head is pitched below the horizon (the camera looks along its local -Z, `back`). */
+  private lookDownDeg(): number {
+    const v = this.camera.getTransform().back
+    return (Math.asin(Math.max(-1, Math.min(1, -v.y))) * 180) / Math.PI
+  }
+
+  private respawnActive(): boolean {
+    return this.respawnEnabled && this.mode === "tour" && !!this.map.root && this.coachStep !== "pick"
+  }
+
+  /** True while the "pinch both hands" offer is showing (far from the map and looking down). */
+  private respawnOffered(): boolean {
+    if (!this.respawnActive()) return false
+    const d = this.respawnDistances()
+    return farFromMap({...d, active: true}, this.respawnRules()) && this.lookDownDeg() >= this.respawnLookDownDeg
+  }
+
+  private updateRespawn() {
+    let both = false
+    try {
+      const l = SIK.HandInputData.getHand("left")
+      const r = SIK.HandInputData.getHand("right")
+      both = !!(l && r && l.isTracked() && r.isTracked() && l.isPinching() && r.isPinching())
+    } catch (e) {
+      both = false
+    }
+    const d = this.respawnDistances()
+    const step = stepRespawn(this.respawn, {now: getTime(), ...d, lookDownDeg: this.lookDownDeg(), bothPinching: both, active: this.respawnActive()}, this.respawnRules())
+    if (step.phase === "fire") {
+      this.respawnShown = ""
+      this.respawnMap()
+      return
+    }
+    // Only touch the caption when the hint changes, so normal captions come back once the offer goes away.
+    const hint = step.phase === "offer" ? "Map's back there. Pinch with both hands to bring it here."
+      : step.phase === "holding" ? `Bringing the map here… ${Math.round(step.progress * 100)}%` : ""
+    if (hint === this.respawnShown) return
+    if (hint) {
+      this.rightDownAt = -1 // a pinch while the offer is up is never a long "identify" pinch
+      this.setStatus(hint)
+    } else this.setStatus("")
+    this.respawnShown = hint
+  }
+
+  /**
+   * Rebuilds the map around where the wearer stands now (hereEN: the calibration spot plus how far they've walked)
+   * and puts it in front of them, keeping the calibrated yaw, table/floor choice and size. The real-world frame is
+   * re-pinned here too, so tags and pinch targets stay on their buildings.
+   */
+  private respawnMap() {
+    const here = this.hereEN() // before the rebuild: it reads the current world frame
+    const cam = this.camera.getTransform().getWorldPosition()
+    const movedM = Math.round(Math.hypot(here.e - this.map.center.e, here.n - this.map.center.n))
+    this.hideExtras()
+    this.me = here
+    if (this.locator) this.locator.setSurvey(this.me)
+    this.floorY = cam.y - this.eyeHeightCm
+    this.worldAnchor = null
+    this.map.build(this.me, this.camera)
+    if (this.overlay) this.overlay.setCenter(this.map.center)
+    this.makeYouAreHere()
+    this.placeMap(true)
+    this.mapPlacedFrom = cam
+    if (this.infoPanel) {
+      this.infoPanel.placeWorkbench(this.map.root, this.camera, this.floorY, this.map.radiusM * this.map.cmPerM * this.mapScale)
+      this.infoPanel.showWorkbench(false)
+    }
+    this.unfoldT = 0
+    this.resetLights()
+    print(`[Retrospecs] map respawned ${movedM} m from the last centre`)
+    const near = this.nearestLandmark(this.me)
+    const nearName = near ? cardById(near).name : ""
+    this.say(nearName ? `Map's here. You're near ${nearName}.` : "Map's here.", nearName ? `Map moved here · near ${nearName}` : "Map moved here")
   }
 
   /** Two-hand pinch and twist nudges the map yaw (calibration correction). */
@@ -1195,6 +1454,7 @@ export class RetrospecsController extends BaseScriptComponent {
     this.mode = "calibrate"
     this.wallPoints = []
     this.hideExtras()
+    if (this.indoorDemo) this.coachStep = "start"
     this.setStatus(this.calibrateInstruction())
   }
 
@@ -1251,9 +1511,56 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   private setStatus(s: string) {
-    if (this.statusText) this.statusText.text = s
-    if (this.statusLabel) this.statusLabel.text = s
-    print("[Retrospecs] " + s)
+    this.caption = s
+    const suggest = this.coachSuggest ? cardById(this.coachSuggest) : null
+    const hint = coachHint(this.coachStep, this.coachAimNow, suggest ? suggest.label : "", this.coachAimOther)
+    const shown = hint ? (s ? s + "\n" + hint : hint) : s
+    if (this.statusText) this.statusText.text = shown
+    if (this.statusLabel) this.statusLabel.text = shown
+    print("[Retrospecs] " + shown)
+  }
+
+  // -------------------------------------------------------------------------
+  // Indoor demo coach (Core/Coach): open the map, pick a building, use the card. Then it gets out of the way.
+
+  private coachEvent(ev: CoachEvent) {
+    if (this.coachStep === "off") return
+    const next = coachNext(this.coachStep, ev)
+    if (next === this.coachStep) return
+    this.coachStep = next
+    print(`[Retrospecs] coach: ${next}`)
+    if (next === "pick") {
+      this.coachSuggest = suggestedBuilding(Object.keys(this.map.landmarks).filter((id) => !!cardById(id)), CENTERPIECES)
+      if (this.coachSuggest) {
+        this.map.setState(this.coachSuggest, "lit")
+        this.map.drawArcToLandmark(this.coachSuggest, this.map.colors.lit) // cleared by resetLights on the first pick
+      }
+      this.coachAimNow = "none"
+      this.coachAimOther = ""
+      const target = cardById(this.coachSuggest)
+      this.say(coachLine("pick", target ? target.label : ""), `Step 1: select ${target ? target.label : "the gold building"}`)
+      return
+    }
+    if (next === "done") this.coachDoneAt = getTime()
+    this.setStatus(this.caption)
+  }
+
+  /** "demo" / "show me how": run the coach again (from the pick step once the map is open). */
+  private restartCoach() {
+    this.coachStep = "start"
+    if (this.mode === "calibrate") return this.setStatus(this.calibrateInstruction())
+    this.guide.stopSpeaking()
+    this.hideExtras()
+    this.resetLights()
+    this.focus = ""
+    this.coachEvent("mapOpened")
+  }
+
+  /** The closing tip fades after a few seconds. */
+  private updateCoach() {
+    if (this.coachStep !== "done" || getTime() - this.coachDoneAt < DONE_HOLD_SEC) return
+    this.coachStep = "off"
+    this.setStatus(this.caption)
   }
 
   private makeStatusLabel() {
@@ -1270,7 +1577,7 @@ export class RetrospecsController extends BaseScriptComponent {
     const camT = this.camera.getTransform()
     const cam = camT.getWorldPosition()
     const f = this.viewHorizontal()
-    const target = new vec3(cam.x + f.x * 70, cam.y - 22, cam.z + f.z * 70)
+    const target = new vec3(cam.x + f.x * 95, cam.y - 42, cam.z + f.z * 95)
     const t = this.statusHolder.getTransform()
     t.setWorldPosition(vec3.lerp(t.getWorldPosition(), target, Math.min(1, getDeltaTime() * 4)))
     t.setWorldRotation(quat.angleAxis(Math.atan2(-f.x, -f.z), vec3.up()))

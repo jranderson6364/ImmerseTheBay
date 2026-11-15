@@ -7,7 +7,7 @@ Original files from Nazeli Sayra Kurtoğlu's replies to **“Sightlines: buildin
 | `Two friends, one garage.png` | HP garage story card | **In the Lens** for `hpgarage` (fact `hpgarage.1`) |
 | `Before Google_ Early Storage Server.png` | Huang / early storage server card | **In the Lens** for `huang` (fact `huang.3`) |
 | `Hewlett-Packard-anim.mp4` | Hewlett and Packard at the workbench with the oscillator | **In the Lens** for `hpgarage` |
-| `ElevenLabs_video_gemini-omni-flash-1-2_...mp4` | The same two 1930s HP characters building the toy-block server rack | **Not used**: the rack matches `huang.3`, but that story is Larry Page and Sergey Brin in 1996, so the figures are the wrong people. Needs a redraw with Page and Brin. |
+| `ElevenLabs_video_gemini-omni-flash-1-2_...mp4` | The same two 1930s HP characters building the toy-block server rack | **In the Lens as a placeholder** for `huang` (fact `huang.3`) (added Nov 14). The figures are the HP characters, but that story is Larry Page and Sergey Brin in 1996. Swap in a redraw with Page and Brin when it arrives. |
 
 ## Lens-ready copies
 
@@ -16,6 +16,7 @@ Original files from Nazeli Sayra Kurtoğlu's replies to **“Sightlines: buildin
 | `huang/huang_card_huang.3.nazeli.png`, `hpgarage/hpgarage_card_hpgarage.1.nazeli.png` | 1600 x 1000 transparent, text-free cards in the export format: illustration only, centred on the graphic circle (1345, 500), clear of the title / namesake / fact regions. |
 | `huang/huang_nazeli_art.png`, `hpgarage/hpgarage_nazeli_art.png` | Tight crops on black, used at runtime. |
 | `hpgarage/hpgarage_nazeli_anim.mp4` | 640 x 360, 4 s, H.264 baseline, no audio (2.7 MB to 0.35 MB). |
+| `huang/huang_nazeli_anim.mp4` | Same treatment (2.5 MB to 0.14 MB). Shown first on the Huang card, then the still. |
 
 What changed from her files:
 - **Copy, button and border removed.** The Lens types the words itself, from `Core/Cards.ts`.
@@ -30,7 +31,7 @@ What changed from her files:
 
 ## How it shows
 
-In focus mode, the card's media row above the info panel shows her art (and the animation, looping, for the HP Garage). This sits alongside the existing 3D model and experience, not instead of them. It is wired on the `RetrospecsInfoPanel` component:
+In focus mode, Huang and HP Garage use complete raster story cards (`huang_story_card.png`, `hpgarage_story_card.png`) with artwork, copy, outline, and Explore More / Next Stop controls. Rebuild them with `python Retrospecs/tools/render_sample_story_cards.py`. The HP workbench video is a separate, roughly human-scale screen near the map's back-right corner and appears only when HP Garage is selected. The Huang animation is held back because it depicts the HP founders rather than Page and Brin. The media is wired on the `RetrospecsInfoPanel` component:
 - `Show Media`: on/off for comparison.
 - `Media Material`: `Materials/CaptureTexture.mat`.
 - Slots `media1..4 Id / Texture`: `huang`, `hpgarage`, `hpgarage`.
