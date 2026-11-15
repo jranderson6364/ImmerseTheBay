@@ -20,7 +20,7 @@ FILES
   Static parts: stage, desk, workstation, keyboard.
   Hidden at this frame (scale near 0, kept in the file): none.
   Animation length: loops every 12 s.
-  Size: 40.3 x 32.6 x 39.1 cm (x, y, z). Triangles: 2456. Meshes: 11 (one per node and colour).
+  Size: 40.3 x 31.8 x 39.1 cm (x, y, z). Triangles: 2456. Meshes: 11 (one per node and colour).
   Format: glTF 2.0 binary. Units are centimetres (the glTF spec says metres, so an importer that converts
   metres to cm needs an import scale of 0.01). Y up, front faces -Z, pivot at the bottom centre.
   Flat unlit colours (KHR_materials_unlit), double-sided, no textures. Node names are the part names the

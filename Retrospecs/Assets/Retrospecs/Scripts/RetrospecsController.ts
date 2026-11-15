@@ -13,6 +13,7 @@
  * Editor Preview: tap = calibrate (camera forward as the wall facing), then tap = right pinch.
  */
 import {SIK} from "SpectaclesInteractionKit.lspkg/SIK"
+import {InteractorInputType} from "SpectaclesInteractionKit.lspkg/Core/Interactor/Interactor"
 import {tidyLabel} from "./LabelStyle"
 import {ASRController} from "../../Scripts/ASRController"
 import {WorldLabel} from "../../Scripts/WorldLabel"
@@ -164,6 +165,8 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   private rightDownAt = -1
+  /** Building under the cursor when the right pinch went down (the ray drifts as the fingers close). */
+  private pinchPick = ""
 
   private onPinch(which: "left" | "right") {
     const hand = SIK.HandInputData.getHand(which)
@@ -178,12 +181,14 @@ export class RetrospecsController extends BaseScriptComponent {
     // Left pinch always means "listen", so a question is never blocked by a pending quiz.
     if (which === "left" && this.asr) return this.listen()
     if (this.mode === "guess") return this.lockGuess(toV3(hand.indexKnuckle.position))
+    this.pinchPick = which === "right" ? this.cursorLandmark() : ""
     // Tour, right hand: decide on release. Short = tell about gaze, long = identify the real building.
-    if (which === "right" && this.locator) {
+    // A pinch with the cursor on a map building answers at once; there is no real building to identify.
+    if (which === "right" && this.locator && !this.pinchPick) {
       this.rightDownAt = getTime()
       return
     }
-    this.tellAboutGaze()
+    this.tellAboutGaze(this.pinchPick)
   }
 
   private onRightPinchUp() {
@@ -304,8 +309,34 @@ export class RetrospecsController extends BaseScriptComponent {
   // -------------------------------------------------------------------------
   // Tour
 
-  /** Which landmark is the wearer looking at? Looking down = on the map; looking out = the real direction. */
+  /**
+   * Landmark under the SIK cursor on the map ("" = none). Right-hand ray on device, the mouse in Editor Preview;
+   * the left hand is for "listen" and doesn't steer selection.
+   */
+  private cursorLandmark(): string {
+    const target = this.map.cursorTarget
+    if (!target || !this.map.root || this.mode === "calibrate") return ""
+    let interactors
+    try {
+      interactors = SIK.InteractionManager.getTargetingInteractors()
+    } catch (e) {
+      return ""
+    }
+    const inv = this.map.root.getTransform().getInvertedWorldTransform()
+    for (const it of interactors) {
+      if (!(it.inputType & (InteractorInputType.RightHand | InteractorInputType.Mouse))) continue
+      const info = it.targetHitInfo
+      if (!info || info.interactable !== target || !info.hit) continue
+      const id = this.map.pickAtMapPoint(inv.multiplyPoint(info.hit.position), 5)
+      if (id) return id
+    }
+    return ""
+  }
+
+  /** Which landmark is the wearer looking at? The cursor first, then head gaze: down = on the map; out = the real direction. */
   private gazedLandmark(): string {
+    const pointed = this.cursorLandmark()
+    if (pointed) return pointed
     const camT = this.camera.getTransform()
     const cam = camT.getWorldPosition()
     const dir = camT.getWorldRotation().multiplyVec3(new vec3(0, 0, -1))
@@ -335,8 +366,8 @@ export class RetrospecsController extends BaseScriptComponent {
     return best
   }
 
-  tellAboutGaze() {
-    const id = this.gazedLandmark() || this.focus || this.nearestLandmark(this.me)
+  tellAboutGaze(picked = "") {
+    const id = picked || this.gazedLandmark() || this.focus || this.nearestLandmark(this.me)
     if (!id) return this.setStatus("Look at a building, on the map or out there, and pinch.")
     this.tellAbout(id)
   }
@@ -759,6 +790,8 @@ export class RetrospecsController extends BaseScriptComponent {
     this.updateFocusMode()
     this.updateYouAreHere()
     this.updateHandle()
+    // Gold outline on the building under the cursor. Never in guess mode: it would give the answer away.
+    this.map.setHover(this.mode === "tour" ? this.cursorLandmark() : "")
     if (this.mode !== "calibrate") this.updateTwist()
   }
 

@@ -19,6 +19,7 @@ import {
 } from "../Core/MapMesh"
 import {WorldLabel} from "../../Scripts/WorldLabel"
 import {FocusTuning, backgroundLook, easeInOut, footprintRadiusM, landmarkLook, stepBlend} from "../Core/Focus"
+import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
 
 export type LandmarkState = "dim" | "seen" | "lit" | "focus"
 
@@ -188,6 +189,10 @@ export class RetrospecsMap extends BaseScriptComponent {
   cmPerM = 100 / 600
   center: EN = {e: 0, n: 0}
   landmarks: Record<string, LandmarkView> = {}
+  /** Flat SIK target over the disc, so the hand-ray cursor lands on the map (see makeCursorTarget). */
+  cursorTarget: Interactable = null
+  /** Landmark under the cursor ("" = none): its outline turns gold. */
+  hoverId = ""
 
   private temp: SceneObject[] = []
   private worldTemp: SceneObject[] = []
@@ -213,6 +218,8 @@ export class RetrospecsMap extends BaseScriptComponent {
     this.root = global.scene.createSceneObject("RetrospecsMapRoot")
     this.worldRoot = global.scene.createSceneObject("RetrospecsWorldRoot")
     this.landmarks = {}
+    this.cursorTarget = null
+    this.hoverId = ""
     this.bgParts = []
     this.focusId = ""
     this.bgT = 0
@@ -281,8 +288,55 @@ export class RetrospecsMap extends BaseScriptComponent {
     // "You are here" marker: a small ring plus a short pillar at the centre.
     this.meshObject(this.root, "you_ring", buildRing(2.2, 0.6, 48, 0.05), COLORS.you)
     this.meshObject(this.root, "you_pillar", buildTube([{x: 0, y: 0, z: 0}, {x: 0, y: 6, z: 0}], 0.5), COLORS.you)
+    this.makeCursorTarget(radiusCm)
 
     print(`[Retrospecs] map built in ${(getTime() - started).toFixed(2)} s: ${chunks} chunks, ${verts} background verts, ${Object.keys(this.landmarks).length} landmarks; paths ${pathChunks} chunks, verts road ${pathVerts.road} / bike ${pathVerts.bike} / foot ${pathVerts.foot}`)
+  }
+
+  /**
+   * One thin box collider over the whole disc (plus the edge pointers just outside it) with an SIK Interactable,
+   * so the hand-ray cursor appears on the map and the controller can pick the building under it.
+   * Indirect targeting only: a hand near the lifted map must not switch to direct targeting and drop the ray.
+   */
+  private makeCursorTarget(radiusCm: number) {
+    try {
+      const o = global.scene.createSceneObject("map_cursor_target")
+      o.setParent(this.root)
+      o.getTransform().setLocalPosition(new vec3(0, 0.5, 0)) // top face ~1 cm up, near the footprints
+      const half = radiusCm + 3 + 6 // edge pointers sit 3 cm outside the rim
+      const collider = o.createComponent("Physics.ColliderComponent") as ColliderComponent
+      collider.fitVisual = false
+      const box = Shape.createBoxShape()
+      box.size = new vec3(half * 2, 1, half * 2)
+      collider.shape = box
+      // Collider before Interactable: SIK collects the colliders when the Interactable registers.
+      const it = o.createComponent(Interactable.getTypeName()) as Interactable
+      it.targetingMode = 2 // TargetingMode.Indirect
+      this.cursorTarget = it
+      print(`[Retrospecs] cursor target ready: ${Math.round(half * 2)} cm square over the map`)
+    } catch (e) {
+      print("[Retrospecs] cursor target unavailable: " + e)
+    }
+  }
+
+  /** Gold outline on the landmark under the cursor; "" clears it. */
+  setHover(id: string) {
+    const next = id && this.landmarks[id] ? id : ""
+    if (next === this.hoverId) return
+    const prev = this.landmarks[this.hoverId]
+    this.hoverId = next
+    if (next) print(`[Retrospecs] cursor on ${next}`)
+    if (prev) this.applyOutline(prev)
+    if (this.landmarks[next]) this.applyOutline(this.landmarks[next])
+  }
+
+  private outlineColor(l: LandmarkView, dim: number): number[] {
+    if (l.state === "focus" || l.id === this.hoverId) return COLORS.focusEdge
+    return this.dimmed(COLORS.landmarkOutline, dim)
+  }
+
+  private applyOutline(l: LandmarkView) {
+    if (l.outlineMaterial) this.setColor(l.outlineMaterial, this.outlineColor(l, this.landmarkDim(l)))
   }
 
   private makeLandmark(id: string, en: EN, baked: BakedLandmark | null, _unused: number, offMap: boolean): LandmarkView {
@@ -386,7 +440,7 @@ export class RetrospecsMap extends BaseScriptComponent {
     if (!l) return
     l.state = state
     if (l.material) this.setColor(l.material, this.dimmed(COLORS[state], this.landmarkDim(l)))
-    if (l.outlineMaterial) this.setColor(l.outlineMaterial, state === "focus" ? COLORS.focusEdge : this.dimmed(COLORS.landmarkOutline, this.landmarkDim(l)))
+    this.applyOutline(l)
   }
 
   // -------------------------------------------------------------------------
@@ -479,7 +533,7 @@ export class RetrospecsMap extends BaseScriptComponent {
       }
       // The pulse in onUpdate owns the colour of a landmark in the "focus" state.
       if (l.material && l.state !== "focus") this.setColor(l.material, this.dimmed(COLORS[l.state], look.dim))
-      if (l.outlineMaterial) this.setColor(l.outlineMaterial, l.state === "focus" ? COLORS.focusEdge : this.dimmed(COLORS.landmarkOutline, look.dim))
+      if (l.outlineMaterial) this.setColor(l.outlineMaterial, this.outlineColor(l, look.dim))
       if (l.label) {
         l.label.getTransform().setLocalPosition(new vec3(l.map.x, l.topCm * look.scaleY + look.liftCm + 2.5, l.map.z))
         // The info panel carries the focused building's name, so its small map label steps aside.

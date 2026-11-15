@@ -21,7 +21,7 @@ FILES
   Static parts: globe, beam_2, beam_3, pulse_2, pulse_3.
   Hidden at this frame (scale near 0, kept in the file): beam_2, beam_3, pulse_2, pulse_3.
   Animation length: Globe, pin and orbits grow in over about 1.5 s; beams from 1.8 s, pulses from 2.0 s. Satellites orbit continuously at 14 deg/s (about 26 s per orbit).
-  Size: 33 x 37.9 x 42.4 cm (x, y, z). Triangles: 4544. Meshes: 16 (one per node and colour).
+  Size: 31.5 x 29 x 31.5 cm (x, y, z). Triangles: 4544. Meshes: 16 (one per node and colour).
   Format: glTF 2.0 binary. Units are centimetres (the glTF spec says metres, so an importer that converts
   metres to cm needs an import scale of 0.01). Y up, front faces -Z, pivot at the bottom centre.
   Flat unlit colours (KHR_materials_unlit), double-sided, no textures. Node names are the part names the

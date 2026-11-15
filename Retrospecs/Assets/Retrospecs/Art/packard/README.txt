@@ -20,7 +20,7 @@ FILES
   Static parts: garage, garage_roof, bench.
   Hidden at this frame (scale near 0, kept in the file): none.
   Animation length: Plays once over about 7.3 s: six devices fly out of the garage one per second from 0.8 s (each flight 1.3 s), then bob and sway gently. Timeline arc grows 0.2-1.0 s.
-  Size: 40.6 x 32.7 x 13.4 cm (x, y, z). Triangles: 996. Meshes: 16 (one per node and colour).
+  Size: 40.3 x 32.7 x 13.4 cm (x, y, z). Triangles: 996. Meshes: 16 (one per node and colour).
   Format: glTF 2.0 binary. Units are centimetres (the glTF spec says metres, so an importer that converts
   metres to cm needs an import scale of 0.01). Y up, front faces -Z, pivot at the bottom centre.
   Flat unlit colours (KHR_materials_unlit), double-sided, no textures. Node names are the part names the

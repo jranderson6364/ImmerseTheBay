@@ -15,12 +15,12 @@ FILES
 
 3D ELEMENT
   Source: Core/Money.ts (the $30M gift pile) and Core/Products.ts (graphics card), assembled for this export.
-  Money pile: $30 million in $1 bills (fact huang.1): 47 skids in 16 towers, real size 6.8 x 4.6 x 3.1 m, shown at scale 0.0469.
+  Money pile: $30 million in $1 bills (fact huang.1): 47 skids in 16 towers, real size 6.8 x 4.6 x 3.1 m, shown at scale 0.0440.
   The runtime builds one object per tower and colour; here the towers are merged per colour (bills, bill_tops, bands, pallets) to stay under 40 meshes.
   Graphics card at 0.4x, exploded to 0.55 of its timeline. Parts: shroud, fan_left, fan_right, heatsink, heat_pipes, bracket, backplate, package, die, memory, power, pcb, connector.
   Moving parts: money_pile (towers grow in), and the graphics card parts: shroud, fan_left, fan_right, heatsink, heat_pipes, bracket, backplate, package, die, memory, power, pcb, connector.
   Animation length: Money pile grows in over 2 s (RetrospecsMoney growSeconds; at runtime each tower grows in turn, back-centre first). Graphics card: turns for 1.4 s, explodes over 2.5 s, re-assembles over 1.2 s on toggle (RetrospecsShowcase defaults).
-  Size: 61.2 x 14.7 x 22 cm (x, y, z). Triangles: 9292. Meshes: 17 (one per node and colour).
+  Size: 59.2 x 13.8 x 20.6 cm (x, y, z). Triangles: 9292. Meshes: 17 (one per node and colour).
   Format: glTF 2.0 binary. Units are centimetres (the glTF spec says metres, so an importer that converts
   metres to cm needs an import scale of 0.01). Y up, front faces -Z, pivot at the bottom centre.
   Flat unlit colours (KHR_materials_unlit), double-sided, no textures. Node names are the part names the

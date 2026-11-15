@@ -1,0 +1,579 @@
+- !<AssetImportMetadata/107870a3-f9db-48cd-be66-8c93aa9afb3b>
+  ImportedAssetIds:
+    .hidden/cardinal: !<reference> 7b209988-2ecc-42b3-bcfc-d683269d64e7
+    027ab7c7b2137178: !<reference> 11d573eb-8556-4251-bfde-9fc014713cea
+    08003a53a14865b0: !<reference> a9f30cb9-ff5a-46bb-bcfa-94001d709f77
+    115b6bdf383aa858: !<reference> 24f87151-381d-49d9-8bc6-380a9af22e50
+    135532f1452c8e02: !<reference> 04bd25ec-21a3-46a1-ad56-b7576d6d06be
+    1ce0b03d641809c9: !<reference> b6fab631-c663-441b-9de9-bd039952591a
+    238bc3a28025a69f: !<reference> 677acffb-5053-4c44-b72b-3c53b452467c
+    3668d8004822862b: !<reference> f5de6f00-e5c4-43b7-ba70-b89f2f4d7f21
+    36d4c3ef71609a12: !<reference> 45d4b34e-6373-4aa0-99a4-594741bf505a
+    4004ad4061e3d3f4: !<reference> 500965d0-23b0-4722-9b72-e7ef4fa875db
+    5bee6ffa45ffb176: !<reference> 6dac349e-0bc7-4a79-aaaa-7f847429335c
+    624f6792bd6e379e: !<reference> c96cbcc2-914c-4d7a-8cb6-5e9b02e7a5f5
+    78206c1236836279: !<reference> 2ec66ddb-489a-4cb1-8a94-4cc362db0dea
+    7a0dd5cd69df73fa: !<reference> 60e3390b-9d81-41b8-bc85-c4168b283aa3
+    7b790ab2d98989bb: !<reference> 5445b554-45af-4ca6-a34a-562722857be8
+    7bae6895179cc4f8: !<reference> 8d094893-428e-4ca4-a5f9-a1af8cfaa8dd
+    Materials/cardinal: !<reference> 2afbf61b-6893-45af-8e61-630ff7a53721
+    Materials/cardinal|cardinal|GraphPassInfo: !<reference> aca078a9-716b-4431-a437-95228cf9fc2b
+    Materials/cream: !<reference> aa77b2f4-d93d-41e0-aa70-ce51b4c3ecf5
+    Materials/cream|cream|GraphPassInfo: !<reference> 8dec4822-e846-4a65-864f-97ba78250689
+    Materials/gold: !<reference> 0bb7c481-0821-4788-a607-c7d75f0be01c
+    Materials/gold|gold|GraphPassInfo: !<reference> c3eb1d26-f998-4fc5-8b23-9b38c78b5266
+    Materials/lightSand: !<reference> bed19211-981d-4969-8409-09bb599932b8
+    Materials/lightSand|lightSand|GraphPassInfo: !<reference> deaac5c9-b3bf-4a39-8c2d-2fec299694b0
+    Meshes/bell_big: !<reference> 4956995c-3423-4702-a67f-75ad0a1c4f5b
+    Meshes/bells_1: !<reference> 7199eead-00f8-46a3-9518-270a113a732c
+    Meshes/bells_2: !<reference> 5b3a3274-08cf-4404-b347-13bd4d41fbf5
+    Meshes/bells_3: !<reference> 21d52ca4-86dd-4396-8e1f-1ee9ce68de8e
+    Meshes/bells_4: !<reference> 65e39002-f9f1-40c4-9e44-6b81a4a44772
+    Meshes/bells_5: !<reference> db91c0ce-49a9-421d-a863-9b9bca183a8b
+    Meshes/bells_6: !<reference> daad0304-bc3a-43c6-b8bd-fcdac00e87cd
+    Meshes/bells_7: !<reference> a1c60641-8d19-44bc-bf1a-43b646607f00
+    Meshes/dome: !<reference> 5e2f13c0-ee82-41f8-be0f-b4b98bccf2c4
+    Meshes/sound_0: !<reference> 0116acff-e723-42e0-9f20-d246240655d5
+    Meshes/sound_1: !<reference> 60141503-8480-4316-8bd3-ba476b9e04e7
+    Meshes/tower: !<reference> 3176876b-1d04-48fc-8657-146e16004f05
+    Scene: !<reference> 7c26b365-80ac-4f04-8d3c-56b10d01a5cb
+    a1f49e748465dc76: !<reference> a8853430-8fca-4e39-a927-2625e3d2c1db
+    a5d748787f500a70: !<reference> e1d94ea8-56ab-42bc-aa6b-62f255cfb386
+    b5aafa6952e69cb1: !<reference> 9d7c45b3-aeb4-4fbf-94d8-f90532618cee
+    b967a2a5d2bfa0c8: !<reference> 9b64fba1-c0e2-4418-b5f9-86a2ae85bb7d
+    bb764ad6dc5d7471: !<reference> af13d77e-96c4-4db7-8417-2480593db747
+    c7ffec04a4f7249b: !<reference> b83c0ef4-3625-46fa-a1b8-06007ea7d264
+    caa36f2c701f5485: !<reference> 2d6631e2-dd49-4faa-8dbb-67a806fd8090
+    cf51d83c66dc31e9: !<reference> c4012e6a-175a-4628-a95d-91d1ecbf3095
+    d91ffdf511773a99: !<reference> cbdfe268-0021-47d6-89f2-ecd789c558e7
+    deafe68d525f3112: !<reference> bbe5b670-aa43-4a67-a77c-83ead4684d14
+    ec242c6d1ca4f249: !<reference> 7e4af04e-4ef0-48ef-a8cb-f28d2ee8e500
+    fb36211700301966: !<reference> ed9d5c59-82f4-4749-af40-5946d66e3da2
+    feea5c1b1a7267c6: !<reference> 051006b0-bdda-437a-8e5e-b34fac68ed2e
+  ImporterName: GltfImporter
+  PrimaryAsset: !<reference> 7c26b365-80ac-4f04-8d3c-56b10d01a5cb
+  PackageType: LegacyPackage
+  LegacyPackagePolicy: CanBeUnpackedTransparent
+  ExtraData:
+    {}
+  AssetDataMap:
+    Scene: !<own> 31feb6c4-cae7-4633-8fb6-a7c45c21b31c
+  DependentFiles:
+    []
+  ImporterSettings: !<GltfImporterSettings>
+    UseLegacyImporter: false
+    WithMaterials: true
+    NamingConvention: ByCategorySanitizeV2
+    PersistentIdGenerationAlgorithm: DescriptorBased
+    AnimationCurveOptimization: true
+    CustomAnimationSamplingRate: 30.000000
+    ImportVertexColor: true
+    ImportTangents: true
+    ImportMorphTargetAnimation: true
+    ConvertMetersToCentimeters: true
+    RegenerateTangents: false
+  CompressionSettings: !<ComplexCompressionSettings>
+    Presets:
+      None Compression: !<SingleCompressionSettings>
+        CompressorName: None
+        CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+    ExtensionMappings:
+      mesh: None Compression
+    Overrides:
+      {}
+- !<RenderMeshVisual/04bd25ec-21a3-46a1-52a9-48a89292f941>
+  PrefabRemaps:
+    []
+  Name: bells_3
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 0bb7c481-0821-4788-a607-c7d75f0be01c
+  Mesh: !<reference> 21d52ca4-86dd-4396-8e1f-1ee9ce68de8e
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<RenderMeshVisual/051006b0-bdda-437a-71a1-4cb0539712d1>
+  PrefabRemaps:
+    []
+  Name: sound_0
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> bed19211-981d-4969-8409-09bb599932b8
+  Mesh: !<reference> 0116acff-e723-42e0-9f20-d246240655d5
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<SceneObject/11d573eb-8556-4251-4021-603feb8ec315>
+  PrefabRemaps:
+    []
+  Name: bell_big
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 6.000000, z: 13.500000}
+    Rotation: {x: 0.000000, y: -0.000000, z: 1.941161}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> f5de6f00-e5c4-43b7-458f-4760d0b280de
+- !<SceneObject/24f87151-381d-49d9-7439-c7f5650dd1af>
+  PrefabRemaps:
+    []
+  Name: sound_1
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 4.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 0.000100, y: 0.000100, z: 0.000100}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> ed9d5c59-82f4-4749-50bf-a6b92991c25d
+- !<SceneObject/2d6631e2-dd49-4faa-7244-9857f9027f6f>
+  PrefabRemaps:
+    []
+  Name: sound_0
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 4.960000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 9.760000, y: 1.000000, z: 9.760000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> 051006b0-bdda-437a-71a1-4cb0539712d1
+- !<RenderMeshVisual/2ec66ddb-489a-4cb1-756b-b33c9d24f215>
+  PrefabRemaps:
+    []
+  Name: tower
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> aa77b2f4-d93d-41e0-aa70-ce51b4c3ecf5
+  Mesh: !<reference> 3176876b-1d04-48fc-8657-146e16004f05
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<ObjectPrefabAssetData/31feb6c4-cae7-4633-8fb6-a7c45c21b31c>
+  Prototype: !<ObjectOwner/dbc6c438-588f-4f31-aa74-f9583cd92b3d>
+    PackagePath: ""
+    objects:
+      - !<own> 60e3390b-9d81-41b8-437a-3be974d7c55c
+- !<SceneObject/45d4b34e-6373-4aa0-665b-a6b8be40afa5>
+  PrefabRemaps:
+    []
+  Name: dome
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> cbdfe268-0021-47d6-760d-1328763aa718
+- !<RenderMeshVisual/500965d0-23b0-4722-648d-1810b0578a24>
+  PrefabRemaps:
+    []
+  Name: bells_7
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 0bb7c481-0821-4788-a607-c7d75f0be01c
+  Mesh: !<reference> a1c60641-8d19-44bc-bf1a-43b646607f00
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<SceneObject/5445b554-45af-4ca6-5cb5-a9d8dd7a8417>
+  PrefabRemaps:
+    []
+  Name: tower
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> 2ec66ddb-489a-4cb1-756b-b33c9d24f215
+- !<SceneObject/60e3390b-9d81-41b8-437a-3be974d7c55c>
+  PrefabRemaps:
+    []
+  Name: hoover_3d
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 100.000000, y: 100.000000, z: 100.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    - !<own> c96cbcc2-914c-4d7a-7349-a164fd185a0a
+  Components:
+    []
+- !<SceneObject/677acffb-5053-4c44-48d4-c3ac4badb983>
+  PrefabRemaps:
+    []
+  Name: bells_4
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 20.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> a8853430-8fca-4e39-56d8-d9da1c2d3e24
+- !<SceneObject/6dac349e-0bc7-4a79-5555-807b8bd6cca3>
+  PrefabRemaps:
+    []
+  Name: bells_2
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 20.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> bbe5b670-aa43-4a67-5883-7c152b97b2eb
+- !<SceneObject/7e4af04e-4ef0-48ef-5734-0d72d1171aff>
+  PrefabRemaps:
+    []
+  Name: bells_7
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 20.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> 500965d0-23b0-4722-648d-1810b0578a24
+- !<SceneObject/8d094893-428e-4ca4-5a06-5e5073055722>
+  PrefabRemaps:
+    []
+  Name: bells_3
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 20.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> 04bd25ec-21a3-46a1-52a9-48a89292f941
+- !<SceneObject/9b64fba1-c0e2-4418-4a06-795d517a4482>
+  PrefabRemaps:
+    []
+  Name: bells_6
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 20.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> c4012e6a-175a-4628-56a2-6e2e1340cf6a
+- !<RenderMeshVisual/9d7c45b3-aeb4-4fbf-6b27-06facd9e7311>
+  PrefabRemaps:
+    []
+  Name: bells_1
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 0bb7c481-0821-4788-a607-c7d75f0be01c
+  Mesh: !<reference> 7199eead-00f8-46a3-9518-270a113a732c
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<RenderMeshVisual/a8853430-8fca-4e39-56d8-d9da1c2d3e24>
+  PrefabRemaps:
+    []
+  Name: bells_4
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 0bb7c481-0821-4788-a607-c7d75f0be01c
+  Mesh: !<reference> 65e39002-f9f1-40c4-9e44-6b81a4a44772
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<SceneObject/a9f30cb9-ff5a-46bb-4305-6bffe28f6088>
+  PrefabRemaps:
+    []
+  Name: hoover
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: -0.223613, y: 0.000000, z: 0.241729}
+    Rotation: {x: 180.000000, y: -0.000000, z: 180.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    - !<own> 5445b554-45af-4ca6-5cb5-a9d8dd7a8417
+    - !<own> 45d4b34e-6373-4aa0-665b-a6b8be40afa5
+    - !<own> 11d573eb-8556-4251-4021-603feb8ec315
+    - !<own> af13d77e-96c4-4db7-7be8-db7fa6c248b8
+    - !<own> 6dac349e-0bc7-4a79-5555-807b8bd6cca3
+    - !<own> 8d094893-428e-4ca4-5a06-5e5073055722
+    - !<own> 677acffb-5053-4c44-48d4-c3ac4badb983
+    - !<own> b83c0ef4-3625-46fa-5e47-f9ff81582d9b
+    - !<own> 9b64fba1-c0e2-4418-4a06-795d517a4482
+    - !<own> 7e4af04e-4ef0-48ef-5734-0d72d1171aff
+    - !<own> 2d6631e2-dd49-4faa-7244-9857f9027f6f
+    - !<own> 24f87151-381d-49d9-7439-c7f5650dd1af
+  Components:
+    []
+- !<SceneObject/af13d77e-96c4-4db7-7be8-db7fa6c248b8>
+  PrefabRemaps:
+    []
+  Name: bells_1
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 20.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> 9d7c45b3-aeb4-4fbf-6b27-06facd9e7311
+- !<SceneObject/b6fab631-c663-441b-6216-42fc66ada6e5>
+  PrefabRemaps:
+    []
+  Name: hoover
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    - !<own> a9f30cb9-ff5a-46bb-4305-6bffe28f6088
+  Components:
+    []
+- !<SceneObject/b83c0ef4-3625-46fa-5e47-f9ff81582d9b>
+  PrefabRemaps:
+    []
+  Name: bells_5
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 20.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> e1d94ea8-56ab-42bc-5594-9d0daa304c79
+- !<RenderMeshVisual/bbe5b670-aa43-4a67-5883-7c152b97b2eb>
+  PrefabRemaps:
+    []
+  Name: bells_2
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 0bb7c481-0821-4788-a607-c7d75f0be01c
+  Mesh: !<reference> 5b3a3274-08cf-4404-b347-13bd4d41fbf5
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<RenderMeshVisual/c4012e6a-175a-4628-56a2-6e2e1340cf6a>
+  PrefabRemaps:
+    []
+  Name: bells_6
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 0bb7c481-0821-4788-a607-c7d75f0be01c
+  Mesh: !<reference> daad0304-bc3a-43c6-b8bd-fcdac00e87cd
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<SceneObject/c96cbcc2-914c-4d7a-7349-a164fd185a0a>
+  PrefabRemaps:
+    []
+  Name: Scenes
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    - !<own> b6fab631-c663-441b-6216-42fc66ada6e5
+  Components:
+    []
+- !<RenderMeshVisual/cbdfe268-0021-47d6-760d-1328763aa718>
+  PrefabRemaps:
+    []
+  Name: dome
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 2afbf61b-6893-45af-8e61-630ff7a53721
+  Mesh: !<reference> 5e2f13c0-ee82-41f8-be0f-b4b98bccf2c4
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<RenderMeshVisual/e1d94ea8-56ab-42bc-5594-9d0daa304c79>
+  PrefabRemaps:
+    []
+  Name: bells_5
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 0bb7c481-0821-4788-a607-c7d75f0be01c
+  Mesh: !<reference> db91c0ce-49a9-421d-a863-9b9bca183a8b
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<RenderMeshVisual/ed9d5c59-82f4-4749-50bf-a6b92991c25d>
+  PrefabRemaps:
+    []
+  Name: sound_1
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> bed19211-981d-4969-8409-09bb599932b8
+  Mesh: !<reference> 60141503-8480-4316-8bd3-ba476b9e04e7
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<RenderMeshVisual/f5de6f00-e5c4-43b7-458f-4760d0b280de>
+  PrefabRemaps:
+    []
+  Name: bell_big
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 0bb7c481-0821-4788-a607-c7d75f0be01c
+  Mesh: !<reference> 4956995c-3423-4702-a67f-75ad0a1c4f5b
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
