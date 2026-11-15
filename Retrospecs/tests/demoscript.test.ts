@@ -1,6 +1,6 @@
 import {describe, expect, test} from "bun:test"
 import {
-  DEMO_STOPS, DemoState, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget,
+  DEMO_SKIP_HOLD_SEC, DEMO_STOPS, DemoState, demoSkipHint, isRestartDemoIntent, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget,
   demoSegment, demoStart, demoStopId
 } from "../Assets/Retrospecs/Core/DemoScript"
 import {cardById} from "../Assets/Retrospecs/Core/Cards"
@@ -95,6 +95,15 @@ describe("locked judge demo", () => {
     const ask = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.map(() => "cardPinch" as const), "picked", ...DEMO_STOPS[1].cards.map(() => "cardPinch" as const)])
     expect(demoHint(ask, "Huang")).toMatch(/LEFT hand/)
     expect(demoNudgeLine(ask, "Huang")).toMatch(/left hand/i)
-    expect(demoHint(demoNext(ask, "answered"), "")).toMatch(/start again/i)
+    expect(demoHint(demoNext(ask, "answered"), "")).toMatch(/all yours/i)
+  })
+
+  test("presenter controls: restart phrases and the skip countdown", () => {
+    for (const p of ["restart demo", "Reset the demo.", "start the demo over", "replay the tutorial"]) expect(isRestartDemoIntent(p)).toBe(true)
+    for (const p of ["who designed the main quad", "demo", "restart", "what's the demographic"]) expect(isRestartDemoIntent(p)).toBe(false)
+    expect(demoSkipHint(0.3)).toBe("")
+    expect(demoSkipHint(1.2)).toMatch(/both pinches.*4$/)
+    expect(demoSkipHint(4.5)).toMatch(/1$/)
+    expect(demoSkipHint(DEMO_SKIP_HOLD_SEC)).toBe("")
   })
 })

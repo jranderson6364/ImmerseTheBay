@@ -39,7 +39,7 @@ import {PanelButton} from "./RetrospecsInfoPanel"
 import {isNextSpotIntent, nextSpot, spotTier} from "../Core/NextSpot"
 import {CENTERPIECES, isCenterpiece} from "../Core/Centerpieces"
 import {COACH_FIRST, CoachAim, CoachEvent, CoachStep, DONE_HOLD_SEC, coachAim, coachAllowsPick, coachHint, coachLine, coachNext, coachWrongPickLine, suggestedBuilding} from "../Core/Coach"
-import {DEMO_ASK_TIMEOUT_SEC, DemoEvent, DemoState, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget, demoSegment, demoStart, demoStopId} from "../Core/DemoScript"
+import {DEMO_ASK_TIMEOUT_SEC, DEMO_SKIP_HOLD_SEC, demoSkipHint, isRestartDemoIntent, DemoEvent, DemoState, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget, demoSegment, demoStart, demoStopId} from "../Core/DemoScript"
 import {TV_WALL, sharedWall} from "../Core/Focus"
 import {RespawnRules, farFromMap, newRespawnState, stepRespawn} from "../Core/Respawn"
 import {LIVE_PREFIX_GENERAL, LIVE_PREFIX_WEB, LOOKING_UP_LINE, LiveTurn, isAskFurtherIntent, presentLive, stripAskFurtherCommand} from "../Core/AskLive"
@@ -64,7 +64,7 @@ export class RetrospecsController extends BaseScriptComponent {
 
   @ui.group_start("Indoor demo")
   @input @hint("ON (judging indoors): no calibration, any pinch opens the map, then a short coach shows how to pick a building and use the card. OFF (filming outdoors): the start-point calibration below.") indoorDemo: boolean = true
-  @input @hint("LOCKED JUDGE DEMO (Core/DemoScript): Main Quad, then Huang, then one voice question, in that order only. Nothing else can be picked or said, and every step has a spoken direction. Replaces the coach. Turn OFF for the free-roam video.") demoMode: boolean = true
+  @input @hint("GUIDED JUDGE DEMO (Core/DemoScript): Main Quad, then Huang, then one voice question, in that order only, with a spoken direction at every step. When it's done, everything unlocks. Hold BOTH pinches 5 s to skip it (filming); say \"restart demo\" to set it up again for the next judge. OFF = straight to free roam.") demoMode: boolean = true
   @ui.group_end
   @ui.group_start("Declutter")
   @input @hint("Money piles beside a selected building (the gift in $1 bills). OFF = card, animation, person hologram and diagram only.") showMoneyPiles: boolean = false
@@ -195,6 +195,9 @@ export class RetrospecsController extends BaseScriptComponent {
   private demoAimOn = false
   private demoAskedAt = -1
   private demoHeardAnswer = false
+  /** Both-pinch hold that skips the guided demo: when it started (-1 = not holding), and the countdown tip. */
+  private demoSkipFrom = -1
+  private demoSkipTip = ""
 
   onAwake() {
     this.createEvent("OnStartEvent").bind(() => this.onStart())
@@ -540,7 +543,7 @@ export class RetrospecsController extends BaseScriptComponent {
     const here = this.nearestLandmark(this.me)
     print(`[Retrospecs] calibrated: facing bearing ${bearing}, map yaw ${(this.mapYaw * 180 / Math.PI).toFixed(1)}°`)
     this.resetLights()
-    if (this.demoMode) return this.demoEvent("mapOpened")
+    if (this.demo.step !== "off") return this.demoEvent("mapOpened")
     if (this.indoorDemo) return this.coachEvent("mapOpened")
     if (here) this.map.setState(here, "focus")
     const hereName = here ? cardById(here).name : "Stanford"
@@ -1121,6 +1124,7 @@ export class RetrospecsController extends BaseScriptComponent {
       if (/\b(skip|ready|done|start|open)\b/.test(t)) this.finishCalibration(this.viewHorizontal())
       return
     }
+    if (this.demoMode && isRestartDemoIntent(t)) return this.restartDemo()
     if (this.demoActive()) return this.demoUtterance(raw, t)
     if (/\b(demo|tutorial|how does this work|show me how)\b/.test(t)) return this.restartCoach()
     // Coach pick step: no shortcuts ("next spot" etc.) until the visitor has selected the target with the cursor.
@@ -1435,6 +1439,7 @@ export class RetrospecsController extends BaseScriptComponent {
     if (this.chat) this.chat.update(getDeltaTime())
     this.updateCoach()
     this.updateDemo()
+    this.updateDemoSkip()
     this.updateFocusMode()
     this.updateYouAreHere()
     this.updateRespawn()
@@ -1757,7 +1762,7 @@ export class RetrospecsController extends BaseScriptComponent {
   private setStatus(s: string) {
     this.caption = s
     const suggest = this.coachSuggest ? cardById(this.coachSuggest) : null
-    const hint = this.demo.step !== "off"
+    const hint = this.demoSkipTip ? this.demoSkipTip : this.demo.step !== "off"
       ? demoHint(this.demo, this.demoLabel(), this.demoAimOn)
       : coachHint(this.coachStep, this.coachAimNow, suggest ? suggest.label : "", this.coachAimOther)
     const shown = hint ? (s ? s + "\n" + hint : hint) : s
@@ -1845,7 +1850,6 @@ export class RetrospecsController extends BaseScriptComponent {
     this.lastSelectAt = now
     this.rightDownAt = -1
     const step = this.demo.step
-    if (step === "end") return this.demoEvent("restart")
     if (step === "ask") {
       if (which === "left" && this.asr) {
         this.listen()
@@ -1917,12 +1921,89 @@ export class RetrospecsController extends BaseScriptComponent {
       this.say(demoLine(s, label), label)
       return
     }
-    if (s.step === "end") this.say(demoLine(s, label), "Thanks!")
+    if (s.step === "end") this.endDemo(demoLine(s, label), demoHint(s, label))
+  }
+
+  /** The guided part is over (finished or skipped): everything unlocks. */
+  private endDemo(line: string, caption: string) {
+    this.demo = {step: "off", stop: 0, card: 0}
+    this.demoSkipTip = ""
+    this.demoAimOn = false
+    if (this.infoPanel) this.infoPanel.setPulse("")
+    print("[Retrospecs] demo: free roam")
+    this.say(line, caption)
+  }
+
+  /** Both pinches held DEMO_SKIP_HOLD_SEC: skip the guided demo (opening the map first if needed). */
+  private skipDemo() {
+    this.guide.stopSpeaking()
+    if (this.chat && this.chat.isOpen()) this.chat.hide()
+    this.demo = {step: "off", stop: 0, card: 0}
+    if (this.mode === "calibrate") this.finishCalibration(this.viewHorizontal())
+    else {
+      this.hideExtras()
+      this.resetLights()
+      this.focus = ""
+    }
+    this.endDemo("Guided demo skipped. Point at any building and pinch.", "Free roam  ·  Point at a building and pinch  ·  Left pinch to ask")
+  }
+
+  /** "restart demo": the guided path again from the Main Quad, for the next judge. */
+  private restartDemo() {
+    this.demoSkipFrom = -1
+    this.demoSkipTip = ""
+    for (const id of Object.keys(this.segAt)) this.segAt[id] = 0
+    this.tourShown = []
+    if (this.mode === "calibrate") {
+      this.demo = demoStart()
+      this.setStatus(this.calibrateInstruction())
+      this.guide.speakParts([demoLine(this.demo, "")])
+      return
+    }
+    this.demo = {step: "aim", stop: 0, card: 0}
+    print("[Retrospecs] demo: restarted")
+    this.enterDemoStep()
+  }
+
+  /** Watches for the both-pinch hold that skips the guided demo, with a countdown tip once it's clearly deliberate. */
+  private updateDemoSkip() {
+    if (this.demo.step === "off") {
+      this.demoSkipFrom = -1
+      return
+    }
+    let both = false
+    try {
+      const l = SIK.HandInputData.getHand("left")
+      const r = SIK.HandInputData.getHand("right")
+      both = !!l && !!r && l.isTracked() && r.isTracked() && l.isPinching() && r.isPinching()
+    } catch (e) {
+      both = false
+    }
+    const now = getTime()
+    if (!both) {
+      this.demoSkipFrom = -1
+      if (this.demoSkipTip) {
+        this.demoSkipTip = ""
+        this.setStatus(this.caption)
+      }
+      return
+    }
+    if (this.demoSkipFrom < 0) this.demoSkipFrom = now
+    const held = now - this.demoSkipFrom
+    if (held >= DEMO_SKIP_HOLD_SEC) {
+      this.demoSkipFrom = -1
+      this.demoSkipTip = ""
+      return this.skipDemo()
+    }
+    const tip = demoSkipHint(held)
+    if (tip !== this.demoSkipTip) {
+      this.demoSkipTip = tip
+      this.setStatus(this.caption)
+    }
   }
 
   /** Demo voice: only "restart demo" / "start over" (presenter) and, in the ask step, the judge's question. */
   private demoUtterance(raw: string, t: string) {
-    if (/\b(restart|reset) (the )?demo\b|^start over\b/.test(t)) return this.demoEvent("restart")
     if (this.demo.step !== "ask") return this.demoNudge()
     this.demoMarkAsked()
     if (isAskFurtherIntent(t)) return this.askLive(stripAskFurtherCommand(raw))

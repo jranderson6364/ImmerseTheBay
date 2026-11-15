@@ -7,7 +7,10 @@
  *                                                        on the last card, a pinch moves on (Next Stop glows)
  *          ... the same aim + cards for Huang ...
  *   ask    "Pinch your LEFT hand and ask a question"    only the left hand (or the mic bubble) does anything
- *   end    "That's the demo"                            a right pinch or "restart demo" starts over for the next judge
+ *   end    "Now it's all yours"                         the guided part is over: everything unlocks (free roam)
+ *
+ * Presenter controls: hold BOTH pinches for 5 s at any step to skip straight to free roam (for filming), and say
+ * "restart demo" at any time to set the guided path up again for the next judge.
  *
  * Every stop lists the narration segments it plays (`cards`), so a content change can't stretch the demo past two
  * minutes: only these segments are shown, in this order.
@@ -34,6 +37,22 @@ export const DEMO_SUGGESTED_QUESTION = "Who is this building named after?"
 
 /** The ask step moves on once the answer finishes speaking, or after this long whatever happens (s). */
 export const DEMO_ASK_TIMEOUT_SEC = 25
+
+/** Hold both pinches this long (s) to skip the guided demo. The countdown tip shows after DEMO_SKIP_SHOW_SEC. */
+export const DEMO_SKIP_HOLD_SEC = 5
+export const DEMO_SKIP_SHOW_SEC = 1
+
+/** "restart demo" / "reset the demo" / "start the demo over": the presenter sets the guided path up again. */
+export function isRestartDemoIntent(raw: string): boolean {
+  const t = (raw || "").toLowerCase()
+  return /\b(restart|reset|replay)( the)? (guided )?(demo|tour guide|tutorial)\b|\bstart (the )?(demo|tutorial) (over|again)\b/.test(t)
+}
+
+/** Tip while both pinches are held ("" = not yet, or done). */
+export function demoSkipHint(heldSec: number): string {
+  if (heldSec < DEMO_SKIP_SHOW_SEC || heldSec >= DEMO_SKIP_HOLD_SEC) return ""
+  return `Keep holding both pinches to skip the guided demo… ${Math.ceil(DEMO_SKIP_HOLD_SEC - heldSec)}`
+}
 
 export interface DemoState {
   step: DemoStep
@@ -129,7 +148,7 @@ export function demoHint(s: DemoState, label: string, onTarget = false, stops: D
     case "ask":
       return `Pinch your LEFT hand, then ask out loud. Try: "${DEMO_SUGGESTED_QUESTION}"`
     case "end":
-      return "That's Retrospecs. Thanks for trying it!  ·  Pinch to start again"
+      return "Now it's all yours: point at any building and pinch  ·  Left pinch to ask"
     default:
       return ""
   }
@@ -148,7 +167,7 @@ export function demoLine(s: DemoState, label: string): string {
     case "ask":
       return `Last thing. You can ask me anything. Pinch your left hand and ask, for example: ${DEMO_SUGGESTED_QUESTION}`
     case "end":
-      return "That's the demo. Thanks for touring Stanford with Retrospecs."
+      return "That's the guided part. Now it's all yours. Point at any building on the map and pinch, or pinch your left hand to ask me anything."
     default:
       return ""
   }
