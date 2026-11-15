@@ -21,6 +21,16 @@ export function archiveCover(id: string): Texture | null {
   }
 }
 
+/** The same collage with PINCH TO OPEN under the label, shown once the gallery can be opened. */
+export function archiveCoverPinch(id: string): Texture | null {
+  switch (id) {
+    case "mainquad": return requireAsset("../Art/mainquad/mainquad_archive_cover_pinch.jpg") as Texture
+    case "huang": return requireAsset("../Art/huang/huang_archive_cover_pinch.jpg") as Texture
+    case "hoover": return requireAsset("../Art/hoover/hoover_archive_cover_pinch.jpg") as Texture
+    default: return null
+  }
+}
+
 export function archiveFrame(id: string, index: number): Texture | null {
   switch (`${id}_${index}`) {
     case "mainquad_0": return requireAsset("../Art/mainquad/mainquad_archive_frame_0.jpg") as Texture

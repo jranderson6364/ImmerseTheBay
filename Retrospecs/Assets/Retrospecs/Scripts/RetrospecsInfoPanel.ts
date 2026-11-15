@@ -32,7 +32,7 @@ import {storyCardTexture} from "./StoryDeck"
 import {playSfx} from "../Core/Sfx"
 import {storyHologram} from "./StoryHolograms"
 import {peopleHologram} from "./PeopleHolograms"
-import {ARCHIVE_ASPECTS, archiveCover, archiveFrame} from "./ArchivePhotos"
+import {ARCHIVE_ASPECTS, archiveCover, archiveCoverPinch, archiveFrame} from "./ArchivePhotos"
 import {ArchiveHit, archiveEase, archiveExtent, archiveLayout} from "../Core/Archive"
 
 /** What the card's buttons do (the controller acts on it). */
@@ -404,6 +404,9 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   private archiveCoverTarget: Interactable = null
   private archiveCoverHalf = {w: 0, h: 0}
   private archiveCoverPulse = false
+  private archiveCoverMat: Material = null
+  /** The collage says PINCH TO OPEN only while it can be opened (always in free roam; in the demo, at its step). */
+  private archiveInvite = false
   private archiveClock = 0
   private archivePrints: {obj: SceneObject; target: Interactable; to: vec3}[] = []
   private archiveFrom: vec3 = null
@@ -411,9 +414,12 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   private archiveT = 0
   private archiveGoal = 0
 
-  /** The Archive Gallery collage in the people screen's place (same size and spot). */
-  showArchiveCover(id: string, pos: vec3, eye: vec3, widthCm: number) {
-    if (this.archiveId === id && this.archiveCoverObj) return
+  /**
+   * The Archive Gallery collage in the people screen's place (same size and spot). `invite`: show the version with
+   * PINCH TO OPEN under the label (see setArchiveInvite).
+   */
+  showArchiveCover(id: string, pos: vec3, eye: vec3, widthCm: number, invite = true) {
+    if (this.archiveId === id && this.archiveCoverObj) return this.setArchiveInvite(invite)
     this.hidePeopleHologram() // also clears any previous archive
     let tex: Texture = null
     try {
@@ -427,7 +433,25 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     this.archiveCoverObj = screen.object
     this.archiveCoverHalf = {w: screen.width / 2, h: screen.height / 2}
     this.archiveCoverTarget = this.rayTarget(screen.object, screen.width, screen.height, "archive_cover_ray_target")
+    const visual = screen.object.getComponent("Component.RenderMeshVisual") as RenderMeshVisual
+    this.archiveCoverMat = visual ? visual.mainMaterial : null
+    this.archiveInvite = false
+    this.setArchiveInvite(invite)
     print(`[Retrospecs] archive cover ${id}: ${screen.width.toFixed(0)} x ${screen.height.toFixed(0)} cm`)
+  }
+
+  /** Swaps the collage between its quiet version and the one that says PINCH TO OPEN. */
+  setArchiveInvite(on: boolean) {
+    if (!this.archiveId || !this.archiveCoverMat || this.archiveInvite === on) return
+    let tex: Texture = null
+    try {
+      tex = on ? archiveCoverPinch(this.archiveId) : archiveCover(this.archiveId)
+    } catch (e) {
+      print("[Retrospecs] archive cover texture missing: " + e)
+    }
+    if (!tex) return
+    this.archiveCoverMat.mainPass.baseTex = tex
+    this.archiveInvite = on
   }
 
   /** Locked demo: the collage gently breathes so the judge finds it. */
@@ -590,6 +614,8 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     }
     this.archiveCoverObj = null
     this.archiveCoverTarget = null
+    this.archiveCoverMat = null
+    this.archiveInvite = false
     this.archiveCoverPulse = false
     this.archiveId = ""
   }

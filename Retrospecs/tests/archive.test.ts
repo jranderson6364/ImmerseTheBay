@@ -28,7 +28,7 @@ describe("archive gallery", () => {
 
   test("baked art and its Lens Studio import exist for every print and collage", () => {
     for (const k of stops) {
-      const files = [`${k}_archive_cover.jpg`, ...manifest[k].photos.map((_: unknown, i: number) => `${k}_archive_frame_${i}.jpg`)]
+      const files = [`${k}_archive_cover.jpg`, `${k}_archive_cover_pinch.jpg`, ...manifest[k].photos.map((_: unknown, i: number) => `${k}_archive_frame_${i}.jpg`)]
       for (const f of files) {
         const path = join(ROOT, "Assets/Retrospecs/Art", k, f)
         expect(existsSync(path)).toBe(true)

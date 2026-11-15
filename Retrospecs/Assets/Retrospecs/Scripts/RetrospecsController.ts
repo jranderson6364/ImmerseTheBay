@@ -514,7 +514,7 @@ export class RetrospecsController extends BaseScriptComponent {
   /** Where the people screen (or the collage in its place) sits for the building in focus. */
   private peopleSpot: vec3 = null
 
-  /** The Archive Gallery collage shows in free roam, and in the guided demo only during its own gallery step. */
+  /** The Archive Gallery can be opened in free roam, and in the guided demo only during its own gallery step. */
   private archiveAvailable(id: string): boolean {
     if (this.demo.step === "off") return true
     return this.demo.step === "archive" && demoStopId(this.demo) === id
@@ -915,11 +915,10 @@ export class RetrospecsController extends BaseScriptComponent {
       else this.infoPanel.hideSideHologram()
       const peopleDeg = simple ? this.flank().right : id === "hpgarage" ? -this.hologramSideDeg : this.peopleHologramSideDeg
       const people = this.sideSpot(peopleDeg, this.sideDistanceCm + 15)
-      // Main Quad, Huang, Hoover: the Archive Gallery collage (real photos) takes the people screen's place, but in
-      // the guided demo only once its gallery step arrives (until then the founder hologram stays, so nothing on
-      // screen invites a pinch the demo would refuse).
+      // Main Quad, Huang, Hoover: the Archive Gallery collage (real photos) takes the people screen's place. It only
+      // says PINCH TO OPEN when a pinch would open it: always in free roam, in the guided demo only at its own step.
       this.peopleSpot = people
-      if (people && hasArchive(id) && this.archiveAvailable(id)) this.infoPanel.showArchiveCover(id, people, cam, this.peopleHologramWidthCm)
+      if (people && hasArchive(id)) this.infoPanel.showArchiveCover(id, people, cam, this.peopleHologramWidthCm, this.archiveAvailable(id))
       else if (people) this.infoPanel.showPeopleHologram(id, people, cam, this.peopleHologramWidthCm)
       else this.infoPanel.hidePeopleHologram()
     }
@@ -2317,12 +2316,10 @@ export class RetrospecsController extends BaseScriptComponent {
       return
     }
     if (s.step === "archive") {
-      // The card stays up; the founder screen right of it becomes the Archive Gallery collage, which breathes until
-      // it is pinched open.
+      // The card stays up; the Archive Gallery collage right of it now says PINCH TO OPEN and breathes until it is
+      // pinched open.
       this.guide.stopSpeaking()
-      if (this.infoPanel && id && this.peopleSpot) {
-        this.infoPanel.showArchiveCover(id, this.peopleSpot, this.camera.getTransform().getWorldPosition(), this.peopleHologramWidthCm)
-      }
+      if (this.infoPanel) this.infoPanel.setArchiveInvite(true)
       if (this.infoPanel) this.infoPanel.setArchivePulse(true)
       this.say(demoLine(s, label), label)
       return
@@ -2349,6 +2346,7 @@ export class RetrospecsController extends BaseScriptComponent {
     if (this.infoPanel) {
       this.infoPanel.setPulse("")
       this.infoPanel.setHiddenButtons([])
+      this.infoPanel.setArchiveInvite(true) // free roam: any collage on screen can be opened now
     }
     print("[Retrospecs] demo: free roam")
     this.say(line, caption)

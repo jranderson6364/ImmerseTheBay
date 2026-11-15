@@ -4,13 +4,17 @@
 
 Built for Immerse the Bay 2026 (Stanford XR hackathon, November 13–15) on Snap Spectacles with Lens Studio 5.15.4.
 
+**[Open the Retrospecs Lens project](Retrospecs/)** · **[Lens Studio project file](Retrospecs/Retrospecs.esproj)** · **[Source code](Retrospecs/Assets/Retrospecs/)** · **[Devpost](https://devpost.com/software/retrospecs-t451hs)**
+
+The complete submission is in [`Retrospecs/`](Retrospecs/). Open `Retrospecs.esproj` in Lens Studio 5.15.4 to run the Lens. The other top-level folders are research and earlier prototypes from the hackathon.
+
 ## Judges, start here
 
 | | |
 | --- | --- |
 | **What to try** | [The two-minute tour](Retrospecs/README.md#for-judges-the-two-minute-tour): Main Quad → Archive Gallery → Huang → ask a question → Hoover Tower → free roam. |
 | **How it works** | [Architecture and trust model](Retrospecs/README.md#how-it-works). The guide only speaks facts that carry a checked source, and the AI can frame them but never invent them. |
-| **Where the code is** | [`Retrospecs/Assets/Retrospecs/`](Retrospecs/README.md#whats-here): `Scripts/` (Lens components), `Core/` (pure logic, 332 unit tests), `Data/` (baked OSM campus and narration), `Art/` (cards, holograms, archive photos). |
+| **Where the code is** | [`Retrospecs/Assets/Retrospecs/`](Retrospecs/Assets/Retrospecs/): `Scripts/` (Lens components), `Core/` (pure logic, 332 unit tests), `Data/` (baked OSM campus and narration), `Art/` (cards, holograms, archive photos). |
 | **Run it** | [Lens Studio setup](Retrospecs/README.md#one-time-setup-in-lens-studio-about-15-minutes) and `bun test Retrospecs/tests`. |
 | **Credits** | Map © OpenStreetMap contributors (ODbL). Archive photos: Wikimedia Commons, public domain / CC ([list](Retrospecs/Assets/Retrospecs/Art/ARCHIVE_PHOTOS.md)). People holograms are AI illustrations ([note](Retrospecs/Assets/Retrospecs/Art/PEOPLE_HOLOGRAMS.md)). Built on Snap's MIT-licensed Depth Cache sample. |
 

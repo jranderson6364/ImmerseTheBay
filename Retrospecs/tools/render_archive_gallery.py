@@ -3,7 +3,8 @@
 Reads tools/archive-photos.json, downloads each file once into tools/cache/archive/ (1600 px Commons thumbnails), and
 writes, per stop:
 
-  Art/<id>/<id>_archive_cover.jpg      1280 x 720: a minimal collage of three tilted prints and "ARCHIVE GALLERY",
+  Art/<id>/<id>_archive_cover.jpg      1280 x 720: a minimal collage of three tilted prints and "ARCHIVE GALLERY"
+  Art/<id>/<id>_archive_cover_pinch.jpg  the same plus "PINCH TO OPEN", shown only once the gallery can be opened,
                                         on black (see-through on Spectacles). It takes the people hologram's place.
   Art/<id>/<id>_archive_frame_<n>.jpg  one framed print per photo, at the photo's own shape: a thin copper rim, and
                                         under it the year, a short title and the credit line, on black.
@@ -141,14 +142,15 @@ def render_frame(photo, meta):
     return im
 
 
-def render_cover(photos):
-    """Three prints fanned like a small stack of photographs, and a quiet label. Everything else is black."""
+def render_cover(photos, invite=False):
+    """Three prints fanned like a small stack of photographs, and a quiet label. Everything else is black.
+    invite: also print "PINCH TO OPEN" under the label (the version shown only once the gallery can be opened)."""
     im = Image.new("RGB", (CW, CH), BLACK)
-    spots = [(-9, 405, 300), (8, 875, 295), (-1, 640, 320)]   # angle, centre x, centre y (the last sits on top)
+    spots = [(-9, 405, 270), (8, 875, 265), (-1, 640, 290)]   # angle, centre x, centre y (the last sits on top)
     for (angle, cx, cy), ph in zip(spots, photos):
-        pr = print_of(ph, 450)
-        if pr.width > 640:
-            pr = pr.resize((640, round(pr.height * 640 / pr.width)), Image.LANCZOS)
+        pr = print_of(ph, 410)
+        if pr.width > 600:
+            pr = pr.resize((600, round(pr.height * 600 / pr.width)), Image.LANCZOS)
         mask = Image.new("L", pr.size, 255)
         pr = pr.rotate(angle, resample=Image.BICUBIC, expand=True)
         mask = mask.rotate(angle, resample=Image.BICUBIC, expand=True)
@@ -158,8 +160,15 @@ def render_cover(photos):
     f = SANS_B(44)
     spaced = " ".join(label)  # letter-spaced
     lw = d.textlength(spaced, font=f)
-    d.text(((CW - lw) / 2, CH - 98), spaced, font=f, fill=COPPER)
-    d.line([((CW - lw) / 2, CH - 34), ((CW + lw) / 2, CH - 34)], fill=RIM, width=3)
+    d.text(((CW - lw) / 2, CH - 168), spaced, font=f, fill=COPPER)
+    d.line([((CW - lw) / 2, CH - 106), ((CW + lw) / 2, CH - 106)], fill=RIM, width=3)
+    if invite:
+        cue = " ".join("PINCH TO OPEN")
+        cf = SANS_B(34)
+        cw = d.textlength(cue, font=cf)
+        d.text(((CW - cw) / 2 - 14, CH - 78), cue, font=cf, fill=WHITE)
+        chev_x, chev_y = (CW + cw) / 2 + 10, CH - 56
+        d.line([(chev_x - 5, chev_y - 12), (chev_x + 7, chev_y), (chev_x - 5, chev_y + 12)], fill=WHITE, width=5, joint="curve")
     return im
 
 
@@ -183,9 +192,10 @@ def render(out_root=None):
             aspects[stop].append(round(fr.width / fr.height, 4))
             written.append(path)
         order = entry.get("collage", [1, 2, entry.get("cover", 0)])
-        path = dest / f"{stop}_archive_cover.jpg"
-        render_cover([imgs[i] for i in order]).save(path, quality=88, optimize=True)
-        written.append(path)
+        for invite, name in ((False, "cover"), (True, "cover_pinch")):
+            path = dest / f"{stop}_archive_{name}.jpg"
+            render_cover([imgs[i] for i in order], invite).save(path, quality=88, optimize=True)
+            written.append(path)
     return written, aspects
 
 
@@ -201,6 +211,10 @@ def write_ts(aspects):
     lines += ["}", "", "export function hasArchive(id: string): boolean {", "  return (ARCHIVE_COUNTS[id] || 0) > 0", "}", "",
               "export function archiveCover(id: string): Texture | null {", "  switch (id) {"]
     lines += [f'    case "{k}": return requireAsset("../Art/{k}/{k}_archive_cover.jpg") as Texture' for k in stops]
+    lines += ["    default: return null", "  }", "}", "",
+              "/** The same collage with PINCH TO OPEN under the label, shown once the gallery can be opened. */",
+              "export function archiveCoverPinch(id: string): Texture | null {", "  switch (id) {"]
+    lines += [f'    case "{k}": return requireAsset("../Art/{k}/{k}_archive_cover_pinch.jpg") as Texture' for k in stops]
     lines += ["    default: return null", "  }", "}", "",
               "export function archiveFrame(id: string, index: number): Texture | null {", "  switch (`${id}_${index}`) {"]
     for k in stops:
