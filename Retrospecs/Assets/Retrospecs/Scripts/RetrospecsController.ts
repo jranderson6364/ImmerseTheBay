@@ -71,6 +71,9 @@ const STORE_KEY = "sightlines.v1" // pre-rename key, kept so saved calibration s
  *  This overrides the scene's autoQuiz input and the "quiz / guess / test me" voice command. */
 const QUIZ_ENABLED = false
 
+/** Head-locked look-around arrows (Core/LookNudge.ts) at the edge of the view. Off: they read as clutter in the demo. */
+const LOOK_NUDGE_ARROWS = false
+
 @component
 export class RetrospecsController extends BaseScriptComponent {
   @ui.label('<span style="color: #60A5FA;">Retrospecs Controller</span>')
@@ -165,7 +168,7 @@ export class RetrospecsController extends BaseScriptComponent {
   @input @hint("People screen: degrees right of the card when a building also has a diagram") peopleHologramSideDeg: number = 23
   @input @hint("People screen width (cm)") peopleHologramWidthCm: number = 56
   @input @hint("Main Quad / Huang / Hoover (Core/CardTheme SIMPLE_FOCUS_IDS): the same gap (degrees) between the card and the 3D animation on its left and the founder screen on its right") flankGapDeg: number = 4
-  @input @hint("Look-around nudge: a pulsing arrow at the edge of the view points at side pieces you haven't looked at yet (and back down at the map after a while looking away)") lookNudge: boolean = true
+  @input @hint("Look-around nudge arrows (also gated by LOOK_NUDGE_ARROWS in code, currently off)") lookNudge: boolean = true
   @input @hint("Map cursor forgiveness: a pinch this close to a building (map cm) still picks it") pickSlackCm: number = 6
   @ui.group_end
 
@@ -998,6 +1001,13 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   private updateLookNudge() {
+    // Off for the demo: no head-locked blue arrows at the edge of the view (left / right toward the side screens,
+    // or down toward the map). The arrows that live ON the map (the bouncing target pointer, "you are here") stay.
+    // The spoken lines and captions ("look right…") still direct the eye. Flip LOOK_NUDGE_ARROWS to bring them back.
+    if (!LOOK_NUDGE_ARROWS) {
+      if (this.nudgeRoot && this.nudgeRoot.enabled) this.nudgeRoot.enabled = false
+      return
+    }
     const dt = getDeltaTime()
     let out: NudgeOutput = {show: false, targetId: null, angleRad: 0}
     const busy = !this.lookNudge || this.mode === "calibrate" || !this.map.root || this.unfoldT >= 0 || (this.chat && this.chat.isOpen())
