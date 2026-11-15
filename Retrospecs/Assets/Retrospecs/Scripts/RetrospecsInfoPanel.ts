@@ -42,14 +42,19 @@ const BUTTON_COLORS = {
   closeMark: [1, 0.92, 0.9, 1], closeMarkHover: [1, 1, 1, 1],
   nextFill: [0.36, 0.26, 0.1, 1], nextFillHover: [0.75, 0.55, 0.2, 1],
   nextText: [1.0, 0.88, 0.62, 1], nextTextHover: [1, 1, 1, 1],
-  rim: [0.95, 0.82, 0.58, 1], rimHover: [0.7, 1.0, 1.0, 1]
+  rim: [0.95, 0.82, 0.58, 1], rimHover: [1.0, 0.96, 0.82, 1]
 }
 
 interface ButtonView {
   kind: "close" | "next" | "more"
   hit: {x0: number; y0: number; x1: number; y1: number}
   parts: {part: FadePart; base: number[]; hover: number[]}[]
+  /** Objects shown only while the button is hovered (or pulsing): the story card's outline. */
+  toggles?: SceneObject[]
 }
+
+/** Story card hover outline: the bright copper of the card's own frame (render_story_decks.py COPPER, lifted). */
+const STORY_BUTTON_RIM = [1.0, 0.78, 0.52, 1]
 
 // Additive display: black is see-through, brightness is opacity. A dim fill gives the screen a body; the bright frame,
 // accent bar and graphic carry the shape.
@@ -549,6 +554,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     for (const b of this.buttons) {
       const on = b.kind === h || (lit && b.kind === this.pulse)
       for (const p of b.parts) p.part.rgba = on ? p.hover : p.base
+      if (b.toggles) for (const o of b.toggles) o.enabled = on
     }
   }
 
@@ -613,19 +619,21 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       {kind: "more", hit: hits.more, parts: []},
       {kind: "next", hit: hits.next, parts: []}
     ]
-    // Hover feedback: the buttons are baked into the art, so each gets an overlay that is black (invisible on the
-    // additive display) until the ray is on it, then a bright cyan rim and a faint glow over the drawn button.
+    // Hover feedback: the buttons are baked into the art, so each gets a thin outline in the card's own copper,
+    // drawn just OUTSIDE the drawn button so it never sits over the label. Nothing covers the button itself, and
+    // the outline is switched off (not merely black) at rest, so it can't show as a dark box in a recording.
     const drawn = storyCardHits(0)
     for (const b of this.buttons) {
       const r = drawn[b.kind]
-      const pad = 0.6
+      const pad = 0.9
       const outer = {x0: r.x0 - pad, y0: r.y0 - pad, x1: r.x1 + pad, y1: r.y1 + pad}
-      let n = this.parts.length
-      this.quads("hover_glow_" + b.kind, [outer], [0, 0, 0, 0], 0.12)
-      this.buttonPart(b, n, [0, 0, 0, 0], [0.1, 0.22, 0.26, 1])
-      n = this.parts.length
-      this.quads("hover_rim_" + b.kind, frameRects(outer, 0.5), [0, 0, 0, 0], 0.16)
-      this.buttonPart(b, n, [0, 0, 0, 0], BUTTON_COLORS.rimHover)
+      const n = this.parts.length
+      const rim = this.quads("hover_rim_" + b.kind, frameRects(outer, 0.35), STORY_BUTTON_RIM, 0.16)
+      this.buttonPart(b, n, STORY_BUTTON_RIM, STORY_BUTTON_RIM)
+      if (rim) {
+        rim.enabled = false
+        b.toggles = [rim]
+      }
     }
     this.hovered = ""
     this.blockHeight = STORY_CARD.heightCm
@@ -1082,15 +1090,16 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   // -------------------------------------------------------------------------
   // Building blocks
 
-  private quads(name: string, rects: Rect2[], rgba: number[], z: number, parent?: SceneObject) {
+  private quads(name: string, rects: Rect2[], rgba: number[], z: number, parent?: SceneObject): SceneObject | null {
     const chunk = quadsChunk(rects, z)
-    if (!chunk.idx.length) return
+    if (!chunk.idx.length) return null
     const o = global.scene.createSceneObject("panel_" + name)
     o.setParent(parent || this.root)
     const visual = this.meshObject(o, chunk)
     const m = this.material.clone()
     visual.mainMaterial = m
     this.parts.push({material: m, rgba})
+    return o
   }
 
   private text(

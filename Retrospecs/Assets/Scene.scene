@@ -3864,6 +3864,9 @@
   ScriptAsset: !<reference> 3e8d7d5b-5900-4674-8984-599c8b28cf1b
   ScriptInputsDefault:
     indoorDemo: true
+    demoMode: true
+    showMoneyPiles: true
+    showExplodedModels: true
     useStartPoint: true
     startLat: true
     startLon: true
@@ -3918,6 +3921,9 @@
       guide: !<MappingBased.AssignableType_1> 2b4da72b-e995-4d0c-8386-f07796c86516
       asr: !<MappingBased.AssignableType_2> 6767c277-2c0a-44a4-ac63-db02d284997c
       indoorDemo: true
+      demoMode: true
+      showMoneyPiles: false
+      showExplodedModels: false
       useStartPoint: true
       startLat: 37.428188
       startLon: -122.173531

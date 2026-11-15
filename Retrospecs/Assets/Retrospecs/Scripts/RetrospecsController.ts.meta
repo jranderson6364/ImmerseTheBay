@@ -35,6 +35,7 @@
     asr: false
     autoQuiz: false
     camera: false
+    demoMode: false
     experienceScaleCm: false
     experienceSideDeg: false
     experiences: false
@@ -67,6 +68,8 @@
     respawnLookDownDeg: false
     respawnMinMapDistM: false
     respawnMinWalkedM: false
+    showExplodedModels: false
+    showMoneyPiles: false
     showStatusLabel: false
     showcase: false
     showcaseForwardCm: false
@@ -103,6 +106,9 @@
       guide: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       asr: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
       indoorDemo: true
+      demoMode: true
+      showMoneyPiles: false
+      showExplodedModels: false
       useStartPoint: true
       startLat: 37.428188
       startLon: -122.173531
@@ -172,6 +178,11 @@
     - // @input AssignableType_2 asr
     - '// @ui {"widget":"group_start", "label":"Indoor demo"}'
     - '// @input bool indoorDemo = true {"hint":"ON (judging indoors): no calibration, any pinch opens the map, then a short coach shows how to pick a building and use the card. OFF (filming outdoors): the start-point calibration below."}'
+    - '// @input bool demoMode = true {"hint":"LOCKED JUDGE DEMO (Core/DemoScript): Main Quad, then Huang, then one voice question, in that order only. Nothing else can be picked or said, and every step has a spoken direction. Replaces the coach. Turn OFF for the free-roam video."}'
+    - '// @ui {"widget":"group_end"}'
+    - '// @ui {"widget":"group_start", "label":"Declutter"}'
+    - '// @input bool showMoneyPiles {"hint":"Money piles beside a selected building (the gift in $1 bills). OFF = card, animation, person hologram and diagram only."}'
+    - '// @input bool showExplodedModels {"hint":"Exploded product models while a fact is spoken. OFF = card, animation, person hologram and diagram only."}'
     - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Start point (one-pinch calibration)"}'
     - '// @input bool useStartPoint = true {"hint":"ON: stand on the known start point, face down the street, pinch once. OFF: the wall-pinch calibration at the survey spot below."}'
