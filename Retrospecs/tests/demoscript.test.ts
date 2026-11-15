@@ -15,7 +15,7 @@ function run(events: Parameters<typeof demoNext>[1][]): DemoState {
 
 describe("locked judge demo", () => {
   test("starts at the Main Quad, then Huang, then a question", () => {
-    expect(DEMO_STOPS.map((s) => s.id)).toEqual(["mainquad", "huang"])
+    expect(DEMO_STOPS.map((s) => s.id)).toEqual(["mainquad", "huang", "hoover"])
   })
 
   test("every stop is a real, carded, narrated building on the map, with valid segments", () => {
@@ -30,7 +30,7 @@ describe("locked judge demo", () => {
     }
   })
 
-  test("walks open → aim → cards → aim → cards → ask → end", () => {
+  test("walks open → aim → cards (×3 stops) → ask → end", () => {
     let s = demoStart()
     expect(s.step).toBe("open")
     s = demoNext(s, "mapOpened")
@@ -47,10 +47,16 @@ describe("locked judge demo", () => {
     expect(demoPickTarget(s)).toBe("huang")
     s = demoNext(s, "picked")
     for (let i = 1; i < DEMO_STOPS[1].cards.length; i++) s = demoNext(s, "cardPinch")
+    expect(demoHasNextStop(s)).toBe(true)
+    s = demoNext(s, "cardPinch")
+    expect(s).toEqual({step: "aim", stop: 2, card: 0})
+    expect(demoPickTarget(s)).toBe("hoover")
+    s = demoNext(s, "picked")
+    for (let i = 1; i < DEMO_STOPS[2].cards.length; i++) s = demoNext(s, "cardPinch")
     expect(demoHasNextStop(s)).toBe(false)
     s = demoNext(s, "cardPinch")
     expect(s.step).toBe("ask")
-    expect(demoStopId(s)).toBe("huang") // Huang stays in focus for the question
+    expect(demoStopId(s)).toBe("hoover") // Hoover stays in focus for the question
     s = demoNext(s, "answered")
     expect(s.step).toBe("end")
     s = demoNext(s, "restart")
@@ -67,7 +73,7 @@ describe("locked judge demo", () => {
     const cards = run(["mapOpened", "picked"])
     expect(demoNext(cards, "picked")).toEqual(cards)
     expect(demoNext(cards, "answered")).toEqual(cards)
-    const ask = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.map(() => "cardPinch" as const), "picked", ...DEMO_STOPS[1].cards.map(() => "cardPinch" as const)])
+    const ask = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.map(() => "cardPinch" as const), "picked", ...DEMO_STOPS[1].cards.map(() => "cardPinch" as const), "picked", ...DEMO_STOPS[2].cards.map(() => "cardPinch" as const)])
     expect(ask.step).toBe("ask")
     expect(demoNext(ask, "cardPinch")).toEqual(ask)
     expect(demoNext(ask, "picked")).toEqual(ask)
@@ -92,9 +98,9 @@ describe("locked judge demo", () => {
     expect(demoLine(cards, "Main Quad")).toBe("") // the narration is talking
     const last = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.slice(1).map(() => "cardPinch" as const)])
     expect(demoHint(last, "Main Quad")).toMatch(/Next Stop/)
-    const ask = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.map(() => "cardPinch" as const), "picked", ...DEMO_STOPS[1].cards.map(() => "cardPinch" as const)])
-    expect(demoHint(ask, "Huang")).toMatch(/Ask button/)
-    expect(demoNudgeLine(ask, "Huang")).toMatch(/Ask button/)
+    const ask = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.map(() => "cardPinch" as const), "picked", ...DEMO_STOPS[1].cards.map(() => "cardPinch" as const), "picked", ...DEMO_STOPS[2].cards.map(() => "cardPinch" as const)])
+    expect(demoHint(ask, "Hoover Tower")).toMatch(/Ask button/)
+    expect(demoNudgeLine(ask, "Hoover Tower")).toMatch(/Ask button/)
     expect(demoHint(demoNext(ask, "answered"), "")).toMatch(/all yours/i)
     expect(demoHint(demoNext(ask, "answered"), "")).not.toMatch(/left/i)
   })

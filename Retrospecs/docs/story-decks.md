@@ -1,17 +1,20 @@
-# Centerpiece story decks
+# Story decks
 
-The four centerpiece stops have one visual card for each existing narration segment:
+Main Quad, Huang, and Hoover each have four newly written cards, matched one for one with ElevenLabs narration. Their focus views pair the deck with an animated 3D experience and a person hologram: Olmsted, Jensen Huang, and Herbert Hoover respectively. The other stops keep their existing decks.
 
 | Stop | Cards | Visual sequence |
 | --- | ---: | --- |
-| Hoover Tower | 4 | Tower and archive; Belgian bells; two elevators; wartime radio room |
-| Huang Engineering Center | 5 | PageRank server; engineering center; ten drives; water and energy; HP workbench replica |
+| Main Quad | 4 | Sunlit arcade receding into the Quad; cyanotype plan with the centred axis and Olmsted's off-axis church on vellum; spectral Memorial Arch over its two surviving bases; cutaway of a plaque in the paving and the time capsule below |
+| Hoover Tower | 4 | Floodlit tower with a 285 ft scale; polished bronze bell beside the 48-bell count (35 original, 13 later); the view through the 14th-floor arches with sound rings; wartime radio receiver, tubes and headphones |
+| Huang Engineering Center | 4 | Lit gateway where circuit traces meet; isometric cutaway of the dean's office, Terman Library and 300-seat auditorium around a hub; PageRank servers in colourful toy blocks over a link graph; half-lit energy ring on the east–west axis |
 | HP Garage | 3 | Garage; HP 200A audio oscillator; move to Stanford Research Park |
 | Memorial Church | 4 | Jane Stanford's umbrella; lost spire; Venetian mosaic; organ pipes |
 
-Copy, segment order, and a primary source URL for every slide are in [`tools/story-cards.json`](../tools/story-cards.json). `tools/render_story_decks.py` checks that every deck has 3–5 slides, that its count matches `tools/narration/narration.json`, and that each slide's source appears in the matching voice segment. It renders 1200 × 1280 translucent PNGs and generates `Assets/Retrospecs/Scripts/StoryDeck.ts`, whose literal asset paths let Lens Studio import them. The main **Next Card** region advances narration and image together. **Next Stop** changes buildings. The final card offers **Replay Cards**.
+Copy, segment order, and a source URL for every slide are in [`tools/story-cards.json`](../tools/story-cards.json). `tools/render_story_decks.py` checks that every deck has 1–5 slides, that its count matches `tools/narration/narration.json`, and that each slide's source appears in the matching voice segment. It renders 1200 × 1280 translucent PNGs and generates `Assets/Retrospecs/Scripts/StoryDeck.ts`, whose literal asset paths let Lens Studio import them. The main **Next Card** region advances narration and image together. **Next Stop** changes buildings. The final card offers **Replay Cards**.
 
-The opening slides for Hoover, Huang, and Memorial Church also use 4-second silent H.264 schematic loops built by `tools/render_holograms.py`. The HP Garage retains Nazeli's original workbench animation. These diagrams show documented objects and actions; they are not literal historical reconstructions or portraits. The new opening loops are embedded over the picture area of their first card. The existing HP clip remains a separate workbench display.
+Main Quad, Huang and Hoover use the copper deck template, `tools/story_cards_deck.py`: a translucent midnight panel, a copper chamfered frame, Georgia type, white text, and baked Close, Next Card / Replay Cards, Ask Me More and Next Stop buttons that stay inside the `storyCardHits` / `storyAskButton` regions of `Core/CardLayout.ts`. Their pictures come from `tools/heroes/<id>.py`, which exposes `SCENES`; the contract is in `tools/heroes/__init__.py`. To give another building this look, write `heroes/<id>.py`, add the id to `DECK_HERO_IDS` in `render_story_decks.py` and to `BAKED_ASK_CARDS` / `CARD_THEMES` in `Core/CardTheme.ts`, and, if it has a people hologram, to `SIMPLE_FOCUS_IDS`. Those buildings show one 3D animation left of the card and one founder screen right of it, with equal gaps (`flankGapDeg`) and no diagram loop. Preview without touching Assets: `python Retrospecs/tools/story_cards_deck.py --preview <dir>`. The contact sheet is [`card-style-options/deck-story-cards.png`](card-style-options/deck-story-cards.png).
+
+The opening slide for Memorial Church also uses 4-second silent H.264 schematic loops built by `tools/render_holograms.py`. The HP Garage retains Nazeli's original workbench animation. These diagrams show documented objects and actions; they are not literal historical reconstructions or portraits. The new opening loops are embedded over the picture area of their first card. The existing HP clip remains a separate workbench display.
 
 Rebuild:
 

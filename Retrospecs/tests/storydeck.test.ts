@@ -8,7 +8,7 @@ describe("illustrated story decks", () => {
       const count = STORY_CARD_COUNTS[card.id]
       expect(count).toBeGreaterThanOrEqual(1)
       // Full hand-written decks: the centerpieces and the start-point corner buildings around Huang.
-      if (!["hoover", "huang", "hpgarage", "memchu", "varian", "spilker", "moore"].includes(card.id)) expect(count).toBeLessThanOrEqual(2)
+      if (!["mainquad", "hoover", "huang", "hpgarage", "memchu", "varian", "spilker", "moore"].includes(card.id)) expect(count).toBeLessThanOrEqual(2)
       for (let i = 0; i < count; i++) {
         const factId = storyCardFactId(card.id, i)
         if (factId) expect(factById(factId)?.card.id).toBe(card.id)

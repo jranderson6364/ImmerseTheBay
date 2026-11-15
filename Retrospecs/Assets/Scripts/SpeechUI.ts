@@ -102,6 +102,10 @@ export class SpeechUI extends BaseScriptComponent {
       // Mic visual missing: the collider is off, which is what matters.
     }
     this.speechBubbleTrans.setLocalScale(vec3.zero())
+    // Hide everything under the bubble too: the grey sphere button ("Button Mesh"), the loading gif and the speech
+    // box. Hiding only the mic left the sphere floating where the bubble last stopped following the camera.
+    const root = this.getSceneObject()
+    for (let i = 0; i < root.getChildrenCount(); i++) root.getChild(i).enabled = false
   }
 
   onSpeechButtonDown() {

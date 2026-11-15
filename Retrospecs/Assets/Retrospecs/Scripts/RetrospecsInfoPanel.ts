@@ -22,12 +22,14 @@ import {
 import {MeshChunk} from "../Core/MapMesh"
 import {
   CompactLayout, SPECTACLES, STORY_CARD, cmForDeg, compactCardSize, compactLayout, compactTextWidth, crossChunk, degForCm, inRect,
-  micGlyphRects, storyAskButton, storyCardHits, storyCardScale
+  micGlyphRects, shapeChunk, shapeFrameChunk, storyAskButton, storyCardHits, storyCardScale
 } from "../Core/CardLayout"
+import {CardTheme, RENDER_BASE, TEXT_LAYER, cornerFor, hasBakedAsk, isSimpleFocus, lighten, meshLayer, themeFor} from "../Core/CardTheme"
 import {SIK} from "SpectaclesInteractionKit.lspkg/SIK"
 import {InteractorInputType} from "SpectaclesInteractionKit.lspkg/Core/Interactor/Interactor"
 import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
 import {storyCardTexture} from "./StoryDeck"
+import {playSfx} from "../Core/Sfx"
 import {storyHologram} from "./StoryHolograms"
 import {peopleHologram} from "./PeopleHolograms"
 
@@ -42,12 +44,9 @@ const BUTTON_COLORS = {
   closeMark: [1, 0.92, 0.9, 1], closeMarkHover: [1, 1, 1, 1],
   nextFill: [0.36, 0.26, 0.1, 1], nextFillHover: [0.75, 0.55, 0.2, 1],
   nextText: [1.0, 0.88, 0.62, 1], nextTextHover: [1, 1, 1, 1],
-  rim: [0.95, 0.82, 0.58, 1], rimHover: [1.0, 0.96, 0.82, 1],
-  // Ask: the chat window's cyan, so the button and the window it opens read as one thing.
-  askFill: [0.07, 0.28, 0.4, 1], askFillHover: [0.18, 0.58, 0.8, 1],
-  askRim: [0.55, 0.9, 1.0, 1], askRimHover: [0.85, 1.0, 1.0, 1],
-  askMark: [0.85, 0.97, 1.0, 1], askMarkHover: [1, 1, 1, 1]
+  rim: [0.95, 0.82, 0.58, 1], rimHover: [1.0, 0.96, 0.82, 1]
 }
+// The Ask Me More button takes its colours from the card's theme (Core/CardTheme), like the window it opens.
 
 interface ButtonView {
   kind: "close" | "next" | "more" | "ask"
@@ -369,6 +368,14 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     return {object, video, width: 2 * hw, height: 2 * hh}
   }
 
+  /** The side screens currently up (diagram loop, people screen), for the look-around nudge. */
+  sideScreens(): {id: string; object: SceneObject}[] {
+    const out: {id: string; object: SceneObject}[] = []
+    if (this.hologram) out.push({id: "diagram", object: this.hologram})
+    if (this.peopleScreen) out.push({id: "people", object: this.peopleScreen})
+    return out
+  }
+
   hideSideHologram() {
     if (this.hologram) this.hologram.enabled = false
     if (this.hologramVideo) try { this.hologramVideo.stop() } catch (e) { /* Already stopped. */ }
@@ -422,6 +429,8 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     // Switching cards while showing: appear in place (no second fly-out).
     // A different building flies out fresh to its new spot.
     const inPlace = wasShowing && !newBuilding
+    // Whoosh as a card flies out; a softer one when the next story card swaps in place.
+    playSfx("whoosh", inPlace ? 0.5 : 1)
     this.fly = !inPlace
     this.t = inPlace ? 0.6 : 0
     this.target = 1
@@ -602,7 +611,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     material.mainPass.baseTex = tex
     material.mainPass.twoSided = true
     visual.mainMaterial = material
-    if (storyIndex === 0 && cardId !== "hpgarage") {
+    if (storyIndex === 0 && cardId !== "hpgarage" && !isSimpleFocus(cardId)) {
       const video = storyHologram(cardId)
       const videoMat = this.mediaMaterial || loadBuiltinMaterial()
       if (video && videoMat) {
@@ -619,30 +628,34 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     // Hit areas grown to at least minTargetDeg (the drawn buttons in the art are smaller; Snap counts the collider).
     const minLocal = cmForDeg(Math.max(SPECTACLES.minTargetDeg, this.minTargetDeg), D) / this.cardScale
     const hits = storyCardHits(minLocal)
+    const ask = storyAskButton(minLocal)
+    // The featured cards (tools/story_cards_featured.py) have the Ask Me More tab baked in above Next Stop.
+    const baked = hasBakedAsk(cardId)
     this.buttons = [
       {kind: "close", hit: hits.close, parts: []},
       {kind: "more", hit: hits.more, parts: []},
       {kind: "next", hit: hits.next, parts: []}
     ]
-    // Hover feedback: the buttons are baked into the art, so each gets a thin outline in the card's own copper,
+    if (baked) this.buttons.push({kind: "ask", hit: ask.hit, parts: []})
+    // Hover feedback: the buttons are baked into the art, so each gets a thin outline in the card's own colour,
     // drawn just OUTSIDE the drawn button so it never sits over the label. Nothing covers the button itself, and
     // the outline is switched off (not merely black) at rest, so it can't show as a dark box in a recording.
-    const drawn = storyCardHits(0)
+    const drawn: Record<string, Rect2> = {...storyCardHits(0), ask: ask.drawn}
+    const rimColor = baked ? themeFor(cardId).rim : STORY_BUTTON_RIM
     for (const b of this.buttons) {
       const r = drawn[b.kind]
       const pad = 0.9
       const outer = {x0: r.x0 - pad, y0: r.y0 - pad, x1: r.x1 + pad, y1: r.y1 + pad}
       const n = this.parts.length
-      const rim = this.quads("hover_rim_" + b.kind, frameRects(outer, 0.35), STORY_BUTTON_RIM, 0.16)
-      this.buttonPart(b, n, STORY_BUTTON_RIM, STORY_BUTTON_RIM)
+      const rim = this.quads("hover_rim_" + b.kind, frameRects(outer, 0.35), rimColor, 0.16)
+      this.buttonPart(b, n, rimColor, rimColor)
       if (rim) {
         rim.enabled = false
         b.toggles = [rim]
       }
     }
-    // Ask isn't in the texture: drawn as a mesh button in the empty column above Next Stop, so it can glow.
-    const ask = storyAskButton(minLocal)
-    this.buttons.push(this.buildAskButton(ask.drawn, ask.hit, 84))
+    // Older cards (render_story_decks.py) don't have it: drawn as a mesh button in the same empty column.
+    if (!baked) this.buttons.push(this.buildAskButton(ask.drawn, ask.hit, themeFor(cardId), true))
     this.hovered = ""
     this.blockHeight = STORY_CARD.heightCm
     this.lift = 0
@@ -729,7 +742,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     const nw = L.next.x1 - L.next.x0, nh = L.next.y1 - L.next.y0
     this.text("next_label", "Next spot  >", (L.next.x0 + L.next.x1) / 2, (L.next.y0 + L.next.y1) / 2, nw - 1, nh * 0.7, S.button, BUTTON_COLORS.nextText, HorizontalAlignment.Center)
     this.buttonPart(next, n, BUTTON_COLORS.nextText, BUTTON_COLORS.nextTextHover)
-    this.buttons = [close, next, this.buildAskButton(L.ask, L.askHit, S.button)]
+    this.buttons = [close, next, this.buildAskButton(L.ask, L.askHit, themeFor(card.id), false)]
     this.hovered = ""
 
     if (L.art && L.artBox) this.buildCompactArt(art, L)
@@ -738,28 +751,54 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   }
 
   /**
-   * The Ask button: a cyan pill with a microphone and "Ask". The one way to ask a question; it opens the chat's mic
-   * and its suggested-question chips. `size` is the label's text size.
+   * The Ask Me More button, as a mesh in the card's theme (the same dress as the tab baked into the featured cards):
+   * a dark tab with a thin rim, an accent mic badge and white "Ask Me More". `tall` (the story card's column) adds
+   * the "HAVE A QUESTION?" kicker above and a "Tap, then just speak" hint below; the compact card's short pill is one
+   * row. The one way to ask a question; it opens the Ask Me More window's mic and its suggested-question chips.
    */
-  private buildAskButton(r: Rect2, hit: Rect2, size: number): ButtonView {
-    const C = BUTTON_COLORS
+  private buildAskButton(r: Rect2, hit: Rect2, theme: CardTheme, tall: boolean): ButtonView {
     const b: ButtonView = {kind: "ask", hit, parts: []}
-    let n = this.parts.length
-    this.quads("ask_fill", [r], C.askFill, 0.03)
-    this.buttonPart(b, n, C.askFill, C.askFillHover)
-    n = this.parts.length
-    this.quads("ask_rim", frameRects(r, 0.35), C.askRim, 0.04)
-    this.buttonPart(b, n, C.askRim, C.askRimHover)
-    const h = r.y1 - r.y0
-    const s = h * 0.62
-    const gx = r.x0 + Math.max(0.6, h * 0.14) + s / 2, cy = (r.y0 + r.y1) / 2
-    n = this.parts.length
-    this.quads("ask_mic", micGlyphRects(gx, cy, s), C.askMark, 0.05)
-    this.buttonPart(b, n, C.askMark, C.askMarkHover)
-    const lx0 = gx + s / 2 + h * 0.08, lx1 = r.x1 - h * 0.1
-    n = this.parts.length
-    this.text("ask_label", "Ask", (lx0 + lx1) / 2, cy, Math.max(1, lx1 - lx0), h * 0.7, size, C.askMark, HorizontalAlignment.Center)
-    this.buttonPart(b, n, C.askMark, C.askMarkHover)
+    const w = r.x1 - r.x0, h = r.y1 - r.y0
+    const corner = cornerFor(theme)
+    const rad = Math.min(w, h) * corner.radius
+    const white = [1, 1, 1, 1]
+    const add = (fn: () => void, base: number[], hover: number[]) => {
+      const n = this.parts.length
+      fn()
+      this.buttonPart(b, n, base, hover)
+    }
+    add(() => this.chunkPart("ask_fill", shapeChunk(r, rad, corner.chamfer, 0.03), theme.top), theme.top, lighten(theme.button[1], 0.05))
+    add(() => this.chunkPart("ask_rim", shapeFrameChunk(r, rad, 0.3, corner.chamfer, 0.04), theme.rim), theme.rim, white)
+    // Mic badge: an accent disc with the mic in the card's dark colour (it reads as a cut-out on the additive display).
+    const badge = (cx: number, cy: number, d: number) => {
+      const sq: Rect2 = {x0: cx - d / 2, y0: cy - d / 2, x1: cx + d / 2, y1: cy + d / 2}
+      add(() => this.chunkPart("ask_badge", shapeChunk(sq, d / 2, false, 0.05), theme.accent), theme.accent, white)
+      add(() => this.quads("ask_mic", micGlyphRects(cx, cy, d * 0.62), theme.bottom, 0.06), theme.bottom, theme.bottom)
+    }
+    const S = COMPACT_SIZES
+    if (tall) {
+      const px = w * 0.1
+      const tw = w - 2 * px
+      const x = r.x0 + px + tw / 2
+      const row = (f: number) => r.y1 - h * f
+      const d = h * 0.26
+      badge(r.x1 - px * 0.6 - d / 2, row(0.235), d)
+      add(() => this.text("ask_kicker", "HAVE A QUESTION?", x - d / 2, row(0.235), tw - d - 0.6, h * 0.16, 34, theme.accent, HorizontalAlignment.Left), theme.accent, white)
+      add(() => this.text("ask_label", "Ask Me More", x, row(0.54), tw, h * 0.26, 66, white, HorizontalAlignment.Left), white, white)
+      add(() => this.text("ask_hint", "Tap, then just speak", x, row(0.78), tw, h * 0.16, 32, [0.72, 0.72, 0.72, 1], HorizontalAlignment.Left), [0.72, 0.72, 0.72, 1], white)
+    } else {
+      const d = h * 0.62
+      const cy = (r.y0 + r.y1) / 2
+      const gx = r.x0 + Math.max(0.6, h * 0.16) + d / 2
+      badge(gx, cy, d)
+      const lx0 = gx + d / 2 + h * 0.14, lx1 = r.x1 - h * 0.16
+      const lw = Math.max(1, lx1 - lx0)
+      // Always one line: the size that fits the pill's width (with a margin for wide glyphs). When the pill is
+      // squeezed (a card with art) and the full label would get too small to read, it says just "Ask".
+      const fitSize = (s: string) => Math.min(S.button, (lw * 0.85) / (CHAR_CM_PER_PT * s.length))
+      const label = fitSize("Ask Me More") >= 32 ? "Ask Me More" : "Ask"
+      add(() => this.text("ask_label", label, (lx0 + lx1) / 2, cy, lw, h * 0.6, Math.floor(fitSize(label)), white, HorizontalAlignment.Left), white, white)
+    }
     return b
   }
 
@@ -809,7 +848,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     const o = global.scene.createSceneObject("panel_" + name)
     o.setParent(this.root)
     const visual = this.meshObject(o, chunk)
-    const m = this.material.clone()
+    const m = this.overlayMaterial(chunk.verts.length > 2 ? chunk.verts[2] : 0)
     visual.mainMaterial = m
     this.parts.push({material: m, rgba})
   }
@@ -1130,7 +1169,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     const o = global.scene.createSceneObject("panel_" + name)
     o.setParent(parent || this.root)
     const visual = this.meshObject(o, chunk)
-    const m = this.material.clone()
+    const m = this.overlayMaterial(z)
     visual.mainMaterial = m
     this.parts.push({material: m, rgba})
     return o
@@ -1142,9 +1181,12 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   ) {
     const o = global.scene.createSceneObject("panel_text_" + name)
     o.setParent(this.root)
-    o.getTransform().setLocalPosition(new vec3(cx, cy, 0.08))
+    // In front of every mesh layer (the hover outline is at 0.16) and drawn after all of them: Text doesn't write
+    // depth, so without the order a button fill drawn later paints over its label (Core/CardTheme draw order).
+    o.getTransform().setLocalPosition(new vec3(cx, cy, 0.2))
     try {
       const t = o.createComponent("Component.Text") as Text
+      t.renderOrder = RENDER_BASE.panel + TEXT_LAYER
       if (this.font) t.font = this.font
       t.text = s
       // Size picked here to fit the box (no Shrink, which dropped lines); top-aligned in a box as tall as the lines,
@@ -1184,7 +1226,22 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     builder.updateMesh()
     const visual = o.createComponent("Component.RenderMeshVisual") as RenderMeshVisual
     visual.mesh = builder.getMesh()
+    // Fixed draw order by layer (z), so stacked parts never swap as the head moves.
+    visual.renderOrder = RENDER_BASE.panel + meshLayer(chunk.verts.length > 2 ? chunk.verts[2] : 0)
     return visual
+  }
+
+  /** Material for a part stacked on the card: drawn by order alone, so it never writes depth over the text. */
+  private overlayMaterial(z: number): Material {
+    const m = this.material.clone()
+    if (z > 0) {
+      try {
+        m.mainPass.depthWrite = false
+      } catch (e) {
+        // No depth settings on this material: the draw order still holds.
+      }
+    }
+    return m
   }
 
   private clear() {

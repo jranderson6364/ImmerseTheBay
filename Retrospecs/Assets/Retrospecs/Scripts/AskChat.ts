@@ -11,7 +11,9 @@
  */
 import {Rect2, frameRects, quadsChunk} from "../Core/Focus"
 import {MeshChunk} from "../Core/MapMesh"
-import {crossChunk, inRect, micGlyphRects} from "../Core/CardLayout"
+import {crossChunk, inRect, micGlyphRects, shapeChunk, shapeFrameChunk} from "../Core/CardLayout"
+import {CardTheme, RENDER_BASE, TEXT_LAYER, cornerFor, lighten, meshLayer, themeFor} from "../Core/CardTheme"
+import {playSfx} from "../Core/Sfx"
 import {SIK} from "SpectaclesInteractionKit.lspkg/SIK"
 import {InteractorInputType} from "SpectaclesInteractionKit.lspkg/Core/Interactor/Interactor"
 import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
@@ -20,27 +22,37 @@ import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interactio
 const LINE_CM_PER_PT = 0.032
 const CHAR_CM_PER_PT = 0.0112
 
-// Additive display: black is see-through, brightness is opacity.
-const C = {
-  fill: [0.06, 0.07, 0.09, 1],
-  frame: [0.55, 0.85, 1.0, 1],
-  accent: [0.4, 0.8, 1.0, 1],
-  heading: [0.65, 0.9, 1.0, 1],
-  question: [0.85, 0.82, 0.75, 1],
-  answer: [1, 0.98, 0.94, 1],
-  source: [0.7, 0.72, 0.75, 1],
-  closeFill: [0.55, 0.12, 0.14, 1],
-  closeFillHover: [0.95, 0.25, 0.28, 1],
-  closeMark: [1, 0.92, 0.9, 1],
-  rim: [0.95, 0.82, 0.58, 1],
-  rimHover: [0.7, 1.0, 1.0, 1],
-  mic: [0.55, 0.95, 1.0, 1],
-  chipFill: [0.07, 0.22, 0.3, 1],
-  chipFillHover: [0.18, 0.55, 0.75, 1],
-  chipRim: [0.45, 0.8, 0.95, 1],
-  chipRimHover: [0.85, 1.0, 1.0, 1],
-  chipText: [0.9, 0.97, 1.0, 1],
-  chipTextHover: [1, 1, 1, 1]
+// Additive display: black is see-through, brightness is opacity. Colours come from the focused card's theme
+// (Core/CardTheme), so the window reads as part of the card that opened it: dark panel, thin rim, accent kicker.
+function palette(t: CardTheme) {
+  const white = [1, 1, 1, 1]
+  return {
+    fill: t.top,
+    frame: t.rim,
+    accent: t.accent,
+    heading: t.accent,
+    question: [0.82, 0.8, 0.76, 1],
+    answer: [1, 0.98, 0.95, 1],
+    source: [0.66, 0.64, 0.6, 1],
+    closeFill: t.bottom,
+    closeFillHover: lighten(t.button[1], 0.05),
+    closeMark: white,
+    rim: t.rim,
+    rimHover: white,
+    mic: t.accent,
+    micMark: t.bottom,
+    chipFill: lighten(t.top, 0.05),
+    chipFillHover: t.button[1],
+    chipRim: t.rim,
+    chipRimHover: white,
+    chipText: [0.96, 0.95, 0.92, 1],
+    chipTextHover: white
+  }
+}
+
+/** "Ask · Main Quad" → "ASK ME MORE · MAIN QUAD": the window's kicker, named like the button that opens it. */
+export function chatKicker(heading: string): string {
+  return heading.replace(/^Ask\b/, "Ask Me More").toUpperCase()
 }
 
 /** Layout knobs (cm, at the window's own distance). */
@@ -111,6 +123,7 @@ export class AskChat {
   private heading = ""
   /** The question / live-transcript line, updated in place while listening. */
   private questionText: Text = null
+  private theme: CardTheme = themeFor("")
 
   constructor(
     private material: Material,
@@ -121,6 +134,11 @@ export class AskChat {
 
   isOpen(): boolean {
     return this.open
+  }
+
+  /** The focused card (its colours style the window from the next render on). */
+  setTheme(cardId: string) {
+    this.theme = themeFor(cardId)
   }
 
   /** The mic is open. `chips`: suggested questions to tap instead of speaking. */
@@ -140,7 +158,7 @@ export class AskChat {
   }
 
   showThinking(heading: string, question: string) {
-    this.render("thinking", heading, question, "Looking that up…", "")
+    this.render("thinking", heading, question, "…", "")
   }
 
   /** `chips`: follow-up questions to tap. */
@@ -263,6 +281,9 @@ export class AskChat {
   private render(state: ChatState, heading: string, question: string, answer: string, source: string, chips: string[] = []) {
     if (!this.material || !this.camera) return
     const keepPos = this.root ? this.pos : null
+    // Whoosh as the window opens, and again (softer) when an answer lands in it.
+    if (!this.open) playSfx("whoosh")
+    else if (state === "answer" && this.state !== "answer") playSfx("whoosh", 0.6)
     this.destroyRoot()
     this.root = global.scene.createSceneObject("AskChat")
     if (!keepPos || !this.open) {
@@ -278,7 +299,9 @@ export class AskChat {
     const pad = 1.6
     const closeSize = 5.2
     const textW = W - 2 * pad
-    const sizes = {heading: 40, question: 40, answer: 48, source: 32}
+    const C = palette(this.theme)
+    const corner = cornerFor(this.theme)
+    const sizes = {heading: 34, question: 40, answer: 48, source: 32, chip: 40}
     const headH = Math.max(closeSize, LINE_CM_PER_PT * sizes.heading * 1.1)
     const qText = state === "listening" ? question : `You: ${question}`
     // Listening: room for about two lines, so the live transcript fits without resizing the window.
@@ -293,31 +316,39 @@ export class AskChat {
     const H = pad + headH + gap + qH + (aH ? gap + aH : 0) + (sH ? gap * 0.6 + sH : 0) + chipsH + pad
     const card = {x0: -W / 2, y0: -H / 2, x1: W / 2, y1: H / 2}
 
-    this.quads([card], C.fill, -0.05)
-    this.quads(frameRects(card, 0.3), C.frame, 0)
-    this.quads([{x0: card.x0, y0: card.y1 - 0.5, x1: card.x1, y1: card.y1}], C.accent, 0.01)
+    // Window: the card's dark panel with its thin rim and corner style (rounded, cut or square).
+    const winRad = corner.radius > 0 ? (corner.chamfer ? 2.4 : 1.8) : 0
+    this.chunk(shapeChunk(card, winRad, corner.chamfer, -0.05), C.fill)
+    this.chunk(shapeFrameChunk(card, winRad, 0.25, corner.chamfer, 0), C.frame)
 
     let y = card.y1 - pad
-    // Heading row, X on the right.
+    // Heading row: the accent kicker ("ASK ME MORE · MAIN QUAD") with a short rule, X on the right.
     const headW = textW - closeSize - 1
-    this.text(heading, card.x0 + pad + headW / 2, y - headH / 2, headW, headH, sizes.heading, C.heading)
+    const kicker = chatKicker(heading)
+    this.text(kicker, card.x0 + pad + headW / 2, y - headH / 2, headW, headH, sizes.heading, C.heading)
     const close = {x0: card.x1 - pad - closeSize, y0: y - closeSize, x1: card.x1 - pad, y1: y}
     // Hit box at least ~3.5 degrees at the window's distance, overhanging the corner.
     const grow = 1.6
     this.closeHit = {x0: close.x0 - grow, y0: close.y0 - grow, x1: close.x1 + grow, y1: close.y1 + grow}
     this.closeParts = []
-    this.closePart(() => this.quads([close], C.closeFill, 0.03), C.closeFill, C.closeFillHover)
-    this.closePart(() => this.quads(frameRects(close, 0.35), C.rim, 0.04), C.rim, C.rimHover)
-    this.closePart(() => this.chunk(crossChunk(close, 0.9, 0.05), C.closeMark), C.closeMark, [1, 1, 1, 1])
+    const closeRad = closeSize * corner.radius * 0.8
+    this.closePart(() => this.chunk(shapeChunk(close, closeRad, corner.chamfer, 0.03), C.closeFill), C.closeFill, C.closeFillHover)
+    this.closePart(() => this.chunk(shapeFrameChunk(close, closeRad, 0.25, corner.chamfer, 0.04), C.rim), C.rim, C.rimHover)
+    this.closePart(() => this.chunk(crossChunk(close, 0.55, 0.05), C.closeMark), C.closeMark, [1, 1, 1, 1])
     this.hovered = false
-    y -= headH + gap
+    y -= headH + gap * 0.5
+    // Thin accent rule under the kicker, like the year rule on the card.
+    this.quads([{x0: card.x0 + pad, y0: y - 0.12, x1: card.x0 + pad + 6, y1: y + 0.12}], C.accent, 0.01)
+    y -= gap * 0.5
     this.micParts = []
     if (qH) {
       if (state === "listening") {
-        // A big mic left of the transcript; it breathes in update().
+        // An accent mic badge left of the transcript; it breathes in update().
         const m = Math.min(qH, 4.6)
         const n = this.parts.length
-        this.quads(micGlyphRects(card.x0 + pad + m / 2, y - m / 2, m), C.mic, 0.03)
+        const mx = card.x0 + pad + m / 2, my = y - m / 2
+        this.chunk(shapeChunk({x0: mx - m / 2, y0: my - m / 2, x1: mx + m / 2, y1: my + m / 2}, m / 2, false, 0.03), C.mic)
+        this.quads(micGlyphRects(mx, my, m * 0.62), C.micMark, 0.04)
         for (let i = n; i < this.parts.length; i++) this.micParts.push(this.parts[i])
         const w = textW - m - 1
         this.questionText = this.text(qText, card.x0 + pad + m + 1 + w / 2, y - qH / 2, w, qH, sizes.question, C.question)
@@ -346,9 +377,14 @@ export class AskChat {
           fn()
           for (let j = n; j < this.parts.length; j++) parts.push({part: this.parts[j], base, hover})
         }
-        add(() => this.quads([r], C.chipFill, 0.02), C.chipFill, C.chipFillHover)
-        add(() => this.quads(frameRects(r, 0.25), C.chipRim, 0.03), C.chipRim, C.chipRimHover)
-        add(() => this.text("›  " + chips[i], 0, (r.y0 + r.y1) / 2, textW - 2, chipH * 0.62, sizes.question, C.chipText), C.chipText, C.chipTextHover)
+        const chipRad = chipH * corner.radius
+        add(() => this.chunk(shapeChunk(r, chipRad, corner.chamfer, 0.02), C.chipFill), C.chipFill, C.chipFillHover)
+        add(() => this.chunk(shapeFrameChunk(r, chipRad, 0.2, corner.chamfer, 0.03), C.chipRim), C.chipRim, C.chipRimHover)
+        // One line, always: shrink a long suggestion to fit the chip instead of wrapping into the chip below.
+        const label = "›  " + chips[i]
+        const lw = textW - 4
+        const fit = Math.min(sizes.chip, lw / (CHAR_CM_PER_PT * Math.max(1, label.length)))
+        add(() => this.text(label, 0, (r.y0 + r.y1) / 2, lw, chipH * 0.7, Math.max(18, Math.floor(fit)), C.chipText, true), C.chipText, C.chipTextHover)
         this.chipParts.push(parts)
         // Hit boxes split the gaps between rows, so there's no dead strip between chips.
         this.chipHits.push({x0: r.x0 - 1, y0: r.y0 - chipGap / 2, x1: r.x1 + 1, y1: r.y1 + chipGap / 2})
@@ -385,22 +421,34 @@ export class AskChat {
     builder.updateMesh()
     const visual = o.createComponent("Component.RenderMeshVisual") as RenderMeshVisual
     visual.mesh = builder.getMesh()
+    // Fixed draw order by layer, text above all (Core/CardTheme): parts never swap as the head moves.
+    const z = chunk.verts.length > 2 ? chunk.verts[2] : 0
+    visual.renderOrder = RENDER_BASE.chat + meshLayer(z)
     const m = this.material.clone()
+    if (z > 0) {
+      try {
+        m.mainPass.depthWrite = false
+      } catch (e) {
+        // No depth settings: the draw order still holds.
+      }
+    }
     visual.mainMaterial = m
     this.parts.push({material: m, rgba})
   }
 
-  private text(s: string, cx: number, cy: number, w: number, h: number, size: number, rgba: number[]): Text {
+  /** `middle`: centred vertically in its box (chips). */
+  private text(s: string, cx: number, cy: number, w: number, h: number, size: number, rgba: number[], middle = false): Text {
     const o = global.scene.createSceneObject("ask_chat_text")
     o.setParent(this.root)
-    o.getTransform().setLocalPosition(new vec3(cx, cy, 0.08))
+    o.getTransform().setLocalPosition(new vec3(cx, cy, 0.2))
     try {
       const t = o.createComponent("Component.Text") as Text
+      t.renderOrder = RENDER_BASE.chat + TEXT_LAYER
       if (this.font) t.font = this.font
       t.text = s
       t.size = size
       t.horizontalAlignment = HorizontalAlignment.Left
-      t.verticalAlignment = VerticalAlignment.Top
+      t.verticalAlignment = middle ? VerticalAlignment.Center : VerticalAlignment.Top
       t.worldSpaceRect = Rect.create(-w / 2, w / 2, -h / 2, h / 2)
       t.horizontalOverflow = HorizontalOverflow.Wrap
       t.verticalOverflow = VerticalOverflow.Overflow

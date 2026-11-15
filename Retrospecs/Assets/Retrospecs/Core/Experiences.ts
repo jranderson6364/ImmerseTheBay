@@ -4,17 +4,28 @@
  * and applies `poses(t)` to plain transforms every frame. Meshes are never rebuilt while animating.
  *
  * DESIGN NOTE: one idea per building, chosen from the brainstorm.
- *   huang    Serial vs parallel. A chip with a 5 x 5 grid of cores. First the cores fire one at a time, then all
- *            together in two waves. That is the idea behind NVIDIA's GPUs. (Money piles already exist in
- *            RetrospecsMoney, so they aren't repeated here.)
+ *   mainquad A living blueprint (loops every 19 s). A gold grid unrolls on the ground and the plan draws itself on it
+ *            (mainquad.1). The church rises off the axis and slides onto it (mainquad.2), the axis draws out from its
+ *            door, and six arcade wings rise round the courtyard with tile roofs dropping on. Then solid arch bases
+ *            come up, the ground shudders, and the lost Memorial Arch draws itself up from them as a rose wireframe
+ *            ghost: piers, two half-arches swinging shut, an attic (mainquad.3). Last, a time capsule drops in and is
+ *            buried beside the arcade's plaques and a new plaque seals it (mainquad.4). Everything sinks back into
+ *            the plan. The ghost is drawn rather than collapsed so it doesn't repeat memchu. Proportions are visual.
+ *   huang    One core, or all of them (loops every 14 s). A chip's lid lifts off a 5 x 5 array of cores. One worker
+ *            hops core to core computing a ripple, so the surface comes out stale and jagged. Then a sheet of data
+ *            falls onto every core at once and the ripple runs live across the whole array. That is the idea behind
+ *            NVIDIA's GPUs. (Money piles already exist in RetrospecsMoney, so they aren't repeated here.)
  *   gates    PageRank you can watch. Eight pages and their links. Each node's size is its real PageRank, computed
  *            here by power iteration. Three "random surfers" hop along the links, so they visit the big nodes most.
  *   spilker  The GPS constellation. Three inclined orbit rings carry satellites around a small globe. Signal lines
  *            run from the four highest satellites to a "you are here" pin, with pulses travelling down them.
  *   y2e2     The breathing building. The facade windows open and close on their own in a slow wave, and air motes
  *            flow in through them, across the floors, and up and out through the atria.
- *   hoover   The carillon. Bells spiral up around the tower in arrival order. A caption appears when 35 are in
- *            place and another at 48. Then the largest bell swings and rings of sound spread out.
+ *   hoover   The tower that rings (loops every 22 s). A gold scan ring climbs as the tower extrudes section by section
+ *            (hoover.1) and the dome drops on. The largest bell rises inside to the belfry and its deck (hoover.3).
+ *            Gold hoops open round the belfry and the other bells spiral up from the ground onto them in arrival
+ *            groups. A caption appears when 35 are in place and another at 48. Then the largest bell swings, shells
+ *            of sound swell out with each stroke, and the carillon shivers. Hoop layout is visual only.
  *   memchu   The spire that fell. The church stands, shakes, and its tower and spire topple through the roof and
  *            vanish. A faint outline remains, because they were never rebuilt. The facade mosaic twinkles.
  *   packard / hewlett / hpgarage   From the garage. Six generic, unlabelled devices fly out of the garage door one
@@ -278,50 +289,412 @@ function generic(text: string, pos: Vec3, from: number, to?: number): ExpLabel {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Huang: serial vs parallel cores
+// Shared pose helpers for the extruded scenes (Main Quad, Huang, Hoover)
+
+/** Rising out of the ground: y-only scale, fully hidden at 0 so nothing invisible counts toward the bounds. */
+function riseScale(k: number): Vec3 {
+  return k < 0.005 ? v3(HIDDEN, HIDDEN, HIDDEN) : v3(1, k, 1)
+}
+
+function grow(k: number): number {
+  return Math.max(HIDDEN, k)
+}
+
+/** Squashes a pose toward the ground plane (y = 0) by k: the loop outro, where everything sinks back down. */
+function sink(p: Pose, k: number): Pose {
+  if (k >= 1) return p
+  if (k < 0.005) return pose(v3(p.pos.x, 0, p.pos.z), QI, HIDDEN)
+  return {pos: v3(p.pos.x, p.pos.y * k, p.pos.z), rot: p.rot, scale: v3(p.scale.x, Math.max(HIDDEN, p.scale.y * k), p.scale.z)}
+}
+
+/** Semicircle in the vertical plane through `c` spanned by `dir` (horizontal unit) and up, from -dir to +dir. */
+function vArc(c: Vec3, dir: Vec3, r: number, n = 10): Vec3[] {
+  const pts: Vec3[] = []
+  for (let k = 0; k <= n; k++) {
+    const a = Math.PI - (k / n) * Math.PI
+    pts.push(add(c, add(mul(dir, Math.cos(a) * r), v3(0, Math.sin(a) * r, 0))))
+  }
+  return pts
+}
+
+/** The 12 edges of an axis-aligned box as 4 tube polylines (two rings and four uprights). */
+function wireBox(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, width: number): TubeSpec[] {
+  const ring = (y: number) => [v3(x0, y, z0), v3(x1, y, z0), v3(x1, y, z1), v3(x0, y, z1), v3(x0, y, z0)]
+  const out: TubeSpec[] = [{points: ring(y0), width}, {points: ring(y1), width}]
+  for (const [x, z] of [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]) out.push({points: [v3(x, y0, z), v3(x, y1, z)], width})
+  return out
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Main Quad: a living blueprint
+
+export const MQ_LOOP = 19
+/** Where the church first stands in the blueprint (off the axis), before it slides onto the axis (mainquad.2). */
+export const MQ_CHURCH_OFF = 10
+const MQ_CHURCH_Z = -13
+export const MQ_ARCH_Z = 16
+const MQ_ARCH_SPRING = 13 // height where the ghost arch's curve starts
+const MQ_ARCH_R = 5 // half the opening
+const MQ_ARCH_PIER = 3.5
+const MQ_BASE_H = 3
+const MQ_CAPSULE = v3(-14.3, 0, 7)
+const MQ_GRID_HALF = 22
+const MQ_GRID_BACK = -20
+/** Arcade wings in the order they rise, sweeping round the courtyard: [start, end, courtyard-side normal, open].
+ * The two front wings are open colonnades (no block behind) so the courtyard stays visible from the front. */
+const MQ_WINGS: [Vec3, Vec3, Vec3, boolean][] = [
+  [v3(-18, 0, -13), v3(-7, 0, -13), v3(0, 0, 1), false],
+  [v3(-18, 0, -12), v3(-18, 0, 9.5), v3(1, 0, 0), false],
+  [v3(-18, 0, 10.5), v3(-6.5, 0, 10.5), v3(0, 0, -1), true],
+  [v3(6.5, 0, 10.5), v3(18, 0, 10.5), v3(0, 0, -1), true],
+  [v3(18, 0, -12), v3(18, 0, 9.5), v3(-1, 0, 0), false],
+  [v3(7, 0, -13), v3(18, 0, -13), v3(0, 0, 1), false]
+]
+
+/** One arcade wing on the ground from a to b (axis-aligned): a row of round arches on the courtyard side in front of
+ * a two-storey block (unless `open`), plus a low tile roof. Built in the experience frame. */
+function arcadeWing(a: Vec3, b: Vec3, inward: Vec3, open = false): {stone: Primitive[]; arches: TubeSpec[]; roof: Primitive[]} {
+  const d = norm(sub(b, a))
+  const L = len(sub(b, a))
+  const c = lerp3(a, b, 0.5)
+  const alongX = Math.abs(d.x) > 0.5
+  const sized = (l: number, h: number, dep: number) => (alongX ? v3(l, h, dep) : v3(dep, h, l))
+  const at = (off: number, y: number) => add(c, add(mul(inward, off), v3(0, y, 0)))
+  const block = (l: number, h: number, dep: number, off: number, y: number, rot?: Vec3): Primitive => {
+    const s = sized(l, h, dep), p = at(off, y)
+    return box(s.x, s.y, s.z, p.x, p.y, p.z, rot)
+  }
+  const xz = (p: Vec3): [number, number, number] => [p.x, 2.6, p.z]
+  const bays = Math.max(2, Math.round(L / 3.6))
+  const pitch = L / bays
+  const stone: Primitive[] = [block(L + 1, 0.8, 1.3, 1.6, 7.0, undefined)]
+  if (open) for (let k = 0; k <= bays; k++) stone.push(box(0.9, 5.2, 0.9, ...xz(add(add(a, mul(d, k * pitch)), mul(inward, -0.6)))))
+  else stone.push(block(L + 1, 7.4, 3.4, -1.7, 3.7, undefined))
+  const arches: TubeSpec[] = []
+  for (let k = 0; k <= bays; k++) {
+    const p = add(add(a, mul(d, k * pitch)), mul(inward, 1.6))
+    stone.push(box(0.9, 5.2, 0.9, p.x, 2.6, p.z))
+    if (k < bays) arches.push({points: vArc(add(add(a, mul(d, (k + 0.5) * pitch)), add(mul(inward, 1.6), v3(0, 5.2, 0))), d, pitch / 2 - 0.45), width: 0.4})
+  }
+  // Gable roof over block and arcade: two slabs falling away from a ridge, toward the courtyard and away from it.
+  const tilt = 24
+  const roof: Primitive[] = []
+  const half = open ? 1.5 : 3.3, ridge = open ? 0.5 : -0.6
+  for (const side of [-1, 1]) {
+    const n = mul(inward, side)
+    const rot = alongX ? v3(tilt * Math.sign(n.z), 0, 0) : v3(0, 0, -tilt * Math.sign(n.x))
+    roof.push(block(L + 1.4, 0.4, half / Math.cos((tilt * Math.PI) / 180), ridge + (side * half) / 2, 7.4 + (half / 2) * Math.tan((tilt * Math.PI) / 180) + 0.2, rot))
+  }
+  return {stone, arches, roof}
+}
+
+/** Left half of the ghost arch, hinged at its springing point (local origin); the right half is its mirror. */
+function ghostCrown(side: number): TubeSpec[] {
+  const R = MQ_ARCH_R, E = MQ_ARCH_R + MQ_ARCH_PIER
+  const out: TubeSpec[] = []
+  for (const z of [-1.5, 1.5]) {
+    const intrados: Vec3[] = [], extrados: Vec3[] = []
+    for (let k = 0; k <= 8; k++) {
+      const a = (k / 8) * (Math.PI / 2)
+      intrados.push(v3(side * (R - R * Math.cos(a)), R * Math.sin(a), z))
+      extrados.push(v3(side * (R - E * Math.cos(a)), E * Math.sin(a), z))
+    }
+    out.push({points: intrados, width: 0.45}, {points: extrados, width: 0.45})
+    // Spandrel outline: up the outer edge and along the top to the centre line.
+    out.push({points: [v3(side * (R - E), 0, z), v3(side * (R - E), E, z), v3(side * R, E, z)], width: 0.35})
+    // Voussoir joints.
+    for (const f of [0.25, 0.5, 0.75]) {
+      const a = f * (Math.PI / 2)
+      out.push({points: [v3(side * (R - R * Math.cos(a)), R * Math.sin(a), z), v3(side * (R - E * Math.cos(a)), E * Math.sin(a), z)], width: 0.25})
+    }
+  }
+  for (const k of [0, 4, 8]) {
+    const a = (k / 8) * (Math.PI / 2)
+    const p = v3(side * (R - R * Math.cos(a)), R * Math.sin(a), 0)
+    out.push({points: [v3(p.x, p.y, -1.5), v3(p.x, p.y, 1.5)], width: 0.3})
+  }
+  return out
+}
+
+/** Time windows of the Main Quad's sequence (looped seconds), exported for tests. */
+export const MQ_T = {
+  grid: [0, 1.6], plan: [0.8, 2.2], churchRise: [2.0, 3.2], churchSlide: [3.6, 5.0], axis: [4.8, 5.8], wings: 5.4,
+  bases: [9.0, 9.6], quake: [9.4, 10.8], legs: [10.2, 11.0], crowns: [11.0, 12.0], attic: [11.8, 12.5],
+  capsuleDrop: [13.0, 14.2], capsuleSink: [14.4, 15.3], plaque: [15.0, 15.7], outro: [18.0, 18.9]
+}
+
+function mainquad(): Experience {
+  const T = MQ_T
+  // Blueprint grid on the ground, built from its back edge so it can unroll toward the viewer.
+  const grid: TubeSpec[] = []
+  const depth = 2 * MQ_GRID_HALF - 2
+  // Lines are split into short runs so nothing long and flat sorts badly against the buildings standing on it.
+  const runs = (a: Vec3, b: Vec3, n: number) => Array.from({length: n + 1}, (_, k) => lerp3(a, b, k / n))
+  for (let x = -MQ_GRID_HALF; x <= MQ_GRID_HALF + 1e-6; x += 4) grid.push({points: runs(v3(x, 0.05, 0), v3(x, 0.05, depth), 8), width: 0.22})
+  for (let z = 0; z <= depth + 1e-6; z += 3.5) grid.push({points: runs(v3(-MQ_GRID_HALF, 0.05, z), v3(MQ_GRID_HALF, 0.05, z), 8), width: 0.22})
+  // The plan drawn on it: every wing's footprint, the church, the arch bases and the courtyard.
+  const plan: TubeSpec[] = [{points: squareLoop(0, 0.2, -1.5, 11.5).map((p) => v3(p.x * 1.15, p.y, p.z)), width: 0.3}]
+  for (const [a, b, n, open] of MQ_WINGS) {
+    const o = mul(n, open ? -1.1 : -3.4), i = mul(n, 2.1)
+    plan.push({points: [add(a, i), add(b, i), add(b, o), add(a, o), add(a, i)].map((p) => v3(p.x, 0.2, p.z)), width: 0.3})
+  }
+  plan.push({points: [v3(-6, 0.2, -12.2), v3(6, 0.2, -12.2), v3(6, 0.2, -19.6), v3(-6, 0.2, -19.6), v3(-6, 0.2, -12.2)], width: 0.3})
+  for (const s of [-1, 1]) {
+    const x0 = s * MQ_ARCH_R, x1 = s * (MQ_ARCH_R + MQ_ARCH_PIER)
+    plan.push({points: [v3(x0, 0.2, MQ_ARCH_Z - 1.5), v3(x1, 0.2, MQ_ARCH_Z - 1.5), v3(x1, 0.2, MQ_ARCH_Z + 1.5), v3(x0, 0.2, MQ_ARCH_Z + 1.5), v3(x0, 0.2, MQ_ARCH_Z - 1.5)], width: 0.3})
+  }
+  const nodes: ExpNode[] = [
+    {name: "blueprint_grid", color: "gold", tubes: grid},
+    {name: "blueprint_plan", color: "white", tubes: plan},
+    {name: "axis", color: "gold", tubes: [{points: [v3(0, 0, 0), v3(0, 0, 37)], width: 0.6}]},
+    {name: "axis_pulse", color: "white", prims: [sphere(0.75, 0, 0, 0, 10, 6)]}
+  ]
+  // Memorial Church at the head of the axis, built about its own footprint centre so it can slide.
+  const church: Primitive[] = [box(12, 11, 1.6, 0, 5.5, 0), box(9, 9.5, 6.4, 0, 4.75, -3.8)]
+  const mosaic: TubeSpec[] = [
+    {points: [v3(-6.3, 11, 0.9), v3(0, 15.2, 0.9), v3(6.3, 11, 0.9)], width: 0.5},
+    {points: [v3(-4.6, 6.3, 0.9), v3(4.6, 6.3, 0.9), v3(4.6, 9.8, 0.9), v3(-4.6, 9.8, 0.9), v3(-4.6, 6.3, 0.9)], width: 0.45}
+  ]
+  for (const ax of [-3.4, 0, 3.4]) mosaic.push({points: [v3(ax - 1.2, 0, 0.9), ...vArc(v3(ax, 3.4, 0.9), X, 1.2, 8), v3(ax + 1.2, 0, 0.9)], width: 0.4})
+  const churchRoof: Primitive[] = []
+  for (const s of [-1, 1]) churchRoof.push(box(5.2, 0.45, 7, s * 2.35, 10.6, -3.8, v3(0, 0, -s * 28)))
+  churchRoof.push(box(1.6, 3.2, 1.6, 0, 12.8, -3.8), cyl(1.1, 1.6, "y", 0, 15.2, -3.8, 10, 0.2))
+  nodes.push(
+    {name: "church", color: "cream", prims: church},
+    {name: "church_mosaic", color: "gold", prims: [box(8.6, 3.0, 0.3, 0, 8.05, 0.95)], tubes: mosaic},
+    {name: "church_roof", color: "clay", prims: churchRoof}
+  )
+  MQ_WINGS.forEach(([a, b, n, open], i) => {
+    const w = arcadeWing(a, b, n, open)
+    nodes.push({name: "arcade_" + i, color: "cream", prims: w.stone, tubes: w.arches})
+  })
+  MQ_WINGS.forEach(([a, b, n, open], i) => nodes.push({name: "roof_" + i, color: "clay", prims: arcadeWing(a, b, n, open).roof}))
+  // The Memorial Arch: solid surviving bases, then a wireframe ghost that draws itself up from them.
+  const pierX = MQ_ARCH_R + MQ_ARCH_PIER / 2
+  const legs: TubeSpec[] = []
+  for (const s of [-1, 1]) {
+    const x0 = s * MQ_ARCH_R, x1 = s * (MQ_ARCH_R + MQ_ARCH_PIER)
+    legs.push(...wireBox(Math.min(x0, x1), Math.max(x0, x1), 0, MQ_ARCH_SPRING - MQ_BASE_H, -1.5, 1.5, 0.45))
+    legs.push({points: [v3(x0, 4.5, -1.5), v3(x1, 4.5, -1.5), v3(x1, 4.5, 1.5), v3(x0, 4.5, 1.5), v3(x0, 4.5, -1.5)], width: 0.3})
+    legs.push({points: [v3(s * pierX, 0, 1.5), v3(s * pierX, MQ_ARCH_SPRING - MQ_BASE_H, 1.5)], width: 0.25})
+  }
+  const E = MQ_ARCH_R + MQ_ARCH_PIER
+  const attic = wireBox(-E, E, 0, 4, -1.5, 1.5, 0.45)
+  attic.push({points: [v3(-E, 2, 1.5), v3(E, 2, 1.5)], width: 0.3})
+  nodes.push(
+    {name: "arch_bases", color: "sand", prims: [-1, 1].map((s) => box(MQ_ARCH_PIER + 0.4, MQ_BASE_H, 3.4, s * pierX, MQ_BASE_H / 2, MQ_ARCH_Z))},
+    {name: "ghost_legs", color: "rose", tubes: legs},
+    {name: "ghost_crown_l", color: "rose", tubes: ghostCrown(1)},
+    {name: "ghost_crown_r", color: "rose", tubes: ghostCrown(-1)},
+    {name: "ghost_attic", color: "rose", tubes: attic},
+    {name: "shock_ring", color: "white", tubes: [{points: circle(v3(0, 0, 0), 1, "y", 48), width: 0.05}]},
+    {name: "class_plaques", color: "gold", prims: [-8, -5, -2, 1, 4].map((z) => box(1.6, 0.25, 1.1, MQ_CAPSULE.x, 0.15, z))},
+    {name: "new_plaque", color: "gold", prims: [box(1.9, 0.3, 1.4, 0, 0, 0)]},
+    {name: "time_capsule", color: "amber", prims: [cyl(0.8, 2.4, "y", 0, 0, 0, 12), sphere(0.8, 0, 1.2, 0, 12, 6), sphere(0.8, 0, -1.2, 0, 12, 6)]}
+  )
+  const idx: Record<string, number> = {}
+  nodes.forEach((n, i) => (idx[n.name] = i))
+  return {
+    id: "mainquad",
+    title: "A living blueprint",
+    landmarkIds: ["mainquad"],
+    idea: "The Quad builds itself out of its plan: the church slides onto the axis, the arcades rise, the lost Memorial Arch returns as a ghost over its real bases, and a class buries its capsule.",
+    factIds: ["mainquad.1", "mainquad.2", "mainquad.3", "mainquad.4"],
+    nodes,
+    labels: [
+      sourced("campus plan: Frederick Law Olmsted", "mainquad.1", v3(0, 20, -4), 0.4, 3.6),
+      sourced("Leland Stanford centered the church", "mainquad.2", v3(0, 22, -12), 3.6, 6.8),
+      sourced("the Quad opened in 1891", "mainquad.1", v3(0, 15, 2), 6.9, 9.4),
+      sourced("Memorial Arch, lost in 1906", "mainquad.3", v3(0, 29, MQ_ARCH_Z), 10.6, 17.9),
+      sourced("its bases remain", "mainquad.3", v3(12.5, 3, MQ_ARCH_Z + 2), 11.6, 17.9),
+      sourced("Class Day plaque and time capsule", "mainquad.4", v3(-15, 9, 2), 13.0, 17.9)
+    ],
+    loop: MQ_LOOP,
+    settle: 15.8,
+    poses(t: number): Pose[] {
+      const u = frac(t / MQ_LOOP) * MQ_LOOP
+      const out: Pose[] = new Array(nodes.length)
+      const r = (w: number[]) => ramp(u, w[0], w[1])
+      const down = 1 - r(T.outro)
+      // Blueprint: the grid unrolls from the back edge, then rolls back up at the very end of the loop.
+      const unroll = Math.min(r(T.grid), 1 - ramp(u, T.outro[1] - 0.2, MQ_LOOP - 0.05))
+      out[idx.blueprint_grid] = unroll < 0.005 ? hidden(v3(0, 0, MQ_GRID_BACK)) : pose(v3(0, 0, MQ_GRID_BACK), QI, v3(1, 1, unroll))
+      const plan = r(T.plan) * down
+      out[idx.blueprint_plan] = plan < 0.005 ? hidden(v3(0, 0, 0)) : pose(v3(0, 0, 0), QI, v3(plan, 1, plan))
+      // Church: rises off the axis, then slides onto it.
+      const cx = MQ_CHURCH_OFF * (1 - r(T.churchSlide))
+      const cRise = r(T.churchRise)
+      const cPose = pose(v3(cx, 0, MQ_CHURCH_Z), QI, riseScale(cRise))
+      out[idx.church] = cPose
+      out[idx.church_mosaic] = pose(v3(cx, 0, MQ_CHURCH_Z), QI, riseScale(ramp(u, T.churchRise[0] + 0.4, T.churchRise[1] + 0.3)))
+      const roofE = ramp(u, T.churchRise[1] - 0.2, T.churchRise[1] + 0.4)
+      out[idx.church_roof] = roofE < 0.005 ? hidden(v3(cx, 0, MQ_CHURCH_Z)) : pose(v3(cx, 6 * (1 - roofE), MQ_CHURCH_Z))
+      // The axis draws out from the church door toward the arch once the church is centred; a pulse then runs it.
+      const ax = r(T.axis)
+      out[idx.axis] = ax < 0.005 ? hidden(v3(0, 0.35, -12)) : pose(v3(0, 0.35, -12), QI, v3(1, 1, ax))
+      const pu = frac((u - T.axis[1]) / 2.6)
+      out[idx.axis_pulse] = u < T.axis[1] ? hidden(v3(0, 0.6, -12)) : pose(v3(0, 0.9, -12 + 37 * pu), QI, grow(bump(pu) * 1.4))
+      // Arcade wings rise one after another round the courtyard; each tile roof drops on half a second later.
+      for (let i = 0; i < MQ_WINGS.length; i++) {
+        const s = T.wings + i * 0.4
+        out[idx["arcade_" + i]] = pose(v3(0, 0, 0), QI, riseScale(ramp(u, s, s + 0.9)))
+        const e = ramp(u, s + 0.6, s + 1.2)
+        out[idx["roof_" + i]] = e < 0.005 ? hidden(v3(0, 0, 0)) : pose(v3(0, 7 * (1 - e), 0))
+      }
+      // Memorial Arch: the bases come up solid, the ground shudders, and the ghost draws itself up from them.
+      const quake = r(T.quake)
+      const shake = quake > 0 && quake < 1 ? 0.35 * Math.sin(u * 55) * bump(quake) : 0
+      out[idx.arch_bases] = pose(v3(shake, 0, 0), QI, riseScale(r(T.bases)))
+      out[idx.shock_ring] = hidden(v3(0, 0.3, MQ_ARCH_Z))
+      if (quake > 0 && quake < 1) out[idx.shock_ring] = pose(v3(0, 0.3, MQ_ARCH_Z), QI, 1 + 17 * quake)
+      const breathe = 1 + 0.025 * Math.sin(TAU * 0.5 * u)
+      const legs = r(T.legs)
+      out[idx.ghost_legs] = pose(v3(0, MQ_BASE_H, MQ_ARCH_Z), QI, legs < 0.005 ? v3(HIDDEN, HIDDEN, HIDDEN) : v3(1, legs * breathe, 1))
+      const cr = r(T.crowns)
+      const crGrow = grow(clamp01(cr * 3))
+      const legTop = MQ_BASE_H + (MQ_ARCH_SPRING - MQ_BASE_H) * breathe
+      out[idx.ghost_crown_l] = cr < 0.005 ? hidden(v3(-MQ_ARCH_R, MQ_ARCH_SPRING, MQ_ARCH_Z)) : pose(v3(-MQ_ARCH_R, legTop, MQ_ARCH_Z), qAxis(Z, 100 * (1 - cr)), crGrow)
+      out[idx.ghost_crown_r] = cr < 0.005 ? hidden(v3(MQ_ARCH_R, MQ_ARCH_SPRING, MQ_ARCH_Z)) : pose(v3(MQ_ARCH_R, legTop, MQ_ARCH_Z), qAxis(Z, -100 * (1 - cr)), crGrow)
+      const at = r(T.attic)
+      const atticY = legTop + MQ_ARCH_R + MQ_ARCH_PIER
+      out[idx.ghost_attic] = at < 0.005 ? hidden(v3(0, atticY, MQ_ARCH_Z)) : pose(v3(0, atticY + 5 * (1 - at), MQ_ARCH_Z), QI, grow(at))
+      // Class Day: earlier plaques glint into view, the capsule drops in and is buried, the new plaque seals it.
+      out[idx.class_plaques] = pose(v3(0, 0, 0), QI, riseScale(ramp(u, T.capsuleDrop[0] - 0.4, T.capsuleDrop[0] + 0.2)))
+      const drop = r(T.capsuleDrop), bury = r(T.capsuleSink)
+      if (drop < 0.005 || bury > 0.995) out[idx.time_capsule] = hidden(add(MQ_CAPSULE, v3(0, 2.2, 0)))
+      else out[idx.time_capsule] = pose(add(MQ_CAPSULE, v3(0, 2.2 + 12 * (1 - drop) - 3 * bury, 0)), QI, grow(Math.min(1, drop * 2) * (1 - 0.85 * bury)))
+      const pl = r(T.plaque)
+      out[idx.new_plaque] = pl < 0.005 ? hidden(add(MQ_CAPSULE, v3(0, 0.2, 0))) : pose(add(MQ_CAPSULE, v3(0, 0.2 + 6 * (1 - pl), 0)), qAxis(Y, 180 * (1 - pl)), grow(pl))
+      // A soft ring marks the plaque landing (the shock ring is free again by then).
+      const glint = ramp(u, T.plaque[1] - 0.1, T.plaque[1] + 0.9)
+      if (glint > 0 && glint < 1) out[idx.shock_ring] = pose(add(MQ_CAPSULE, v3(0, 0.3, 0)), QI, 1 + 5 * glint)
+      // Outro: everything sinks back into the plan before the loop starts again.
+      for (let i = 2; i < out.length; i++) out[i] = sink(out[i], down)
+      return out
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Huang: one core at a time, then every core at once
 
 const HUANG_N = 5
 const HUANG_PITCH = 5.6
-const HUANG_LOOP = 9
+export const HUANG_LOOP = 14
+export const HUANG_SERIAL_START = 2.0
+export const HUANG_HOP_S = 0.15
+export const HUANG_PARALLEL_START = 6.2
+const HUANG_PARALLEL_END = 12.2
+const HUANG_FRAME_S = 0.8
+const HUANG_TILT = qAxis(X, 30) // top face turned toward the viewer
+const HUANG_LIFT = v3(0, 14, 0)
+
+/** The picture the array is computing: core (i, j)'s height at time t, a ripple spreading from the centre. */
+export function huangWave(i: number, j: number, t: number): number {
+  const r = Math.hypot(i - (HUANG_N - 1) / 2, j - (HUANG_N - 1) / 2)
+  return 1.0 + 7.5 * (0.5 + 0.5 * Math.sin(1.7 * r - 3.4 * t))
+}
+
+/** Core (i, j)'s height: flat until the one serial worker reaches it (then frozen at what it computed), and live
+ * for every core at once in the parallel phase. Exported for tests. */
+export function huangCoreHeight(i: number, j: number, t: number): number {
+  const tl = frac(t / HUANG_LOOP) * HUANG_LOOP
+  const visit = HUANG_SERIAL_START + (i * HUANG_N + j) * HUANG_HOP_S
+  const held = tl < visit ? 1 : huangWave(i, j, visit)
+  const live = ramp(tl, HUANG_PARALLEL_START, HUANG_PARALLEL_START + 0.35)
+  const h = held + (huangWave(i, j, tl) - held) * live
+  const up = ramp(tl, 1.5, 2.0) * (1 - ramp(tl, HUANG_PARALLEL_END + 0.5, HUANG_PARALLEL_END + 1.2))
+  return h * up
+}
 
 function huang(): Experience {
-  const nodes: ExpNode[] = []
+  const frame = (p: Vec3) => add(HUANG_LIFT, qRot(HUANG_TILT, p))
+  const coreXZ = (i: number, j: number) => v3((j - 2) * HUANG_PITCH, 0, (i - 2) * HUANG_PITCH)
   const rim: Primitive[] = [box(32, 1.2, 32, 0, 0.6, 0)]
   for (const s of [-1, 1]) rim.push(box(32, 0.8, 0.8, 0, 1.6, s * 15.6), box(0.8, 0.8, 32, s * 15.6, 1.6, 0))
-  // Contact pads along two edges of the package, so it reads as a chip.
-  for (let k = 0; k < 9; k++) rim.push(box(1.6, 0.4, 1.0, -12.8 + k * 3.2, 0.2, 16.6), box(1.0, 0.4, 1.6, 16.6, 0.2, -12.8 + k * 3.2))
-  nodes.push({name: "package", color: "amber", prims: rim})
-  for (let i = 0; i < HUANG_N; i++) for (let j = 0; j < HUANG_N; j++) nodes.push({name: `core_${i}_${j}`, color: "gold", prims: [box(4.4, 1.6, 4.4, 0, 0.8, 0)]})
-  const tilt = qAxis(X, 28) // top face turned toward the viewer
-  const lift = v3(0, 16, 0)
-  const frame = (p: Vec3) => add(lift, qRot(tilt, p))
+  // Contact pads along every edge of the package, so it reads as a chip.
+  for (let k = 0; k < 9; k++) {
+    const q = -12.8 + k * 3.2
+    rim.push(box(1.6, 0.4, 1.0, q, 0.2, 16.6), box(1.6, 0.4, 1.0, q, 0.2, -16.6), box(1.0, 0.4, 1.6, 16.6, 0.2, q), box(1.0, 0.4, 1.6, -16.6, 0.2, q))
+  }
+  // Bus traces: a lattice between the cores, running out to the pads.
+  const traces: TubeSpec[] = []
+  for (let k = 0; k < HUANG_N; k++) {
+    const q = (k - 2) * HUANG_PITCH
+    traces.push({points: [v3(-15, 1.3, q), v3(15, 1.3, q)], width: 0.3}, {points: [v3(q, 1.3, -15), v3(q, 1.3, 15)], width: 0.3})
+  }
+  const nodes: ExpNode[] = [
+    {name: "package", color: "clay", prims: rim},
+    {name: "traces", color: "gold", tubes: traces},
+    {name: "lid", color: "cream", prims: [box(27, 1.2, 27, 0, 0, 0), box(15, 0.8, 15, 0, 0.9, 0)], tubes: [{points: squareLoop(0, 1.4, 0, 7.5), width: 0.4}]}
+  ]
+  for (let i = 0; i < HUANG_N; i++) for (let j = 0; j < HUANG_N; j++) nodes.push({name: `core_${i}_${j}`, color: "gold", prims: [box(4.4, 1, 4.4, 0, 0.5, 0)]})
+  // One worker for the serial pass; a whole sheet of data (one block per core) and its feed lines for the parallel one.
+  const sheet: Primitive[] = [], feeds: TubeSpec[] = []
+  for (let i = 0; i < HUANG_N; i++) for (let j = 0; j < HUANG_N; j++) {
+    const c = coreXZ(i, j)
+    sheet.push(box(2.8, 1.4, 2.8, c.x, 0, c.z))
+    feeds.push({points: [v3(c.x, 0, c.z), v3(c.x, 1, c.z)], width: 0.5})
+  }
+  nodes.push(
+    {name: "worker", color: "white", prims: [sphere(1.7, 0, 0, 0, 12, 8)], tubes: [{points: [v3(0, 0, 0), v3(0, 7, 0)], width: 0.5}]},
+    {name: "data_sheet", color: "white", prims: sheet},
+    {name: "feeds", color: "white", tubes: feeds}
+  )
+  const coreBase = 1.2
   return {
     id: "huang",
-    title: "Serial vs parallel",
+    title: "One core, or all of them",
     landmarkIds: ["huang"],
-    idea: "A GPU wins by running many small cores at once instead of one task at a time.",
+    idea: "A chip opens; one worker computes a ripple core by core and the picture comes out stale and jagged, then every core computes at once and the ripple runs live. That is how a GPU works.",
     factIds: ["huang.1"],
     nodes,
     labels: [
-      sourced("Jensen Huang, NVIDIA co-founder", "huang.1", v3(0, 36, -4), 0.3),
-      generic("one core at a time", v3(-12, 30, 6), 0.4, 4.9),
-      generic("many cores at once", v3(12, 30, 6), 5.0, 7.8)
+      sourced("Jensen Huang, NVIDIA co-founder", "huang.1", v3(0, 40, -4), 0.3),
+      generic("one core at a time", v3(-14, 33, 6), HUANG_SERIAL_START, HUANG_PARALLEL_START - 0.2),
+      generic("every core at once", v3(14, 33, 6), HUANG_PARALLEL_START + 0.2, HUANG_PARALLEL_END + 0.4)
     ],
     loop: HUANG_LOOP,
-    settle: 0,
+    settle: 7,
     poses(t: number): Pose[] {
       const tl = frac(t / HUANG_LOOP) * HUANG_LOOP
-      const out: Pose[] = [pose(frame(v3(0, 0, 0)), tilt)]
-      for (let i = 0; i < HUANG_N; i++) {
-        for (let j = 0; j < HUANG_N; j++) {
-          const k = i * HUANG_N + j
-          const serial = bump((tl - 0.4 - k * 0.17) / 0.4)
-          const wave = 0.04 * (i + j)
-          const par = Math.max(bump((tl - 5.2 - wave) / 0.7), bump((tl - 6.4 - wave) / 0.7))
-          const h = 1 + 3 * Math.max(serial, par)
-          out.push(pose(frame(v3((j - 2) * HUANG_PITCH, 1.2, (i - 2) * HUANG_PITCH)), tilt, v3(1, h, 1)))
-        }
+      // Raw time, not looped: the chip appears once and stays through every loop wrap.
+      const appear = grow(ramp(t, 0, 0.5))
+      const out: Pose[] = [pose(frame(v3(0, 0, 0)), HUANG_TILT, appear), pose(frame(v3(0, 0, 0)), HUANG_TILT, appear)]
+      // The lid lifts off and spins away to open the chip; it settles back on at the end of the loop.
+      const off = Math.min(ramp(tl, 0.7, 1.8), 1 - ramp(tl, HUANG_LOOP - 1.0, HUANG_LOOP - 0.2))
+      const lidS = tl < 0.7 ? appear : grow(1 - off)
+      out.push(lidS < 0.005 ? hidden(frame(v3(0, 2, 0))) : pose(frame(v3(0, 2.2 + 10 * off, 0)), qMul(HUANG_TILT, qAxis(Y, 120 * off)), lidS))
+      // Cores. The one the serial worker is on flares as it computes.
+      const serialK = Math.floor((tl - HUANG_SERIAL_START) / HUANG_HOP_S)
+      for (let i = 0; i < HUANG_N; i++) for (let j = 0; j < HUANG_N; j++) {
+        const h = huangCoreHeight(i, j, tl)
+        const k = i * HUANG_N + j
+        const flare = tl >= HUANG_SERIAL_START && tl < HUANG_PARALLEL_START && serialK === k ? 1 + 0.25 * bump((tl - HUANG_SERIAL_START - k * HUANG_HOP_S) / HUANG_HOP_S) : 1
+        out.push(h < 0.005 ? hidden(frame(v3(0, coreBase, 0))) : pose(frame(add(coreXZ(i, j), v3(0, coreBase, 0))), HUANG_TILT, v3(flare, h, flare)))
       }
+      // Worker: hops from core to core in reading order, an arc per hop, with a feed line dropping into it.
+      const sEnd = HUANG_SERIAL_START + HUANG_N * HUANG_N * HUANG_HOP_S
+      if (tl < HUANG_SERIAL_START - 0.3 || tl > sEnd + 0.4) out.push(hidden(frame(v3(-14, 8, -11))))
+      else {
+        const s = (tl - HUANG_SERIAL_START) / HUANG_HOP_S
+        const k = Math.max(0, Math.min(HUANG_N * HUANG_N - 1, Math.floor(s)))
+        const nk = Math.min(HUANG_N * HUANG_N - 1, k + 1)
+        const f = s < 0 ? 0 : easeInOutCubic(clamp01((s - k) * 1.6 - 0.6))
+        const pa = coreXZ(Math.floor(k / HUANG_N), k % HUANG_N), pb = coreXZ(Math.floor(nk / HUANG_N), nk % HUANG_N)
+        const p = add(lerp3(pa, pb, f), v3(0, coreBase + 10.5 + 2.5 * Math.sin(Math.PI * f), 0))
+        const k0 = Math.min(ramp(tl, HUANG_SERIAL_START - 0.3, HUANG_SERIAL_START), 1 - ramp(tl, sEnd, sEnd + 0.4))
+        out.push(pose(frame(p), HUANG_TILT, grow(k0)))
+      }
+      // Parallel: a sheet of data falls onto every core at once, once per frame, down 25 feed lines together.
+      const par = tl >= HUANG_PARALLEL_START - 0.2 && tl < HUANG_PARALLEL_END
+      const fu = frac((tl - HUANG_PARALLEL_START + 0.2) / HUANG_FRAME_S)
+      const top = 19
+      const land = 10.5
+      if (par) out.push(pose(frame(v3(0, top - (top - land) * easeInOutCubic(fu / 0.75), 0)), HUANG_TILT, grow(fu < 0.75 ? Math.min(1, fu * 6) : 1 - (fu - 0.75) / 0.25)))
+      else out.push(hidden(frame(v3(0, top, 0))))
+      const feed = ramp(tl, HUANG_PARALLEL_START - 0.4, HUANG_PARALLEL_START) * (1 - ramp(tl, HUANG_PARALLEL_END - 0.2, HUANG_PARALLEL_END + 0.2))
+      out.push(feed < 0.005 ? hidden(frame(v3(0, land, 0))) : pose(frame(v3(0, land, 0)), HUANG_TILT, v3(1, feed * (top - land) * (0.85 + 0.15 * Math.cos(TAU * fu)), 1)))
       return out
     }
   }
@@ -652,27 +1025,47 @@ function y2e2(): Experience {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Hoover: the carillon
+// Hoover: the tower rises, the carillon gathers, the largest bell rings
 
 export const CARILLON_BELLS = 48 // hoover.4
 export const CARILLON_ORIGINAL = 35 // hoover.4
-const BELL_HELIX_R = 13.5
 /** Bells per arrival group: the first group is the largest bell alone (it swings), and the first 35 bells
  * arrive before the caption about them (1 + 7 + 7 + 7 + 7 + 6 = 35, then 7 + 6 = 13 more). */
 export const BELL_GROUPS = [1, 7, 7, 7, 7, 6, 7, 6]
-const BELL_GROUP_START = [0.6, 1.3, 2.0, 2.7, 3.4, 4.1, 8.0, 8.7]
-const BELL_RISE_S = 1.0
-const HOOVER_SWING_AT = 10.5
-const TOWER_MID = v3(0, 20, 0)
+const BELL_GROUP_START = [4.0, 5.0, 5.8, 6.6, 7.4, 8.2, 12.0, 12.8]
+const BELL_RISE_S = 1.4
+export const HOOVER_LOOP = 22
+export const HOOVER_STRIKE = 14.8
+const HOOVER_SWING_HZ = 0.5
+const HOOVER_OUTRO = 21.0
+const HOOVER_SHELLS = 4
+const HOOVER_SHELL_LIFE = 3.2
+/** Centre of the bell crown, about which each arrival group spirals in. */
+const BELFRY = v3(0, 31, 0)
+/** Concentric hoops of bells around the belfry, inner (largest bells, lowest) to outer (smallest, highest). */
+const BELL_HOOPS = [{n: 9, r: 8.6, y: 28.6}, {n: 16, r: 12.6, y: 31.2}, {n: 22, r: 16.6, y: 33.8}]
+/** Tower sections in build order: [name, base height, height]. Each is built about its own base so it extrudes up. */
+const HOOVER_SECTIONS: [string, number, number][] = [["podium", 0, 3.5], ["shaft_low", 3.5, 14.5], ["shaft_high", 18, 11.5], ["belfry", 29.5, 7.8]]
+const HOOVER_BUILD: [number, number][] = [[0.3, 0.8], [0.7, 1.8], [1.7, 2.7], [2.6, 3.3]]
+const HOOVER_DOME_BASE = 37.3
 
-/** Helix slot i (0 = bottom, largest): crown (hang point) position and bell size. */
+/** Slot i (0 = the largest bell, hung inside the belfry): crown (hang point) position and bell size. */
 export function bellSlot(i: number): {pos: Vec3; size: number} {
-  const u = i / (CARILLON_BELLS - 1)
-  const a = u * 2.25 * TAU + Math.PI / 2
-  return {pos: v3(Math.cos(a) * BELL_HELIX_R, 6 + u * 32, Math.sin(a) * BELL_HELIX_R), size: 2.5 * (0.3 + 0.7 * (1 - u))}
+  if (i === 0) return {pos: v3(0, 35.6, 0), size: 2.2}
+  let k = i - 1
+  const size = 1.95 - (1.1 * (i - 1)) / (CARILLON_BELLS - 2)
+  for (let h = 0; h < BELL_HOOPS.length; h++) {
+    const hoop = BELL_HOOPS[h]
+    if (k < hoop.n) {
+      const a = (k / hoop.n) * TAU + h * 0.35 + Math.PI / 2
+      return {pos: v3(Math.cos(a) * hoop.r, hoop.y, Math.sin(a) * hoop.r), size}
+    }
+    k -= hoop.n
+  }
+  throw new Error(`no bell slot ${i}`)
 }
 
-/** Which helix slots each arrival group fills. Slot 0 comes first; the rest are shuffled so that arrival order
+/** Which slots each arrival group fills. Slot 0 comes first; the rest are shuffled so that arrival order
  * (and so the "35" moment) is not tied to bell size: nothing sourced says which bells were the originals. */
 export function bellGroupSlots(): number[][] {
   const rest: number[] = []
@@ -693,87 +1086,147 @@ export function bellGroupSlots(): number[][] {
   return groups
 }
 
-function bellPrims(c: Vec3, s: number): Primitive[] {
+function bellPrims(c: Vec3, s: number, seg = 12): Primitive[] {
   return [
     cyl(0.28 * s, 0.35 * s, "y", c.x, c.y - 0.17 * s, c.z, 8),
-    cyl(0.95 * s, 1.2 * s, "y", c.x, c.y - 0.95 * s, c.z, 14, 0.55 * s),
-    cyl(1.0 * s, 0.22 * s, "y", c.x, c.y - 1.66 * s, c.z, 14)
+    cyl(0.95 * s, 1.2 * s, "y", c.x, c.y - 0.95 * s, c.z, seg, 0.55 * s),
+    cyl(1.0 * s, 0.22 * s, "y", c.x, c.y - 1.66 * s, c.z, seg)
   ]
 }
 
+/** Largest bell's swing angle (degrees, about X, toward the viewer) at looped time tl. */
+export function hooverSwing(tl: number): number {
+  if (tl < HOOVER_STRIKE) return 0
+  const env = ramp(tl, HOOVER_STRIKE, HOOVER_STRIKE + 0.8) * (1 - ramp(tl, HOOVER_OUTRO - 0.6, HOOVER_OUTRO))
+  return 24 * Math.sin(TAU * HOOVER_SWING_HZ * (tl - HOOVER_STRIKE)) * env
+}
+
 function hoover(): Experience {
-  const tower: Primitive[] = []
-  const hw = 3.2
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) tower.push(box(0.9, 36, 0.9, sx * hw, 18, sz * hw))
-  for (const y of [0.4, 6, 12, 18, 24, 30, 36]) {
-    tower.push(box(hw * 2 + 0.9, 0.7, 0.7, 0, y, hw), box(hw * 2 + 0.9, 0.7, 0.7, 0, y, -hw), box(0.7, 0.7, hw * 2 + 0.9, hw, y, 0), box(0.7, 0.7, hw * 2 + 0.9, -hw, y, 0))
+  const nodes: ExpNode[] = [
+    {name: "plaza", color: "sand", tubes: [{points: circle(v3(0, 0.1, 0), 11, "y", 48), width: 0.4}, {points: squareLoop(0, 0.1, 0, 8), width: 0.3}]},
+    {name: "scan_ring", color: "gold", tubes: [{points: squareLoop(0, 0, 0, 6.4), width: 0.6}]}
+  ]
+  // Podium, two shaft sections and the belfry, all in local coordinates above their own base.
+  const podium: Primitive[] = [box(15, 0.8, 15, 0, 0.4, 0), box(12.6, 2.7, 12.6, 0, 2.15, 0)]
+  const low: Primitive[] = [box(8.6, 14.5, 8.6, 0, 7.25, 0), box(9.4, 0.7, 9.4, 0, 14.15, 0)]
+  const high: Primitive[] = [box(8.2, 11.5, 8.2, 0, 5.75, 0)]
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    low.push(box(1.3, 14.5, 1.3, sx * 4.3, 7.25, sz * 4.3))
+    high.push(box(1.2, 11.5, 1.2, sx * 4.1, 5.75, sz * 4.1))
   }
-  // Belfry arches: an arch on each face between 30 and 36.
-  const arches: TubeSpec[] = []
+  // Tall window slits on every face of the upper shaft (gold, so they glow against the stone).
+  const windows: Primitive[] = []
   for (let f = 0; f < 4; f++) {
     const q = qAxis(Y, f * 90)
-    const pts: Vec3[] = [v3(-1.6, 30.4, 0), v3(-1.6, 33.5, 0)]
-    for (let k = 0; k <= 8; k++) {
-      const a = Math.PI - (k / 8) * Math.PI
-      pts.push(v3(Math.cos(a) * 1.6, 33.5 + Math.sin(a) * 1.6, 0))
+    for (const dx of [-1.6, 1.6]) {
+      const p = qRot(q, v3(dx, 5.2, 4.15))
+      windows.push(f % 2 ? box(0.3, 8.4, 0.8, p.x, p.y, p.z) : box(0.8, 8.4, 0.3, p.x, p.y, p.z))
     }
-    pts.push(v3(1.6, 30.4, 0))
-    arches.push({points: pts.map((p) => qRot(q, add(p, v3(0, 0, hw + 0.4)))), width: 0.35})
   }
-  const nodes: ExpNode[] = [
-    {name: "tower", color: "sand", prims: tower, tubes: arches},
-    {name: "dome", color: "clay", prims: [box(hw * 2 - 0.4, 2.4, hw * 2 - 0.4, 0, 37.6, 0), sphere(2.6, 0, 39.4, 0, 16, 8), cyl(0.25, 2.4, "y", 0, 42.6, 0, 8)]}
+  // Belfry: the observation deck and balustrade (hoover.3), four corner piers and an open arch on each face.
+  const belfry: Primitive[] = [box(11.6, 0.8, 11.6, 0, 0.4, 0), box(10, 0.7, 10, 0, 7.45, 0)]
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) belfry.push(box(2.2, 6.4, 2.2, sx * 3.6, 4.0, sz * 3.6), box(0.4, 1.2, 0.4, sx * 5.5, 1.4, sz * 5.5))
+  const glow: TubeSpec[] = [{points: squareLoop(0, 2.0, 0, 5.5), width: 0.35}]
+  for (let f = 0; f < 4; f++) {
+    const q = qAxis(Y, f * 90)
+    const pts = [v3(-2.5, 0.8, 0), ...vArc(v3(0, 4.6, 0), X, 2.5, 10), v3(2.5, 0.8, 0)]
+    glow.push({points: pts.map((p) => qRot(q, add(p, v3(0, 0, 4.75)))), width: 0.4})
+  }
+  const dome: Primitive[] = [
+    box(8, 1.0, 8, 0, 0.5, 0),
+    cyl(3.9, 3.6, "y", 0, 2.8, 0, 16, 1.4),
+    cyl(1.2, 1.8, "y", 0, 5.5, 0, 10),
+    cyl(1.45, 1.2, "y", 0, 7.0, 0, 10, 0.15),
+    cyl(0.22, 1.8, "y", 0, 8.4, 0, 6)
   ]
+  nodes.push(
+    {name: "podium", color: "sand", prims: podium},
+    {name: "shaft_low", color: "sand", prims: low},
+    {name: "shaft_high", color: "sand", prims: high},
+    {name: "belfry", color: "cream", prims: belfry},
+    {name: "windows", color: "gold", prims: windows},
+    {name: "belfry_glow", color: "gold", tubes: glow},
+    {name: "dome", color: "clay", prims: dome},
+    {name: "hoops", color: "gold", tubes: BELL_HOOPS.map((h) => ({points: circle(v3(0, h.y - BELFRY.y, 0), h.r, "y", 56), width: 0.3}))}
+  )
   const slots = bellGroupSlots()
   const first = bellSlot(0)
   // The largest bell is built about its own crown so it can swing.
-  nodes.push({name: "bell_big", color: "gold", prims: bellPrims(v3(0, 0, 0), first.size)})
+  nodes.push({name: "bell_big", color: "gold", prims: bellPrims(v3(0, 0, 0), first.size, 16)})
   for (let g = 1; g < slots.length; g++) {
     const prims: Primitive[] = []
     for (const i of slots[g]) {
       const b = bellSlot(i)
-      prims.push(...bellPrims(sub(b.pos, TOWER_MID), b.size))
+      prims.push(...bellPrims(sub(b.pos, BELFRY), b.size))
     }
     nodes.push({name: "bells_" + g, color: "gold", prims})
   }
-  for (let r = 0; r < 2; r++) nodes.push({name: "sound_" + r, color: "cream", tubes: [{points: circle(v3(0, 0, 0), 1, "y", 64), width: 0.06}]})
+  // Sound: shells of three great circles that swell out from the big bell, one per stroke.
+  for (let r = 0; r < HOOVER_SHELLS; r++) {
+    nodes.push({name: "sound_" + r, color: "cream", tubes: [{points: circle(v3(0, 0, 0), 1, "y", 48), width: 0.05}, {points: circle(v3(0, 0, 0), 1, "x", 40), width: 0.04}, {points: circle(v3(0, 0, 0), 1, "z", 40), width: 0.04}]})
+  }
+  const idx: Record<string, number> = {}
+  nodes.forEach((n, i) => (idx[n.name] = i))
   const bellsDone = BELL_GROUP_START[BELL_GROUP_START.length - 1] + BELL_RISE_S
+  const shellC = v3(0, first.pos.y - 2, 0)
   return {
     id: "hoover",
-    title: "The carillon",
+    title: "The tower that rings",
     landmarkIds: ["hoover"],
-    idea: "A carillon is a set of tuned bells; Hoover's grew from 35 to 48, and the largest carries a message.",
-    factIds: ["hoover.3", "hoover.4"],
+    idea: "Hoover Tower rises section by section, its carillon gathers round the belfry from 35 bells to 48, and the largest bell swings and sends out rings of sound.",
+    factIds: ["hoover.1", "hoover.3", "hoover.4"],
     nodes,
     labels: [
-      sourced("35 bells from Belgium's pavilion at the 1939 World's Fair", "hoover.4", v3(0, 47, 0), BELL_GROUP_START[5] + BELL_RISE_S + 0.1, 7.9),
-      sourced("48 bells", "hoover.4", v3(0, 47, 0), bellsDone + 0.1),
-      sourced("For Peace Alone Do I Ring", "hoover.4", add(first.pos, v3(0, -4.2, 4)), HOOVER_SWING_AT + 0.3)
+      sourced("285 feet tall, finished in 1941", "hoover.1", v3(14, 22, 4), 1.0, 5.0),
+      sourced("a carillon on the 14th floor", "hoover.3", v3(-14, 37, 4), 4.6, 8.6),
+      sourced("35 bells from Belgium's pavilion at the 1939 World's Fair", "hoover.4", v3(0, 47, 0), BELL_GROUP_START[5] + BELL_RISE_S + 0.1, 11.9),
+      sourced("48 bells", "hoover.4", v3(0, 47, 0), bellsDone + 0.1, HOOVER_OUTRO),
+      sourced("For Peace Alone Do I Ring", "hoover.4", v3(0, 22, 9), HOOVER_STRIKE + 0.4, HOOVER_OUTRO)
     ],
-    loop: 0,
-    settle: bellsDone + 0.5,
+    loop: HOOVER_LOOP,
+    settle: bellsDone + 0.6,
     poses(t: number): Pose[] {
-      const out: Pose[] = [pose(v3(0, 0, 0)), pose(v3(0, 0, 0))]
-      // Largest bell: rises from inside the tower to its slot, then swings.
-      const e0 = ramp(t, BELL_GROUP_START[0], BELL_GROUP_START[0] + BELL_RISE_S)
-      const swing = t < HOOVER_SWING_AT ? 0 : 16 * Math.sin(TAU * 0.6 * (t - HOOVER_SWING_AT)) * ramp(t, HOOVER_SWING_AT, HOOVER_SWING_AT + 1)
-      out.push(pose(lerp3(v3(0, 4, 0), first.pos, e0), qAxis(Z, swing), Math.max(HIDDEN, e0)))
-      // Other groups: spiral out of the tower's middle into their slots.
+      const tl = frac(t / HOOVER_LOOP) * HOOVER_LOOP
+      const down = 1 - ramp(tl, HOOVER_OUTRO, HOOVER_LOOP - 0.1)
+      const out: Pose[] = new Array(nodes.length)
+      out[idx.plaza] = pose(v3(0, 0, 0), QI, grow(ramp(tl, 0, 0.5)))
+      // A gold ring climbs the tower and each section extrudes up behind it.
+      const scanY = 37 * ramp(tl, 0.3, 3.3)
+      const scanOn = tl > 0.2 && tl < 3.6
+      out[idx.scan_ring] = scanOn ? pose(v3(0, scanY, 0), QI, grow(Math.min(ramp(tl, 0.2, 0.4), 1 - ramp(tl, 3.3, 3.6)))) : hidden(v3(0, 0, 0))
+      HOOVER_SECTIONS.forEach(([name, base], s) => {
+        out[idx[name]] = pose(v3(0, base, 0), QI, riseScale(ramp(tl, HOOVER_BUILD[s][0], HOOVER_BUILD[s][1])))
+      })
+      out[idx.windows] = pose(v3(0, 18, 0), QI, riseScale(ramp(tl, HOOVER_BUILD[2][0] + 0.2, HOOVER_BUILD[2][1] + 0.2)))
+      out[idx.belfry_glow] = pose(v3(0, 29.5, 0), QI, riseScale(ramp(tl, HOOVER_BUILD[3][0] + 0.2, HOOVER_BUILD[3][1] + 0.2)))
+      const d = ramp(tl, 3.1, 3.8)
+      out[idx.dome] = d < 0.005 ? hidden(v3(0, HOOVER_DOME_BASE, 0)) : pose(v3(0, HOOVER_DOME_BASE + 5 * (1 - d), 0), qAxis(Y, 90 * (1 - d)), grow(d))
+      // Hoops open out from the tower before the bells arrive on them.
+      const hp = ramp(tl, BELL_GROUP_START[1] - 0.6, BELL_GROUP_START[1] + 0.2)
+      out[idx.hoops] = hp < 0.005 ? hidden(BELFRY) : pose(BELFRY, QI, v3(hp, 1, hp))
+      // Largest bell: rises up inside the tower to the belfry, then swings from the strike on.
+      const e0 = ramp(tl, BELL_GROUP_START[0], BELL_GROUP_START[0] + BELL_RISE_S)
+      out[idx.bell_big] = e0 < 0.005 ? hidden(v3(0, 10, 0)) : pose(lerp3(v3(0, 10, 0), first.pos, e0), qAxis(X, hooverSwing(tl)), grow(e0))
+      // Other groups spiral up from the ground into their hoops, a vortex round the tower. After the strike the
+      // whole carillon shivers in sympathy, group by group.
+      const ring = tl < HOOVER_STRIKE ? 0 : ramp(tl, HOOVER_STRIKE, HOOVER_STRIKE + 1)
       for (let g = 1; g < BELL_GROUPS.length; g++) {
-        const e = ramp(t, BELL_GROUP_START[g], BELL_GROUP_START[g] + BELL_RISE_S)
-        out.push(pose(TOWER_MID, qAxis(Y, -150 * (1 - e)), Math.max(HIDDEN, e)))
+        const e = ramp(tl, BELL_GROUP_START[g], BELL_GROUP_START[g] + BELL_RISE_S)
+        const shiver = ring * 3 * Math.sin(TAU * 1.0 * (tl - HOOVER_STRIKE) - g * 0.9)
+        out[idx["bells_" + g]] = e < 0.005 ? hidden(v3(0, 5, 0)) : pose(v3(0, BELFRY.y - 26 * (1 - e), 0), qAxis(Y, -320 * (1 - e) + shiver), grow(0.25 + 0.75 * e))
       }
-      for (let r = 0; r < 2; r++) {
-        const s = t - HOOVER_SWING_AT - r * 1.25
-        if (s < 0) {
-          out.push(hidden(v3(0, first.pos.y - 2, 0)))
-          continue
+      // Sound shells, one per stroke, swelling out flattened so they stay under the 50 cm ceiling.
+      for (let r = 0; r < HOOVER_SHELLS; r++) {
+        const s = tl - HOOVER_STRIKE - 0.25 - (r * HOOVER_SHELL_LIFE) / HOOVER_SHELLS
+        const u = s < 0 ? -1 : frac(s / HOOVER_SHELL_LIFE)
+        if (u < 0 || u > 0.92 || tl > HOOVER_OUTRO) out[idx["sound_" + r]] = hidden(shellC)
+        else {
+          // Capped at 19.5 so the rings stay in front of the focus-wall bezel's back panel (z = -22).
+          const k = 4 + 15.5 * (1 - (1 - u) * (1 - u))
+          out[idx["sound_" + r]] = pose(shellC, QI, v3(k, 0.6 * k, k))
         }
-        const u = frac(s / 2.5)
-        const k = 4 + 18 * u
-        const fade = 1 - ramp(u, 0.75, 1)
-        out.push(pose(v3(0, first.pos.y - 2 + 3 * u, 0), QI, v3(Math.max(HIDDEN, k * fade), 1, Math.max(HIDDEN, k * fade))))
       }
+      for (let i = 0; i < out.length; i++) out[i] = sink(out[i], down)
       return out
     }
   }
@@ -1448,7 +1901,7 @@ function moore(): Experience {
 // ---------------------------------------------------------------------------------------------------------------
 // Registry and helpers
 
-export const EXPERIENCES: Experience[] = [huang(), gates(), spilker(), y2e2(), hoover(), memchu(), hp(), varian(), clark(), moore()]
+export const EXPERIENCES: Experience[] = [mainquad(), huang(), gates(), spilker(), y2e2(), hoover(), memchu(), hp(), varian(), clark(), moore()]
 
 /** Experience for a card id (several cards may share one, e.g. the HP trio), or undefined. */
 export function experienceFor(cardId: string): Experience | undefined {

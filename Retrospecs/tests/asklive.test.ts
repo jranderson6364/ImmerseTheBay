@@ -104,3 +104,18 @@ describe("speech cleanup and labelling", () => {
     expect(u.caption).toContain("Not from a web search")
   })
 })
+
+import {stripFillerOpeners} from "../Assets/Retrospecs/Core/AskLive"
+
+describe("filler openers", () => {
+  test("drops 'let me look that up' style lead-ins", () => {
+    expect(stripFillerOpeners("Let me look that up. Hoover Tower is 285 feet tall.")).toBe("Hoover Tower is 285 feet tall.")
+    expect(stripFillerOpeners("Great question! Sure, it opened in 1941.")).toBe("It opened in 1941.")
+    expect(stripFillerOpeners("Let me think about that for a second. It was rebuilt.")).toBe("It was rebuilt.")
+    expect(cleanForSpeech("Okay, let me check. The carillon has 48 bells.")).toBe("The carillon has 48 bells.")
+  })
+  test("leaves real answers alone", () => {
+    expect(stripFillerOpeners("Letters from Hoover are kept here.")).toBe("Letters from Hoover are kept here.")
+    expect(stripFillerOpeners("Sure enough, it survived the 1989 quake.")).toBe("Sure enough, it survived the 1989 quake.")
+  })
+})

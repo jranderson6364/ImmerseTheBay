@@ -15,13 +15,16 @@ import {buildLandmarkModel} from "../Core/LandmarkModels"
 import {CARDS, cardById} from "../Core/Cards"
 import {EN, V3, bearingDeg, bearingToMapDir, distanceM, enToMap, formatDistance, latLonToEN} from "../Core/Geo"
 import {
-  MeshChunk, MapMeshOptions, arcPoints, buildBuildingOutline, buildCampusMesh, buildDisc, buildPathRibbons, buildRing, buildSingleBuilding, buildTube, buildingHeightCm,
+  MeshChunk, MapMeshOptions, arcPoints, buildBuildingOutline, buildDownArrow, buildCampusMesh, buildDisc, buildPathRibbons, buildRing, buildSingleBuilding, buildTube, buildingHeightCm,
   landmarkMapPlacement, vertexCount
 } from "../Core/MapMesh"
 import {WorldLabel} from "../../Scripts/WorldLabel"
 import {FocusTuning, backgroundLook, easeInOut, footprintRadiusM, landmarkLook, stepBlend} from "../Core/Focus"
 import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
 import {ColumnPickCandidate, WorldPickCandidate, XZ, outerRingEN, pickAlongRay, pickOnMap} from "../Core/Pick"
+
+/** The cursor collider's half-size as a multiple of the map radius (see makeCursorTarget). */
+const CURSOR_REACH = 1.6
 
 export type LandmarkState = "dim" | "seen" | "lit" | "focus"
 
@@ -106,6 +109,7 @@ const COLORS: Record<string, [number, number, number, number]> = {
   lit: [0.85, 0.68, 0.36, 1], // lit by an answer: soft gold
   focus: [0.82, 0.23, 0.27, 1], // selected: Stanford cardinal (#D23A44), not neon
   focusEdge: [0.91, 0.75, 0.36, 1], // selected building's outline and halo: soft gold (#E9BE5C)
+  pointer: [1.0, 0.8, 0.35, 1], // tutorial arrow: bright gold, same family as the lit target
   hover: [0.25, 0.85, 1.0, 1], // under the cursor, before the pinch: bright cyan, unlike anything else on the map
   you: [0.95, 0.45, 0.5, 1],
   thread: [0.93, 0.74, 0.4, 1],
@@ -232,6 +236,12 @@ export class RetrospecsMap extends BaseScriptComponent {
   private worldTemp: SceneObject[] = []
   private camera: SceneObject = null
   private pulseT = 0
+  /** Tutorial pointer: a gold arrow bouncing over the building to pick, with a ripple at its base. */
+  private pointer: SceneObject = null
+  private pointerMat: Material = null
+  private pointerRipple: SceneObject = null
+  private pointerRippleMat: Material = null
+  private pointerId = ""
   private bgParts: BackgroundPart[] = []
   /** Focused landmark id ("" = none) and the background blend, linear 0..1. */
   focusId = ""
@@ -255,6 +265,9 @@ export class RetrospecsMap extends BaseScriptComponent {
     if (this.worldRoot && !isNull(this.worldRoot)) this.worldRoot.destroy()
     this.worldTags = {}
     this.worldTagIds = []
+    this.pointer = null // a child of the old root, destroyed with it
+    this.pointerRipple = null
+    this.pointerId = ""
     this.root = global.scene.createSceneObject("RetrospecsMapRoot")
     this.worldRoot = global.scene.createSceneObject("RetrospecsWorldRoot")
     this.landmarks = {}
@@ -345,7 +358,9 @@ export class RetrospecsMap extends BaseScriptComponent {
       const o = global.scene.createSceneObject("map_cursor_target")
       o.setParent(this.root)
       o.getTransform().setLocalPosition(new vec3(0, 0.5, 0)) // top face ~1 cm up, near the footprints
-      const half = radiusCm + 3 + 6 // edge pointers sit 3 cm outside the rim
+      // Well past the rim (edge pointers sit 3 cm outside it): a ray aimed at a tall building near the edge (Hoover's
+      // shaft) meets the floor far behind it, and must still land on this so the cursor shows and the pick runs.
+      const half = radiusCm * CURSOR_REACH + 9
       const collider = o.createComponent("Physics.ColliderComponent") as ColliderComponent
       collider.fitVisual = false
       const box = Shape.createBoxShape()
@@ -654,8 +669,60 @@ export class RetrospecsMap extends BaseScriptComponent {
 
   /** Returns every landmark that is `lit` or `focus` to `seen` (or `dim` if never seen). */
   resetLights(seen: string[]) {
+    this.setPointer("")
     for (const id of Object.keys(this.landmarks)) this.setState(id, seen.indexOf(id) >= 0 ? "seen" : "dim")
     this.clearTemp()
+  }
+
+  /** Bouncing arrow pointing down at landmark `id` (the tutorial's target); "" hides it. */
+  setPointer(id: string) {
+    const next = id && this.landmarks[id] && this.root ? id : ""
+    this.pointerId = next
+    if (!next) {
+      if (this.pointer && !isNull(this.pointer)) this.pointer.enabled = false
+      if (this.pointerRipple && !isNull(this.pointerRipple)) this.pointerRipple.enabled = false
+      return
+    }
+    if (!this.pointer || isNull(this.pointer)) {
+      const a = this.meshObject(this.root, "tutorial_arrow", buildDownArrow(1.7, 2.8, 0.6, 3.6), COLORS.pointer)
+      this.pointer = a.obj
+      this.pointerMat = a.material
+      const r = this.meshObject(this.root, "tutorial_ripple", buildRing(1, 0.18, 64, 0.08), COLORS.pointer)
+      this.pointerRipple = r.obj
+      this.pointerRippleMat = r.material
+    }
+    const l = this.landmarks[next]
+    this.pointer.enabled = true
+    this.pointerRipple.enabled = true
+    this.pointerRipple.getTransform().setLocalPosition(new vec3(l.map.x, 0, l.map.z))
+    this.pointerT = 0
+    print(`[Retrospecs] tutorial arrow on ${next}`)
+  }
+
+  private pointerT = 0
+
+  /** Bounce: drops onto the target, squashes a little on landing, springs back up. A ripple spreads from the base each landing. */
+  private updatePointer(dt: number) {
+    const l = this.pointerId ? this.landmarks[this.pointerId] : null
+    if (!l || !this.pointer || isNull(this.pointer)) return
+    this.pointerT += dt
+    const period = 1.1
+    const u = (this.pointerT % period) / period
+    const hop = Math.abs(Math.sin(Math.PI * u)) // 0 at the landing, 1 at the top
+    const squash = Math.max(0, 1 - hop * 6) // short squash right at the landing
+    const look = landmarkLook(easeInOut(this.bgT), easeInOut(l.focusT), this.tuning(l.id))
+    const baseY = l.topCm * look.scaleY + look.liftCm + 6.5
+    const t = this.pointer.getTransform()
+    t.setLocalPosition(new vec3(l.map.x, baseY + 3.2 * hop, l.map.z))
+    t.setLocalScale(new vec3(1 + 0.18 * squash, 1 - 0.22 * squash, 1 + 0.18 * squash))
+    t.setLocalRotation(quat.fromEulerAngles(0, this.pointerT * 1.6, 0))
+    if (this.pointerMat) this.setColor(this.pointerMat, this.dimmed(COLORS.pointer, 0.85 + 0.15 * hop))
+    // Ripple: grows from the footprint outward and fades over one bounce.
+    if (this.pointerRipple && !isNull(this.pointerRipple)) {
+      const r = Math.max(1.5, l.footprintCm) * (0.9 + 1.4 * u)
+      this.pointerRipple.getTransform().setLocalScale(new vec3(r, 1, r))
+      if (this.pointerRippleMat) this.setColor(this.pointerRippleMat, this.dimmed(COLORS.pointer, 0.9 * (1 - u)))
+    }
   }
 
   clearTemp() {
@@ -772,6 +839,7 @@ export class RetrospecsMap extends BaseScriptComponent {
     if (!this.root || !this.camera) return
     this.pulseT += getDeltaTime()
     this.updateFocus(getDeltaTime())
+    this.updatePointer(getDeltaTime())
     const camPos = this.camera.getTransform().getWorldPosition()
     // Billboard labels (yaw only) and pulse the focused landmark.
     for (const id of Object.keys(this.landmarks)) {

@@ -699,6 +699,47 @@ export function buildTube(points: {x: number; y: number; z: number}[], widthCm: 
   return {verts, idx}
 }
 
+/**
+ * A downward-pointing arrow centred on x = z = 0: a cone head with its tip at y = 0 and a round shaft above it.
+ * Double-sided, so culling never hides it.
+ */
+export function buildDownArrow(headRadiusCm: number, headHeightCm: number, shaftRadiusCm: number, shaftHeightCm: number, segments = 24): MeshChunk {
+  const verts: number[] = []
+  const idx: number[] = []
+  const tri = (a: number, b: number, c: number) => idx.push(a, b, c, a, c, b)
+  const ring = (r: number, y: number, ny: number) => {
+    const start = verts.length / 8
+    for (let i = 0; i < segments; i++) {
+      const a = (i / segments) * Math.PI * 2
+      const s = Math.sin(a), c = Math.cos(a)
+      verts.push(s * r, y, c * r, s, ny, c, 0, 0)
+    }
+    return start
+  }
+  const point = (y: number, ny: number) => {
+    verts.push(0, y, 0, 0, ny, 0, 0, 0)
+    return verts.length / 8 - 1
+  }
+  // Head: tip, the cone's rim, and a cap closing its top.
+  const tip = point(0, -1)
+  const rim = ring(headRadiusCm, headHeightCm, -0.5)
+  const capMid = point(headHeightCm, 1)
+  // Shaft: a cylinder from the head's top up, closed at its end.
+  const top = headHeightCm + shaftHeightCm
+  const sLow = ring(shaftRadiusCm, headHeightCm, 0)
+  const sHigh = ring(shaftRadiusCm, top, 0)
+  const endMid = point(top, 1)
+  for (let i = 0; i < segments; i++) {
+    const j = (i + 1) % segments
+    tri(tip, rim + i, rim + j)
+    tri(capMid, rim + j, rim + i)
+    tri(sLow + i, sHigh + i, sHigh + j)
+    tri(sLow + i, sHigh + j, sLow + j)
+    tri(endMid, sHigh + i, sHigh + j)
+  }
+  return {verts, idx}
+}
+
 /** Points along a parabolic arc from a to b peaking at `heightCm` above the straight line. */
 export function arcPoints(a: {x: number; y: number; z: number}, b: {x: number; y: number; z: number}, heightCm: number, segments = 32) {
   const pts = []

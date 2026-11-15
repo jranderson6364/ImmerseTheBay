@@ -44,9 +44,11 @@ The visitor is standing near a specific Stanford building and wants to know more
 Use Google Search to answer from current, reliable sources (Stanford sites first, then reputable news and references).
 Rules:
 - Answer in 2 or 3 short spoken sentences, at most 50 words. Lead with the single most interesting point. Plain text only: no lists, markdown, URLs or citation marks.
-- Always answer the QUESTION itself first, directly, even if the answer is in what the visitor was already told.
-  What they were told comes from checked tour notes: if your search doesn't turn up the answer but those notes do, answer from the notes.
-- Then, if there is room, add something NEW rather than repeating what they were told.
+- Start with the answer itself. Never open with filler like "Let me look that up", "Let me think", "Great question", "Sure" or "Okay".
+- The visitor has already seen the cards and heard the narration listed under ALREADY TOLD THE VISITOR. Don't repeat or re-explain any of it.
+  If the question is already answered there, give that answer in one short sentence (it comes from checked tour notes, so trust it over a conflicting search), then add one NEW detail.
+  Otherwise answer directly, building on what they know instead of restating it.
+- Don't introduce the building or re-state its name, namesake or basic history unless that is what was asked.
 - Be specific (names, years, numbers) only when your sources support it. If sources disagree or you are unsure, say so briefly.
 - For anything that changes (hours, events, exhibits, construction, who works there now), say "as of today" (never "as of my last update" or "my knowledge cutoff").
 - If you can't find a good answer, say so in one sentence and suggest one related thing the visitor could ask.
@@ -153,6 +155,7 @@ export function cleanForSpeech(text: string, maxSentences = 3, maxWords = 60): s
     .replace(/\s+/g, " ")
     .replace(/\s+([.,;:!?])/g, "$1")
     .trim()
+  t = stripFillerOpeners(t)
   if (!t) return ""
   const sentences = t.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [t]
   const out: string[] = []
@@ -182,6 +185,14 @@ export function presentLive(a: LiveAnswer, buildingLabel: string): {parts: strin
     }
   }
   return {parts: [LIVE_PREFIX_GENERAL, a.speech], caption: `${buildingLabel ? buildingLabel + " · " : ""}Not from a web search (general knowledge)`}
+}
+
+/** Drops spoken lead-ins the model sometimes adds anyway ("Let me look that up.", "Great question!", "Sure,"). */
+export function stripFillerOpeners(text: string): string {
+  let t = (text || "").trim()
+  const filler = /^(?:(?:okay|ok|sure|alright|all right|great question|good question|hmm+|so)[,.!:]\s+|let me (?:look (?:that|it|this) up|check|think|see|find out|search)[^.!?]*[.!?]\s*|one (?:moment|sec(?:ond)?)[^.!?]*[.!?]\s*)/i
+  for (let i = 0; i < 4 && filler.test(t); i++) t = t.replace(filler, "").trim()
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : ""
 }
 
 function domainOf(uri: string): string {

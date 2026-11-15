@@ -114,3 +114,21 @@ describe("angular sizing (Snap positioning and sizing guide)", () => {
     expect(degForCm(68 * (72 / 1280) * s, D)).toBeLessThan(SPECTACLES.minTargetDeg)
   })
 })
+
+describe("flankHeadings", () => {
+  const {flankHeadings, halfWidthDeg} = require("../Assets/Retrospecs/Core/CardLayout")
+  test("equal gaps either side of the card", () => {
+    const card = 20.3, gap = 4
+    const l = halfWidthDeg(30, 150), r = halfWidthDeg(56, 165)
+    const h = flankHeadings(card, gap, l, r)
+    const leftGap = -card / 2 - (h.left + l)
+    const rightGap = h.right - r - card / 2
+    expect(Math.abs(leftGap - rightGap)).toBeLessThan(1e-9)
+    expect(leftGap).toBeCloseTo(gap)
+    expect(h.left).toBeLessThan(0)
+    expect(h.right).toBeGreaterThan(0)
+  })
+  test("halfWidthDeg", () => {
+    expect(halfWidthDeg(200, 100)).toBeCloseTo(45)
+  })
+})

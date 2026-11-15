@@ -3899,13 +3899,12 @@
     focusSideGapCm: true
     ambientExtras: true
     ambientDropCm: true
-    experienceSideDeg: true
-    hologramSideDeg: true
     sideDistanceCm: true
     sideScaleCm: true
     hologramWidthCm: true
-    peopleHologramSideDeg: true
     peopleHologramWidthCm: true
+    flankGapDeg: true
+    lookNudge: true
     pickSlackCm: true
     respawnEnabled: true
     respawnMinMapDistM: true
@@ -3934,15 +3933,15 @@
       wallBearing: !<float> 15.000000
       facingHint: !<float> 105.000000
       eyeHeightCm: !<float> 160.000000
-      floorForwardCm: !<float> 106.000000
+      floorForwardCm: !<float> 116.000000
       tableBelowEyesCm: !<float> 105.000000
-      tableForwardCm: !<float> 80.000000
+      tableForwardCm: !<float> 105.000000
       startLifted: true
       youAreHereHeightCm: !<float> 16.000000
       youAreHereScale: 1.800000
       handleRadiusCm: !<float> 4.000000
       handleGrabCm: !<float> 10.000000
-      startMapScale: 0.500000
+      startMapScale: 0.357000
       statusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
       showStatusLabel: true
       autoQuiz: true
@@ -3969,13 +3968,15 @@
       ambientDistanceCm: !<float> 300.000000
       ambientScaleCm: !<float> 34.000000
       ambientDropCm: !<float> 105.000000
-      experienceSideDeg: !<float> 21.000000
-      hologramSideDeg: !<float> 42.000000
+      experienceSideDeg: !<float> 17.000000
+      hologramSideDeg: !<float> 34.000000
       sideDistanceCm: !<float> 150.000000
       sideScaleCm: !<float> 30.000000
       hologramWidthCm: !<float> 56.000000
-      peopleHologramSideDeg: !<float> 42.000000
+      peopleHologramSideDeg: !<float> 23.000000
       peopleHologramWidthCm: !<float> 56.000000
+      flankGapDeg: !<float> 4.000000
+      lookNudge: true
       pickSlackCm: !<float> 6.000000
       respawnEnabled: true
       respawnMinMapDistM: !<float> 6.000000

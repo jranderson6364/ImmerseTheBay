@@ -180,7 +180,10 @@ export const CARDS: Card[] = [
     id: "mainquad", name: "Main Quad", label: "Main Quad", namesake: "",
     tags: ["landmark", "founders"],
     facts: [
-      {id: "mainquad.1", theme: "architecture", text: "Frederick Law Olmsted laid out the campus plan, and Shepley, Rutan and Coolidge designed the Quad, which opened with the university on October 1, 1891.", source: QUAD}
+      {id: "mainquad.1", theme: "architecture", text: "Frederick Law Olmsted laid out the campus plan, and Shepley, Rutan and Coolidge designed the Quad, which opened with the university on October 1, 1891.", source: QUAD},
+      {id: "mainquad.2", theme: "fun", text: "Olmsted wanted the campus in the foothills with the church off center, but Leland Stanford chose the flat site and centered the church.", source: "https://stanfordmag.org/contents/a-gentleman-s-quarrel"},
+      {id: "mainquad.3", theme: "architecture", text: "The 1906 earthquake destroyed the Main Quad's grand Memorial Arch. Its bases remain, but the arch was never rebuilt.", source: "https://news.stanford.edu/stories/2024/03/how-stanfords-architecture-balances-old-and-new"},
+      {id: "mainquad.4", theme: "fun", text: "Each Class Day, seniors lay a plaque and bury a time capsule along the Inner Quad arcade.", source: "https://facts.stanford.edu/heart/"}
     ]
   },
   {

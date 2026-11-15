@@ -45,3 +45,27 @@ test("chatHeading", () => {
   expect(chatHeading("Huang")).toBe("Ask · Huang")
   expect(chatHeading("")).toBe("Ask · Stanford")
 })
+
+import {locateOnlyTarget} from "../Assets/Retrospecs/Core/AskBubble"
+
+describe("locateOnlyTarget", () => {
+  const l = (q: string) => locateOnlyTarget(q, CARDS)
+  test("plain where/show-me requests select the building", () => {
+    expect(l("Show me where Hoover Tower is")).toBe("hoover")
+    expect(l("show me where the HP garage is.")).toBe("hpgarage")
+    expect(l("Where's Green Library?")).toBe("greenlib")
+    expect(l("where is memorial church")).toBe("memchu")
+    expect(l("Can you show me the Huang Engineering Center?")).toBe("huang")
+    expect(l("find Gates on the map please")).toBe("gates")
+    expect(l("take me to the main quad")).toBe("mainquad")
+    expect(l("which one is Y2E2")).toBe("y2e2")
+  })
+  test("real questions still get answered", () => {
+    expect(l("Where is Hoover Tower and when was it built?")).toBe("")
+    expect(l("why is Hoover where it is")).toBe("")
+    expect(l("show me what's inside Huang")).toBe("")
+    expect(l("when was Hoover Tower built")).toBe("")
+    expect(l("where is the bathroom")).toBe("")
+    expect(l("show me where it is")).toBe("")
+  })
+})

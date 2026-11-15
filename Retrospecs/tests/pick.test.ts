@@ -75,3 +75,30 @@ describe("world pick", () => {
   })
 })
 
+
+describe("Hoover at the map's rim", () => {
+  const {LANDMARKS: L, BUILDINGS: B} = require("../Assets/Retrospecs/Data/CampusData")
+  const {buildLandmarkModel} = require("../Assets/Retrospecs/Core/LandmarkModels")
+  const {outerRingEN: ring, pickAlongRay} = require("../Assets/Retrospecs/Core/Pick")
+  test("a ray at the tower's shaft meets the floor past the 117 cm rim, and the height walk still picks Hoover", () => {
+    const cmPerM = 100 / 600
+    const start = L.find((l: any) => l.id === "huang")
+    const c = {e: start.east, n: start.north}
+    const opts: any = {cmPerM, verticalExaggeration: 4, center: c, radiusM: 1e9, minHeightCm: 0.5}
+    const h = L.find((l: any) => l.id === "hoover")
+    const b = B[h.building]
+    const m = {x: (h.east - c.e) * cmPerM, z: -(h.north - c.n) * cmPerM}
+    const poly = ring(b[3], b[4]).map((v: any) => ({x: (v.e - c.e) * cmPerM, z: -(v.n - c.n) * cmPerM}))
+    const top = buildLandmarkModel("hoover", b, m, opts).topCm
+    const cand = {id: "hoover", center: m, poly, radius: 35 * cmPerM, priority: true, topCm: top}
+    // Table map at size 0.357: eyes ~105 cm above it and its centre ~105 cm ahead, in map-local cm.
+    const eye = {x: 0, y: 105 / 0.357, z: 85 / 0.357}
+    const aim = {x: m.x, y: top * 0.75, z: m.z}
+    const t = -eye.y / (aim.y - eye.y)
+    const hit = {x: eye.x + (aim.x - eye.x) * t, y: 0, z: eye.z + (aim.z - eye.z) * t}
+    const rim = 700 * cmPerM
+    expect(Math.hypot(hit.x, hit.z)).toBeGreaterThan(rim) // why the old "outside the disc" early-out lost it
+    expect(Math.hypot(hit.x, hit.z)).toBeLessThan(rim * 1.6) // inside the widened cursor collider
+    expect(pickAlongRay(eye, hit, [cand], 0)).toBe("hoover")
+  })
+})

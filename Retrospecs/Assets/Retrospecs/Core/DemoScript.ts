@@ -5,7 +5,7 @@
  *   aim    "Aim your right hand's ray at the Main Quad"  ONLY the stop's building can light up or be picked
  *   cards  "Pinch the card for the next one"            each card pinch shows the stop's next scripted card;
  *                                                        on the last card, a pinch moves on (Next Stop glows)
- *          ... the same aim + cards for Huang ...
+ *          ... the same aim + cards for Huang, then Hoover Tower ...
  *   ask    "Pinch Ask on the card"                       only the glowing Ask button (then a question chip or voice)
  *   end    "Now it's all yours"                         the guided part is over: everything unlocks (free roam)
  *
@@ -23,13 +23,14 @@ export type DemoStep = "open" | "aim" | "cards" | "ask" | "end" | "off"
 export interface DemoStop {
   /** Landmark / card id. */
   id: string
-  /** Narration segment indices to show, in order (0 = overview). Two per stop keeps the demo near two minutes. */
+  /** Narration segment indices to show, in order (0 = overview). Two per stop keeps the three-stop demo near two and a half minutes. */
   cards: number[]
 }
 
 export const DEMO_STOPS: DemoStop[] = [
   {id: "mainquad", cards: [0, 1]},
-  {id: "huang", cards: [0, 2]}
+  {id: "huang", cards: [0, 2]},
+  {id: "hoover", cards: [0, 1]}
 ]
 
 /** A question the checked cards answer, so it works even when the venue Wi-Fi doesn't. */
@@ -144,7 +145,7 @@ export function demoHint(s: DemoState, label: string, onTarget = false, stops: D
     case "cards": {
       const n = stops[s.stop] ? stops[s.stop].cards.length : 1
       const count = `Card ${s.card + 1} of ${n}`
-      // The animation, person and diagram sit beside the card, past the edge of the display: say where to look.
+      // The 3D animation and the founder sit either side of the card, past the edge of the display: say where to look.
       const look = s.card === 0 ? "  ·  Turn your head left and right to see more" : ""
       if (!demoIsLastCard(s, stops)) return `${count}${look}  ·  Aim at the card and pinch for the next one`
       return demoHasNextStop(s, stops) ? `${count}  ·  Pinch Next Stop on the card to move on` : `${count}  ·  Pinch the card when you're ready for the last step`

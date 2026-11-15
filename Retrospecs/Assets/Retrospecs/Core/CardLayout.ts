@@ -255,6 +255,75 @@ export function micGlyphRects(cx: number, cy: number, s: number): Rect2[] {
   ]
 }
 
+/**
+ * Outline of `r` (counter-clockwise, y up) with corners of radius `rad` (arcs of `segs` steps), or, with `chamfer`,
+ * the top-left and bottom-right corners cut at 45 degrees (the Huang card's buttons). rad 0 = a plain rectangle.
+ * Every shape has the same point count for a given segs, so an outline and its inset can be stitched into a ring.
+ */
+export function shapeOutline(r: Rect2, rad: number, chamfer = false, segs = 6): number[][] {
+  const x0 = Math.min(r.x0, r.x1), x1 = Math.max(r.x0, r.x1), y0 = Math.min(r.y0, r.y1), y1 = Math.max(r.y0, r.y1)
+  const R = Math.max(0, Math.min(rad, (x1 - x0) / 2, (y1 - y0) / 2))
+  // Corners in CCW order from bottom-right: centre, start angle.
+  const corners: [number, number, number, boolean][] = [
+    [x1 - R, y0 + R, -Math.PI / 2, true], // bottom-right (cut when chamfered)
+    [x1 - R, y1 - R, 0, false], // top-right
+    [x0 + R, y1 - R, Math.PI / 2, true], // top-left (cut when chamfered)
+    [x0 + R, y0 + R, Math.PI, false] // bottom-left
+  ]
+  const pts: number[][] = []
+  for (const [cx, cy, a0, cut] of corners) {
+    for (let i = 0; i <= segs; i++) {
+      const a = a0 + (Math.PI / 2) * (i / segs)
+      if (chamfer) {
+        // Straight cut on two corners, square on the other two (same point count either way).
+        if (cut) {
+          const t = i / segs
+          const sx = cx + R * Math.cos(a0), sy = cy + R * Math.sin(a0)
+          const ex = cx + R * Math.cos(a0 + Math.PI / 2), ey = cy + R * Math.sin(a0 + Math.PI / 2)
+          pts.push([sx + (ex - sx) * t, sy + (ey - sy) * t])
+        } else {
+          const qx = cx + R * Math.sign(Math.cos(a0 + Math.PI / 4)), qy = cy + R * Math.sign(Math.sin(a0 + Math.PI / 4))
+          pts.push([qx, qy])
+        }
+      } else pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)])
+    }
+  }
+  return pts
+}
+
+/** Filled shape (fan from the centre), both windings, 8 floats per vertex like quadsChunk. */
+export function shapeChunk(r: Rect2, rad: number, chamfer = false, z = 0): MeshChunk {
+  const pts = shapeOutline(r, rad, chamfer)
+  const cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2
+  const verts: number[] = [cx, cy, z, 0, 0, 1, 0.5, 0.5]
+  for (const p of pts) verts.push(p[0], p[1], z, 0, 0, 1, 0, 0)
+  const idx: number[] = []
+  for (let i = 0; i < pts.length; i++) {
+    const a = 1 + i, b = 1 + ((i + 1) % pts.length)
+    idx.push(0, a, b, 0, b, a)
+  }
+  return {verts, idx}
+}
+
+/** Outline ring of thickness `t` just inside the shape's edge, both windings. */
+export function shapeFrameChunk(r: Rect2, rad: number, t: number, chamfer = false, z = 0): MeshChunk {
+  const outer = shapeOutline(r, rad, chamfer)
+  const inset: Rect2 = {x0: Math.min(r.x0, r.x1) + t, y0: Math.min(r.y0, r.y1) + t, x1: Math.max(r.x0, r.x1) - t, y1: Math.max(r.y0, r.y1) - t}
+  const inner = shapeOutline(inset, Math.max(0, rad - t * (chamfer ? 0.41 : 1)), chamfer)
+  const verts: number[] = []
+  for (let i = 0; i < outer.length; i++) {
+    verts.push(outer[i][0], outer[i][1], z, 0, 0, 1, 0, 0)
+    verts.push(inner[i][0], inner[i][1], z, 0, 0, 1, 1, 1)
+  }
+  const idx: number[] = []
+  const n = outer.length
+  for (let i = 0; i < n; i++) {
+    const o0 = 2 * i, i0 = 2 * i + 1, o1 = 2 * ((i + 1) % n), i1 = 2 * ((i + 1) % n) + 1
+    idx.push(o0, o1, i1, o0, i1, i0, o0, i1, o1, o0, i0, i1)
+  }
+  return {verts, idx}
+}
+
 /** True when two rects overlap (touching edges don't count). */
 export function rectsOverlap(a: Rect2, b: Rect2): boolean {
   const ax0 = Math.min(a.x0, a.x1), ax1 = Math.max(a.x0, a.x1), ay0 = Math.min(a.y0, a.y1), ay1 = Math.max(a.y0, a.y1)
@@ -265,4 +334,19 @@ export function rectsOverlap(a: Rect2, b: Rect2): boolean {
 /** True when the card-local point (cm) is inside `r`. */
 export function inRect(r: Rect2, x: number, y: number): boolean {
   return x >= Math.min(r.x0, r.x1) && x <= Math.max(r.x0, r.x1) && y >= Math.min(r.y0, r.y1) && y <= Math.max(r.y0, r.y1)
+}
+
+/** Half the angular width (degrees) of something `sizeCm` wide seen face-on from `distanceCm`. */
+export function halfWidthDeg(sizeCm: number, distanceCm: number): number {
+  return (Math.atan(Math.max(0, sizeCm) / 2 / Math.max(1, distanceCm)) * 180) / Math.PI
+}
+
+/**
+ * Headings (degrees, negative = left) for the two side pieces flanking the story card, so the gap between the card
+ * and the left piece equals the gap between the card and the right piece. The card spans ±cardWidthDeg/2 (the whole
+ * texture: the right-hand column holds Ask and Next Stop). `leftHalfDeg` / `rightHalfDeg` are each piece's half-width.
+ */
+export function flankHeadings(cardWidthDeg: number, gapDeg: number, leftHalfDeg: number, rightHalfDeg: number): {left: number; right: number} {
+  const edge = cardWidthDeg / 2 + gapDeg
+  return {left: -(edge + leftHalfDeg), right: edge + rightHalfDeg}
 }
