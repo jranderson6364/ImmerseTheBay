@@ -1,6 +1,6 @@
 # Retrospecs Lens
 
-A Stanford tour guide in your glasses. A 3D campus map unfolds on the floor around you, lined up with the real campus. Look at a building and pinch to hear who it's named for, the founder story behind it, and what's inside. Then the guide quizzes you: "Point to where you think Gates is." Concept: [docs/retrospecs-concept.md](../docs/retrospecs-concept.md).
+A Stanford tour guide in your glasses. A 3D campus map unfolds on the floor around you, lined up with the real campus. Look at a building and pinch to hear who it's named for, the founder story behind it, and what's inside. The four centerpiece stops (Hoover Tower, Huang, the HP Garage and Memorial Church) each play an illustrated story deck alongside the narration. Ask anything the checked cards don't cover, and the guide searches the web live and tells you the answer came from the web. Concept: [docs/retrospecs-concept.md](../docs/retrospecs-concept.md).
 
 Built on Snap's MIT-licensed [Depth Cache sample](https://github.com/specs-devs/samples/tree/5.15.4) (`5.15.4` branch). It reuses the sample's Remote Service Gateway setup, ASR, and WorldLabel prefab. Map data (buildings, roads, bike and foot paths) © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0.
 
@@ -17,8 +17,13 @@ Built on Snap's MIT-licensed [Depth Cache sample](https://github.com/specs-devs/
 | `Assets/Retrospecs/Scripts/RetrospecsMap.ts` | Builds the map at runtime, plus highlights, labels, threads, arcs and sightline pillars. |
 | `Assets/Retrospecs/Core/AskLive.ts` | Ask further: grounded-answer prompt, reply parsing (Gemini grounding and OpenAI citations), speech cleanup, "from the web" labelling. Unit-tested. |
 | `Assets/Retrospecs/Scripts/RetrospecsGuide.ts` | Gemini Q&A, live web answers (`askLive`), and OpenAI text-to-speech over the Remote Service Gateway. |
-| `Assets/Retrospecs/Scripts/RetrospecsController.ts` | Calibration, floor/table map, gaze pick, voice commands, point-to-guess, saved progress. |
-| `tests/` | `bun test Retrospecs/tests` (16 tests). |
+| `Assets/Retrospecs/Scripts/RetrospecsController.ts` | Calibration, floor/table map, gaze pick, voice commands, coach, Next Stop, map respawn, point-to-guess (off for the demo), saved progress. |
+| `Assets/Retrospecs/Scripts/StoryDeck.ts` · `StoryHolograms.ts` | **Generated.** Illustrated story cards and opening loops for each stop. See [docs/story-decks.md](docs/story-decks.md). |
+| `Assets/Retrospecs/Core/Coach.ts` | Indoor demo coach: the Hoover-only first step and its cursor-aware tips. Unit-tested. |
+| `Assets/Retrospecs/Core/NextSpot.ts` · `Centerpieces.ts` | Next Stop tour order, plus centerpiece highlighting and pick padding. Unit-tested. |
+| `Assets/Retrospecs/Core/CardLayout.ts` | Card sizes in degrees at 140 cm, using Snap's far-field guidance, plus button hit areas. Unit-tested. |
+| `Assets/Retrospecs/Core/Respawn.ts` | "Bring the map here" rules. Unit-tested. |
+| `tests/` | `bun test Retrospecs/tests` (263 tests). |
 
 ## One-time setup in Lens Studio (about 15 minutes)
 
@@ -61,7 +66,7 @@ Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is th
 | **Right pinch (hold ≥ 0.6 s)** or say "what's that" | Outdoors: GPS plus Gemini identify the real building in view. It gets a nametag and roofline sweep: solid cyan when the camera confirms it, dashed amber when it's only a GPS estimate. Its fact is spoken and its gift pile stands beside it. |
 | "explode" / "take it apart" · "hide" | Replays the exploded model · clears the models, money pile and tags. |
 | **Left pinch** | Ask by voice. |
-| **Point and pinch** (in a quiz) | Stretch your arm toward the building, then pinch. You're scored in degrees, the true direction arcs out, and a new fact unlocks. |
+| **Point and pinch** (in a quiz; the quiz is off for the demo, `QUIZ_ENABLED` in the controller) | Stretch your arm toward the building, then pinch. You're scored in degrees, the true direction arcs out, and a new fact unlocks. |
 | **Both hands pinch and twist** | Nudges the map's rotation if it's misaligned. |
 | "lift" / "table" · "floor" | Map at table height in front of you · back on the floor. |
 | **Look down, hold both pinches** (only after walking away from the map) | Once you're at least 6 m from the map's centre and have walked 8 m from where it was placed, looking down (35° or more) shows "Pinch with both hands to bring it here". Hold both pinches for 0.8 s and the map is rebuilt around where you now stand (calibration spot plus how far you've walked), in front of you. The calibrated rotation, table/floor choice and size stay the same. While the hint shows, single pinches do nothing. It never appears at the table. Tune it in the "Bring the map here" group (`respawnEnabled` etc.). |
@@ -105,7 +110,7 @@ Paths come from `Data/PathsData.ts`, baked by `bun Retrospecs/tools/bake-paths.t
 | 2 | At the marked walkway intersection, face east between Physics and Moore and pinch once | Map unfolds in front; “You are here” and walkway axes match the real intersection | Check `useStartPoint`, `startLat` / `startLon`, and `startFacingDeg`; record the Logger's calibrated bearing and yaw |
 | 3 | Look down at the map | Readable 3D buildings with bright roof outlines, roofs brighter than walls | Raise `verticalExaggeration` to 4; say "lift" |
 | 4 | Right-pinch while looking at mini Hoover | Hoover lights up, its fact is spoken, and a pillar appears about 9 m out to the east | Check the gateway token (needed for text-to-speech) |
-| 5 | Wait for the quiz, point, pinch | Orange (your guess) and green (truth) arcs, plus a degrees score | Pinch with your arm extended. The knuckle position is what's scored |
+| 5 | (Only if `QUIZ_ENABLED` is on) Wait for the quiz, point, pinch | Orange (your guess) and green (truth) arcs, plus a degrees score | Pinch with your arm extended. The knuckle position is what's scored |
 | 6 | Left-pinch: "Which buildings are named after tech founders?" | Several buildings light up with threads, answered in under 8 s | The local fallback answer plays after 8 s |
 | 7 | Frame rate with the map open | Smooth | Turn off `showCornerLines`, then lower `radiusM`. The map is about 230 buildings at 700 m |
 
@@ -113,10 +118,10 @@ Paths come from `Data/PathsData.ts`, baked by `bun Retrospecs/tools/bake-paths.t
 
 - **Map mesh layout:** generated meshes now include `texture0` UVs for `White.mat`. If the map is still invisible, check the Preview camera angle and Logger for mesh warnings.
 - **Progress resets every launch** (`persistProgress` is off) so each judge starts fresh. Turn it on for personal use.
-- **The quiz starts 1.5 s after narration ends.** Left pinch always opens the mic, even during a quiz.
+- **The point-to-guess quiz is off** (`QUIZ_ENABLED = false`). With it on, the quiz starts 1.5 s after narration ends, and left pinch still opens the mic during a quiz.
 - **Calibration** defaults to a known outdoor start point and facing direction. The wall-pinch method remains available with `useStartPoint` off.
 - **Labels** use the sample's WorldLabel prefab. They pop in with a random delay of up to 1.7 s, which is the prefab's own animation.
-- **Voice** is the gateway's OpenAI text-to-speech. Pre-rendered ElevenLabs clips aren't wired up; that needs a key and an audio-array input.
+- **Voice:** card narration plays pre-rendered ElevenLabs clips (`Audio/narration`, listed in `Data/NarrationClips.ts`). Live answers use the gateway's OpenAI text-to-speech.
 - **Unverified facts are kept out of `Cards.ts`.** Before adding any fact, open its source page.
 
 ## Tokens
