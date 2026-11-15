@@ -29,6 +29,7 @@ import {InteractorInputType} from "SpectaclesInteractionKit.lspkg/Core/Interacto
 import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
 import {storyCardTexture} from "./StoryDeck"
 import {storyHologram} from "./StoryHolograms"
+import {peopleHologram} from "./PeopleHolograms"
 
 /** What the card's buttons do (the controller acts on it). */
 export type PanelButton = "close" | "next" | "more" | ""
@@ -240,8 +241,15 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   private anchor: vec3 = null
   private faceToward: vec3 = null
   private videos: VideoTextureProvider[] = []
-  private workbench: SceneObject = null
+  private hologram: SceneObject = null
+  private hologramId = ""
+  private hologramVideo: VideoTextureProvider = null
+  private peopleScreen: SceneObject = null
+  private peopleId = ""
+  private peopleVideo: VideoTextureProvider = null
   private imageCard = false
+  /** Building of the card on screen ("" once hidden), so a new pick re-places the card where the wearer faces. */
+  private shownCardId = ""
   /** World scale and local width (cm) of the card being shown, set by each build. */
   private cardScale = 1
   private cardWidthLocal = 60
@@ -275,47 +283,99 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     return this.target > 0
   }
 
-  /** A room-locked, walk-up HP workbench beside the back corner of the map. */
-  placeWorkbench(mapRoot: SceneObject, camera: SceneObject, floorY: number, mapRadiusCm: number) {
-    if (this.workbench) this.workbench.destroy()
-    const tex = tryAsset(() => requireAsset("../Art/hpgarage/hpgarage_nazeli_anim.mp4"), "HP workbench video") as Texture
-    const mat = this.mediaMaterial || loadBuiltinMaterial()
-    if (!tex || !mat || !mapRoot || !camera) return
-    const center = mapRoot.getTransform().getWorldPosition()
-    const eye = camera.getTransform().getWorldPosition()
-    const toward = new vec3(eye.x - center.x, 0, eye.z - center.z).normalize()
-    const away = toward.uniformScale(-1)
-    const right = new vec3(away.z, 0, -away.x)
-    const pos = center.add(right.uniformScale(mapRadiusCm + 80)).add(away.uniformScale(mapRadiusCm * 0.3))
-    this.workbench = global.scene.createSceneObject("HP_workbench_walkup")
-    this.workbench.getTransform().setWorldPosition(new vec3(pos.x, floorY + 105, pos.z))
-    this.workbench.getTransform().setWorldRotation(quat.angleAxis(Math.atan2(eye.x - pos.x, eye.z - pos.z), vec3.up()))
-    const visual = this.meshObject(this.workbench, quadsChunk([{x0: -155, y0: -90, x1: 155, y1: 90}], 0))
-    const screen = mat.clone()
-    screen.mainPass.baseTex = tex
-    screen.mainPass.twoSided = true
-    visual.mainMaterial = screen
+  /**
+   * The key building's diagram loop (StoryHolograms) on its own 16:9 screen at
+   * `pos`, turned to face `eye`. Stays up while the story pages, replaced when another building is picked.
+   */
+  showSideHologram(id: string, pos: vec3, eye: vec3, widthCm: number) {
+    if (this.hologramId === id && this.hologram) return
+    this.hideSideHologram()
+    let tex: Texture = null
     try {
-      const video = tex.control as VideoTextureProvider
+      tex = storyHologram(id)
+    } catch (e) {
+      print("[Retrospecs] side hologram missing for " + id + ": " + e)
+    }
+    const screen = this.createSideScreen(tex, id, pos, eye, widthCm, "Side_hologram_")
+    if (!screen) return
+    this.hologram = screen.object
+    this.hologramId = id
+    this.hologramVideo = screen.video
+    print(`[Retrospecs] side hologram ${id}: ${screen.width.toFixed(0)} x ${screen.height.toFixed(0)} cm`)
+  }
+
+  /** A separate people screen. HP Garage can occupy the original side position while its diagram is absent. */
+  showPeopleHologram(id: string, pos: vec3, eye: vec3, widthCm: number) {
+    if (this.peopleId === id && this.peopleScreen) return
+    this.hidePeopleHologram()
+    let tex: Texture = null
+    try {
+      tex = peopleHologram(id)
+    } catch (e) {
+      print("[Retrospecs] people hologram missing for " + id + ": " + e)
+    }
+    const screen = this.createSideScreen(tex, id, pos, eye, widthCm, "People_hologram_")
+    if (!screen) return
+    this.peopleScreen = screen.object
+    this.peopleId = id
+    this.peopleVideo = screen.video
+    print(`[Retrospecs] people hologram ${id}: ${screen.width.toFixed(0)} x ${screen.height.toFixed(0)} cm`)
+  }
+
+  private createSideScreen(tex: Texture, id: string, pos: vec3, eye: vec3, widthCm: number, prefix: string):
+      {object: SceneObject; video: VideoTextureProvider; width: number; height: number} | null {
+    const mat = this.mediaMaterial || loadBuiltinMaterial()
+    if (!tex || !mat) return null
+    const hw = Math.max(10, widthCm) / 2, hh = (hw * 9) / 16
+    const object = global.scene.createSceneObject(prefix + id)
+    const tr = object.getTransform()
+    tr.setWorldPosition(pos)
+    const d = eye.sub(pos)
+    const yaw = quat.angleAxis(Math.atan2(d.x, d.z), vec3.up())
+    const pitch = quat.angleAxis(-Math.atan2(d.y, Math.hypot(d.x, d.z)), vec3.right())
+    tr.setWorldRotation(yaw.multiply(pitch))
+    const visual = this.meshObject(object, quadsChunk([{x0: -hw, y0: -hh, x1: hw, y1: hh}], 0))
+    const material = mat.clone()
+    material.mainPass.baseTex = tex
+    material.mainPass.twoSided = true
+    visual.mainMaterial = material
+    let video: VideoTextureProvider = null
+    try {
+      video = tex.control as VideoTextureProvider
       video.volume = 0
       const play = () => {
         try {
+          if (!object.enabled) return
           if (video.status === VideoStatus.Playing) return
           video.play(-1)
         } catch (e) {
-          print("[Retrospecs] HP workbench video play failed: " + e)
+          print("[Retrospecs] side hologram play failed: " + e)
         }
       }
       if (video.status === VideoStatus.Preparing) video.onPlaybackReady.add(play)
       else play()
     } catch (e) {
-      print("[Retrospecs] HP workbench video start failed: " + e)
+      print("[Retrospecs] side hologram start failed: " + e)
     }
-    print("[Retrospecs] HP workbench: 310 x 180 cm, beside map back corner")
+    return {object, video, width: 2 * hw, height: 2 * hh}
   }
 
-  showWorkbench(visible: boolean) {
-    if (this.workbench) this.workbench.enabled = visible
+  hideSideHologram() {
+    if (this.hologram) this.hologram.enabled = false
+    if (this.hologramVideo) try { this.hologramVideo.stop() } catch (e) { /* Already stopped. */ }
+    if (this.hologram) this.hologram.destroy()
+    this.hologram = null
+    this.hologramId = ""
+    this.hologramVideo = null
+  }
+
+  hidePeopleHologram() {
+    if (this.peopleScreen) this.peopleScreen.enabled = false
+    if (this.peopleVideo) try { this.peopleVideo.stop() } catch (e) { /* Already stopped. */ }
+    if (this.peopleScreen) this.peopleScreen.destroy()
+    this.peopleScreen = null
+    this.peopleId = ""
+    this.peopleVideo = null
   }
 
   /** Builds the screen for `card` / `fact` (fact may be null: name and namesake only) and flies it out. */
@@ -342,14 +402,19 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     print(`[Retrospecs] card: ${(this.cardWidthLocal * s).toFixed(1)} x ${(this.blockHeight * s).toFixed(1)} cm at ${D.toFixed(0)} cm = ${degForCm(this.cardWidthLocal * s, D).toFixed(1)} x ${degForCm(this.blockHeight * s, D).toFixed(1)} deg`)
     // The block is lifted by `lift` inside the root: publish the height that puts its bottom edge where it really is.
     TV_WALL.mainHeightCm = Math.max(10, this.blockHeight - 2 * this.lift) * s
-    // Place the wall in front of the wearer the first time; moving focus between buildings keeps it where it is.
-    if (!sharedWall.active) {
+    // Place the card where the wearer is facing whenever a building is picked (turn around and pick one behind you,
+    // the card appears there), then leave it fixed in the room. Paging the same building's story keeps it in place.
+    const newBuilding = card.id !== this.shownCardId
+    this.shownCardId = card.id
+    if (!sharedWall.active || newBuilding) {
       const eye = this.eye()
       if (eye) sharedWall.reset(eye, this.viewYaw(eye))
     }
     // Switching cards while showing: appear in place (no second fly-out).
-    this.fly = !wasShowing
-    this.t = wasShowing ? 0.6 : 0
+    // A different building flies out fresh to its new spot.
+    const inPlace = wasShowing && !newBuilding
+    this.fly = !inPlace
+    this.t = inPlace ? 0.6 : 0
     this.target = 1
     this.placed = null
     this.apply(0)
@@ -527,6 +592,21 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       {kind: "more", hit: hits.more, parts: []},
       {kind: "next", hit: hits.next, parts: []}
     ]
+    // Hover feedback: the buttons are baked into the art, so each gets an overlay that is black (invisible on the
+    // additive display) until the ray is on it, then a bright cyan rim and a faint glow over the drawn button.
+    const drawn = storyCardHits(0)
+    for (const b of this.buttons) {
+      const r = drawn[b.kind]
+      const pad = 0.6
+      const outer = {x0: r.x0 - pad, y0: r.y0 - pad, x1: r.x1 + pad, y1: r.y1 + pad}
+      let n = this.parts.length
+      this.quads("hover_glow_" + b.kind, [outer], [0, 0, 0, 0], 0.12)
+      this.buttonPart(b, n, [0, 0, 0, 0], [0.1, 0.22, 0.26, 1])
+      n = this.parts.length
+      this.quads("hover_rim_" + b.kind, frameRects(outer, 0.5), [0, 0, 0, 0], 0.16)
+      this.buttonPart(b, n, [0, 0, 0, 0], BUTTON_COLORS.rimHover)
+    }
+    this.hovered = ""
     this.blockHeight = STORY_CARD.heightCm
     this.lift = 0
     this.makeHitTarget({x0: rect.x0 - 3, y0: rect.y0 - 3, x1: rect.x1 + 3, y1: rect.y1 + 3})

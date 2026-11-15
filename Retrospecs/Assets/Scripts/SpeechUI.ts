@@ -7,6 +7,7 @@ import Event from "SpectaclesInteractionKit.lspkg/Utils/Event"
 import {ASRController} from "./ASRController"
 import {Logger} from "Utilities.lspkg/Scripts/Utils/Logger"
 import {bindStartEvent, bindUpdateEvent} from "SnapDecorators.lspkg/decorators"
+import {bubbleTarget} from "../Retrospecs/Scripts/AskBridge"
 
 const UI_CAM_DISTANCE = 50
 const UI_CAM_HEIGHT = -9
@@ -89,7 +90,11 @@ export class SpeechUI extends BaseScriptComponent {
   onSpeechButtonDown() {
     this.logger.info("Speech button Down!")
     this.speechText.text = ""
-    this.animateSpeechBubble(true)
+    // Retrospecs in the scene: it stops any talking and shows the question in its own chat window, so the sample's
+    // speech box stays closed.
+    const retro = bubbleTarget()
+    if (retro) retro.bubbleListenStart()
+    else this.animateSpeechBubble(true)
     this.animateSpeechIcon(true)
     this.asrVoiceController.startListening()
   }

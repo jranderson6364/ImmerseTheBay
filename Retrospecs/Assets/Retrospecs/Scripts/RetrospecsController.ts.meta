@@ -36,6 +36,7 @@
     autoQuiz: false
     camera: false
     experienceScaleCm: false
+    experienceSideDeg: false
     experiences: false
     eyeHeightCm: false
     facingHint: false
@@ -45,6 +46,8 @@
     guide: false
     handleGrabCm: false
     handleRadiusCm: false
+    hologramSideDeg: false
+    hologramWidthCm: false
     indoorDemo: false
     infoPanel: false
     liveFollowUpSec: false
@@ -55,13 +58,22 @@
     moneyMapExaggeration: false
     moneyOnMap: false
     overlay: false
+    peopleHologramSideDeg: false
+    peopleHologramWidthCm: false
     persistProgress: false
     pickSlackCm: false
+    respawnEnabled: false
+    respawnHoldSec: false
+    respawnLookDownDeg: false
+    respawnMinMapDistM: false
+    respawnMinWalkedM: false
     showStatusLabel: false
     showcase: false
     showcaseForwardCm: false
     showcaseNearBuilding: false
     showcaseScaleCm: false
+    sideDistanceCm: false
+    sideScaleCm: false
     startFacingDeg: false
     startInstruction: false
     startLat: false
@@ -71,8 +83,8 @@
     statusText: false
     surveyLat: false
     surveyLon: false
+    tableBelowEyesCm: false
     tableForwardCm: false
-    tableHeightCm: false
     useStartPoint: false
     wallBearing: false
     youAreHereHeightCm: false
@@ -102,7 +114,7 @@
       facingHint: !<float> 105.000000
       eyeHeightCm: !<float> 160.000000
       floorForwardCm: !<float> 90.000000
-      tableHeightCm: !<float> 85.000000
+      tableBelowEyesCm: !<float> 105.000000
       tableForwardCm: !<float> 55.000000
       startLifted: false
       youAreHereHeightCm: !<float> 16.000000
@@ -136,7 +148,19 @@
       ambientDistanceCm: !<float> 170.000000
       ambientScaleCm: !<float> 26.000000
       ambientDropCm: !<float> 105.000000
+      experienceSideDeg: !<float> 21.000000
+      hologramSideDeg: !<float> 42.000000
+      sideDistanceCm: !<float> 150.000000
+      sideScaleCm: !<float> 30.000000
+      hologramWidthCm: !<float> 56.000000
+      peopleHologramSideDeg: !<float> 42.000000
+      peopleHologramWidthCm: !<float> 56.000000
       pickSlackCm: !<float> 6.000000
+      respawnEnabled: true
+      respawnMinMapDistM: !<float> 6.000000
+      respawnMinWalkedM: !<float> 8.000000
+      respawnLookDownDeg: !<float> 35.000000
+      respawnHoldSec: 0.800000
   ScriptTypes:
     -
       {}
@@ -165,8 +189,8 @@
     - '// @ui {"widget":"group_start", "label":"Placement"}'
     - '// @input float eyeHeightCm = 160 {"hint":"Head height above the floor when standing (cm)"}'
     - '// @input float floorForwardCm = 106 {"hint":"Map centre ahead, so the wearer stands near its back edge (cm)"}'
-    - '// @input float tableHeightCm = 100 {"hint":"Map height above the floor in table mode (cm). 100 = a bit above a desk, so you look down about 40 degrees."}'
-    - "// @input float tableForwardCm = 80 {\"hint\":\"How far in front of you the table-mode map's centre sits (cm). Keep it above the map radius (58 cm at size 0.5) so the near edge is in front of you.\"}"
+    - "// @input float tableBelowEyesCm = 105 {\"hint\":\"Table mode: how far below your eyes the map sits (cm), measured from your head each time it's placed or brought over, so it always lands well below eye level. 105 = about 55 cm off the floor for a 160 cm eye height: you look steeply down onto it and the cursor reaches the far side. (Replaces the old floor-based tableHeightCm, whose saved 100 put it only 60 cm below the eyes.)\"}"
+    - "// @input float tableForwardCm = 65 {\"hint\":\"How far in front of you the table-mode map's centre sits (cm). Keep it above the map radius (58 cm at size 0.5) so the near edge is in front of you.\"}"
     - '// @input bool startLifted = true {"hint":"ON: start with the map floating at table height in front of you. OFF: on the floor around you."}'
     - '// @input float youAreHereHeightCm = 16 {"hint":"Height of the floating \"You are here\" tag above your pin on the map (map cm)"}'
     - // @input float youAreHereScale = 1.8
@@ -205,5 +229,19 @@
     - '// @input float ambientDistanceCm = 300 {"hint":"Ambient extras: distance from the eyes (cm) and size (cm)"}'
     - // @input float ambientScaleCm = 34
     - '// @input float ambientDropCm = 105 {"hint":"Ambient extras: how far below eye level (cm)"}'
+    - "// @input float experienceSideDeg = 21 {\"hint\":\"Side pieces sit at the card's height: the 3D experience this many degrees left of the card's centre (the card spans about 12 each side)\"}"
+    - "// @input float hologramSideDeg = 42 {\"hint\":\"Each key building's hologram loop: degrees left of the card's centre (farther out than the experience)\"}"
+    - '// @input float sideDistanceCm = 150 {"hint":"Side pieces: distance from the eyes (cm), experience / exploded model size (cm), hologram width (cm)"}'
+    - // @input float sideScaleCm = 30
+    - // @input float hologramWidthCm = 56
+    - '// @input float peopleHologramSideDeg = 42 {"hint":"People screen: degrees right of the card when a building also has a diagram"}'
+    - '// @input float peopleHologramWidthCm = 56 {"hint":"People screen width (cm)"}'
     - '// @input float pickSlackCm = 6 {"hint":"Map cursor forgiveness: a pinch this close to a building (map cm) still picks it"}'
+    - '// @ui {"widget":"group_end"}'
+    - '// @ui {"widget":"group_start", "label":"Bring the map here (walked away from it)"}'
+    - "// @input bool respawnEnabled = true {\"hint\":\"Offer to respawn the map when you've walked far from it, look down, and pinch with both hands\"}"
+    - "// @input float respawnMinMapDistM = 6 {\"hint\":\"Only when you're at least this far (m) from the map's centre\"}"
+    - '// @input float respawnMinWalkedM = 8 {"hint":"...and have walked at least this far (m) since the map was placed"}'
+    - '// @input float respawnLookDownDeg = 35 {"hint":"...and are looking at least this far below the horizon (degrees)"}'
+    - '// @input float respawnHoldSec = 0.8 {"hint":"Hold both pinches this long (s) to respawn"}'
     - '// @ui {"widget":"group_end"}'

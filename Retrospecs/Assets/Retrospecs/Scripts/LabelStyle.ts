@@ -32,6 +32,32 @@ export function tidyLabel(inner: SceneObject, text: string): Text | null {
   return t
 }
 
+/**
+ * Turns a tidied label into a bold building sign (the real-world nametag title).
+ * Spectacles' display is additive, so black outlines vanish on device: the weight comes from an outline in the fill's
+ * own colour (faux bold), and the dark shadow and plate only help in Preview and against bright sky.
+ */
+export function styleAsSign(t: Text, rgba: number[], font?: Font) {
+  t.text = (t.text || "").toUpperCase()
+  try {
+    if (font) t.font = font
+    t.letterSpacing = 1.5
+    t.textFill.color = new vec4(rgba[0], rgba[1], rgba[2], rgba[3])
+    t.outlineSettings.enabled = true
+    t.outlineSettings.size = 0.14
+    t.outlineSettings.fill.color = new vec4(rgba[0], rgba[1], rgba[2], rgba[3])
+    t.dropshadowSettings.enabled = true
+    t.dropshadowSettings.offset = new vec2(0.08, -0.08)
+    t.dropshadowSettings.fill.color = new vec4(0, 0, 0, 0.85)
+    t.backgroundSettings.enabled = true
+    t.backgroundSettings.fill.color = new vec4(0.02, 0.04, 0.09, 0.7)
+    t.backgroundSettings.cornerRadius = 0.8
+    t.backgroundSettings.margins = Rect.create(-1.8, 1.8, -0.9, 0.9)
+  } catch (e) {
+    // Older Text without these settings: the size increase alone still helps.
+  }
+}
+
 function hideByName(o: SceneObject, name: string) {
   for (let i = 0; i < o.getChildrenCount(); i++) {
     const c = o.getChild(i)

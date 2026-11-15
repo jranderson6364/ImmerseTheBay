@@ -10,6 +10,7 @@ import {ResponseUI} from "./ResponseUI"
 import {SpeechUI} from "./SpeechUI"
 import {Logger} from "Utilities.lspkg/Scripts/Utils/Logger"
 import {bindStartEvent} from "SnapDecorators.lspkg/decorators"
+import {bubbleTarget} from "../Retrospecs/Scripts/AskBridge"
 
 @component
 export class SceneController extends BaseScriptComponent {
@@ -73,6 +74,12 @@ export class SceneController extends BaseScriptComponent {
   }
 
   onSpeechRecieved(text: string) {
+    // Retrospecs answers every utterance itself (the ASR is shared, so this also fires for its left-pinch questions).
+    // Skip the depth-label pipeline and keep the bubble ready for the next question.
+    if (bubbleTarget()) {
+      this.speechUI.activateSpeechButton(true)
+      return
+    }
     this.speechUI.activateSpeechButton(false)
     if (this.isRequestRunning) {
       this.logger.warn("REQUEST ALREADY RUNNING")

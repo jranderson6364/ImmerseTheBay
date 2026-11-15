@@ -222,6 +222,13 @@ export class RetrospecsMap extends BaseScriptComponent {
   hoverId = ""
 
   private temp: SceneObject[] = []
+  /** The "you are here" ring and pillar (map-local; moved by setYouAt). */
+  private youMarker: SceneObject = null
+
+  /** Moves the "you are here" ring and pillar to `local` (map cm, y ignored). */
+  setYouAt(local: vec3) {
+    if (this.youMarker && !isNull(this.youMarker)) this.youMarker.getTransform().setLocalPosition(new vec3(local.x, 0, local.z))
+  }
   private worldTemp: SceneObject[] = []
   private camera: SceneObject = null
   private pulseT = 0
@@ -240,8 +247,12 @@ export class RetrospecsMap extends BaseScriptComponent {
     this.camera = camera
     this.center = center
     this.cmPerM = 100 / this.scaleDenominator
-    if (this.root) this.root.destroy()
-    if (this.worldRoot) this.worldRoot.destroy()
+    // Drop every reference into the old roots before destroying them: threads, sightlines and tags are children, and
+    // destroying them again later (clearTemp on the next pick) threw and left every later pick broken.
+    this.temp = []
+    this.worldTemp = []
+    if (this.root && !isNull(this.root)) this.root.destroy()
+    if (this.worldRoot && !isNull(this.worldRoot)) this.worldRoot.destroy()
     this.worldTags = {}
     this.worldTagIds = []
     this.root = global.scene.createSceneObject("RetrospecsMapRoot")
@@ -314,9 +325,11 @@ export class RetrospecsMap extends BaseScriptComponent {
       }
     }
 
-    // "You are here" marker: a small ring plus a short pillar at the centre.
-    this.meshObject(this.root, "you_ring", buildRing(2.2, 0.6, 48, 0.05), COLORS.you)
-    this.meshObject(this.root, "you_pillar", buildTube([{x: 0, y: 0, z: 0}, {x: 0, y: 6, z: 0}], 0.5), COLORS.you)
+    // "You are here" marker: a small ring plus a short pillar, at the centre until the map is brought over.
+    this.youMarker = global.scene.createSceneObject("you_marker")
+    this.youMarker.setParent(this.root)
+    this.meshObject(this.youMarker, "you_ring", buildRing(2.2, 0.6, 48, 0.05), COLORS.you)
+    this.meshObject(this.youMarker, "you_pillar", buildTube([{x: 0, y: 0, z: 0}, {x: 0, y: 6, z: 0}], 0.5), COLORS.you)
     this.makeCursorTarget(radiusCm)
 
     print(`[Retrospecs] map built in ${(getTime() - started).toFixed(2)} s: ${chunks} chunks, ${verts} background verts, ${Object.keys(this.landmarks).length} landmarks; paths ${pathChunks} chunks, verts road ${pathVerts.road} / bike ${pathVerts.bike} / foot ${pathVerts.foot}`)
@@ -646,9 +659,9 @@ export class RetrospecsMap extends BaseScriptComponent {
   }
 
   clearTemp() {
-    for (const o of this.temp) o.destroy()
+    for (const o of this.temp) if (o && !isNull(o)) o.destroy()
     this.temp = []
-    for (const o of this.worldTemp) o.destroy()
+    for (const o of this.worldTemp) if (o && !isNull(o)) o.destroy()
     this.worldTemp = []
   }
 

@@ -26,6 +26,7 @@
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
+    brightness: false
     camera: false
     defaultScaleCm: false
     labelPrefab: false
@@ -47,6 +48,7 @@
       defaultScaleCm: !<float> 40.000000
       labelScale: 0.250000
       popSeconds: 0.400000
+      brightness: 0.600000
   ScriptTypes:
     -
       {}
@@ -58,3 +60,4 @@
     - '// @input float defaultScaleCm = 40 {"hint":"Size (cm across) when show() gets scaleCm <= 0"}'
     - '// @input float labelScale = 0.25 {"hint":"Label size multiplier (world, independent of experience scale)"}'
     - '// @input float popSeconds = 0.4 {"hint":"Pop-in time (s)"}'
+    - '// @input float brightness = 0.6 {"hint":"Colour multiplier (0-1). Lower recedes on the additive display, so it stays in the background."}'

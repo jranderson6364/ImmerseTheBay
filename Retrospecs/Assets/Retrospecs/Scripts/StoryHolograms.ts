@@ -6,7 +6,6 @@ export function storyHologram(id: string): Texture | null {
   switch (id) {
     case "hoover": return requireAsset("../Art/hoover/hoover_story_hologram.mp4") as Texture
     case "huang": return requireAsset("../Art/huang/huang_story_hologram.mp4") as Texture
-    case "hpgarage": return requireAsset("../Art/hpgarage/hpgarage_nazeli_anim.mp4") as Texture
     case "memchu": return requireAsset("../Art/memchu/memchu_story_hologram.mp4") as Texture
     case "varian": return requireAsset("../Art/varian/varian_story_hologram.mp4") as Texture
     case "spilker": return requireAsset("../Art/spilker/spilker_story_hologram.mp4") as Texture

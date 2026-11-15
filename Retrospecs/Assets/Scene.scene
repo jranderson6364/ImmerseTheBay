@@ -1800,7 +1800,8 @@
   ScriptAsset: !<reference> 229ea4bb-058b-4d36-8fd4-23a8e4e3959b
   ScriptInputsDefault:
     labelHeightCm: true
-    targetAngleDeg: true
+    titleAngleDeg: true
+    titleFont: true
     maxRenderM: true
     maxTags: true
     sweepSeconds: true
@@ -1813,7 +1814,8 @@
       labelPrefab: !<reference.ObjectPrefab> eaa36692-5ef2-4c36-9bfa-a54c095cbaf8
       camera: !<reference.SceneObject> 00000000-0000-0065-0000-000000000064
       labelHeightCm: !<float> 2.000000
-      targetAngleDeg: 2.500000
+      titleAngleDeg: 4.500000
+      titleFont: !<reference.Font> 00000000-0000-0000-0000-000000000000
       maxRenderM: !<float> 60.000000
       maxTags: !<float> 3.000000
       sweepSeconds: !<float> 1.000000
@@ -2371,6 +2373,7 @@
     labelScale: true
     leaderCm: true
     leaderWidthCm: true
+    brightness: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -2386,6 +2389,7 @@
       labelScale: 0.250000
       leaderCm: !<float> 9.000000
       leaderWidthCm: 0.180000
+      brightness: 0.600000
   ScriptTypes:
     "":
       {}
@@ -3498,6 +3502,11 @@
     compactPitchDeg: true
     compactDistanceScale: true
     compactWidthCm: true
+    cardDistanceCm: true
+    compactWidthDeg: true
+    compactBodyLineDeg: true
+    storyCardWidthDeg: true
+    minTargetDeg: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -3540,6 +3549,11 @@
       compactPitchDeg: !<float> 12.000000
       compactDistanceScale: 1.450000
       compactWidthCm: !<float> 64.000000
+      cardDistanceCm: !<float> 140.000000
+      compactWidthDeg: !<float> 24.000000
+      compactBodyLineDeg: 0.760000
+      storyCardWidthDeg: 20.299999
+      minTargetDeg: !<float> 3.000000
   ScriptTypes:
     "":
       {}
@@ -3632,6 +3646,7 @@
     defaultScaleCm: true
     labelScale: true
     popSeconds: true
+    brightness: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -3642,6 +3657,7 @@
       defaultScaleCm: !<float> 40.000000
       labelScale: 0.250000
       popSeconds: 0.400000
+      brightness: 0.600000
   ScriptTypes:
     "":
       {}
@@ -3858,9 +3874,7 @@
     wallBearing: true
     facingHint: true
     eyeHeightCm: true
-    tableHeightCm: true
-    tableForwardCm: true
-    startLifted: true
+    tableBelowEyesCm: true
     youAreHereHeightCm: true
     youAreHereScale: true
     handleRadiusCm: true
@@ -3881,8 +3895,20 @@
     showcaseNearBuilding: true
     focusSideGapCm: true
     ambientExtras: true
-    ambientScaleCm: true
+    ambientDropCm: true
+    experienceSideDeg: true
+    hologramSideDeg: true
+    sideDistanceCm: true
+    sideScaleCm: true
+    hologramWidthCm: true
+    peopleHologramSideDeg: true
+    peopleHologramWidthCm: true
     pickSlackCm: true
+    respawnEnabled: true
+    respawnMinMapDistM: true
+    respawnMinWalkedM: true
+    respawnLookDownDeg: true
+    respawnHoldSec: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -3903,14 +3929,14 @@
       facingHint: !<float> 105.000000
       eyeHeightCm: !<float> 160.000000
       floorForwardCm: !<float> 106.000000
-      tableHeightCm: !<float> 85.000000
-      tableForwardCm: !<float> 55.000000
-      startLifted: false
+      tableBelowEyesCm: !<float> 105.000000
+      tableForwardCm: !<float> 80.000000
+      startLifted: true
       youAreHereHeightCm: !<float> 16.000000
       youAreHereScale: 1.800000
       handleRadiusCm: !<float> 4.000000
       handleGrabCm: !<float> 10.000000
-      startMapScale: !<float> 1.000000
+      startMapScale: 0.500000
       statusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
       showStatusLabel: true
       autoQuiz: true
@@ -3933,10 +3959,23 @@
       showcaseNearBuilding: true
       focusSideGapCm: !<float> 4.000000
       ambientExtras: true
-      ambientSideDeg: !<float> 22.000000
-      ambientDistanceCm: !<float> 155.000000
-      ambientScaleCm: !<float> 26.000000
+      ambientSideDeg: !<float> 28.000000
+      ambientDistanceCm: !<float> 300.000000
+      ambientScaleCm: !<float> 34.000000
+      ambientDropCm: !<float> 105.000000
+      experienceSideDeg: !<float> 21.000000
+      hologramSideDeg: !<float> 42.000000
+      sideDistanceCm: !<float> 150.000000
+      sideScaleCm: !<float> 30.000000
+      hologramWidthCm: !<float> 56.000000
+      peopleHologramSideDeg: !<float> 42.000000
+      peopleHologramWidthCm: !<float> 56.000000
       pickSlackCm: !<float> 6.000000
+      respawnEnabled: true
+      respawnMinMapDistM: !<float> 6.000000
+      respawnMinWalkedM: !<float> 8.000000
+      respawnLookDownDeg: !<float> 35.000000
+      respawnHoldSec: 0.800000
   ScriptTypes:
     "":
       {}

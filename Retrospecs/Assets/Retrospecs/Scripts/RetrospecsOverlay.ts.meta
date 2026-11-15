@@ -34,7 +34,8 @@
     maxRenderM: false
     maxTags: false
     sweepSeconds: false
-    targetAngleDeg: false
+    titleAngleDeg: false
+    titleFont: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -48,7 +49,8 @@
       labelPrefab: !<reference.ObjectPrefab> 00000000-0000-0000-0000-000000000000
       camera: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
       labelHeightCm: !<float> 2.000000
-      targetAngleDeg: 2.500000
+      titleAngleDeg: 4.500000
+      titleFont: !<reference.Font> 00000000-0000-0000-0000-000000000000
       maxRenderM: !<float> 60.000000
       maxTags: !<float> 3.000000
       sweepSeconds: !<float> 1.000000
@@ -62,7 +64,8 @@
     - '// @input Asset.ObjectPrefab labelPrefab {"hint":"Assets/Prefabs/WorldLabel.prefab"}'
     - "// @input SceneObject camera {\"hint\":\"The scene's Camera object\"}"
     - '// @input float labelHeightCm = 2 {"hint":"Height in cm of one WorldLabel title line at scale 1. Check in Preview and adjust so a tag at 20 m reads about 2.5 degrees tall."}'
-    - '// @input float targetAngleDeg = 2.5 {"hint":"Target angular height of the title, degrees (clamped to 2-3)"}'
+    - '// @input float titleAngleDeg = 4.5 {"hint":"Target angular height of the building-name title, degrees (clamped to 3.5-6). Was 2.5, too small to read."}'
+    - '// @input Asset.Font titleFont {"hint":"Optional bold font for the building name (any Font asset). Empty keeps the prefab font, thickened."}'
     - '// @input float maxRenderM = 60 {"hint":"Tags and outlines further than this are pulled in along the true bearing (metres)"}'
     - '// @input float maxTags = 3 {"hint":"Maximum tags shown at once; the oldest is removed"}'
     - '// @input float sweepSeconds = 1 {"hint":"Scanline sweep duration, seconds"}'

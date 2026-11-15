@@ -12,7 +12,7 @@ import {MeshChunk, buildTube} from "../Core/MapMesh"
 import {
   LocatorResult, NametagPlacement, OverlayStyle, footprintOutline, nametagPlacement, overlayAnimation, overlayBuildingFor, overlayStyle, scanRing, tagText
 } from "../Core/Overlay"
-import {tidyLabel} from "./LabelStyle"
+import {styleAsSign, tidyLabel} from "./LabelStyle"
 
 /** What showBuilding returns, so callers (e.g. a money pile) can place things next to the tag. */
 export interface OverlayTagInfo {
@@ -72,8 +72,13 @@ export class RetrospecsOverlay extends BaseScriptComponent {
   labelHeightCm: number = 2
 
   @input
-  @hint("Target angular height of the title, degrees (clamped to 2-3)")
-  targetAngleDeg: number = 2.5
+  @hint("Target angular height of the building-name title, degrees (clamped to 3.5-6). Was 2.5, too small to read.")
+  titleAngleDeg: number = 4.5
+
+  @input
+  @allowUndefined
+  @hint("Optional bold font for the building name (any Font asset). Empty keeps the prefab font, thickened.")
+  titleFont: Font
 
   @input
   @hint("Tags and outlines further than this are pulled in along the true bearing (metres)")
@@ -143,7 +148,7 @@ export class RetrospecsOverlay extends BaseScriptComponent {
     if (!found.building && !found.landmark && result.heightM > 0) found.heightM = result.heightM
     const style = overlayStyle(result.source, result.confidence)
     const place = nametagPlacement(geomM, found.heightM, {
-      maxRenderM: this.maxRenderM, targetDeg: this.targetAngleDeg, labelHeightCmAtScale1: this.labelHeightCm, eyeHeightM
+      maxRenderM: this.maxRenderM, targetDeg: this.titleAngleDeg, minDeg: 3.5, maxDeg: 6, labelHeightCmAtScale1: this.labelHeightCm, eyeHeightM
     })
 
     const root = global.scene.createSceneObject("overlay_" + result.id)
@@ -193,13 +198,14 @@ export class RetrospecsOverlay extends BaseScriptComponent {
     tag.labelHolder = holder
     const text = tagText(result.id, result.name, result.distanceM)
     const u = this.labelHeightCm
-    this.makeLabel(holder, text.title, new vec3(0, 0, 0), 1, TITLE_RGBA)
-    this.makeLabel(holder, text.subtitle, new vec3(0, -1.15 * u, 0), 0.55, style.color)
-    this.makeLabel(holder, style.badge, new vec3(0, -1.9 * u, 0), 0.45, style.badgeColor)
+    const title = this.makeLabel(holder, text.title, new vec3(0, 0, 0), 1, TITLE_RGBA)
+    if (title) styleAsSign(title, TITLE_RGBA, this.titleFont)
+    this.makeLabel(holder, text.subtitle, new vec3(0, -1.3 * u, 0), 0.5, style.color)
+    this.makeLabel(holder, style.badge, new vec3(0, -2.0 * u, 0), 0.4, style.badgeColor)
 
     // Leader line from just under the tag down to the (scaled) roof line.
     const roofY = (eyeHeightM * 100 + (found.heightM * 100 - eyeHeightM * 100) * k)
-    const tagBottom = tagLocal.y - place.textHeightCm * 1.6
+    const tagBottom = tagLocal.y - place.textHeightCm * 2.4
     if (tagBottom - roofY > renderedWidthCm * 2) {
       const lead = this.meshObject(root, "overlay_leader", buildTube([{x: tagLocal.x, y: tagBottom, z: tagLocal.z}, {x: tagLocal.x, y: roofY, z: tagLocal.z}], renderedWidthCm * 0.6), [0, 0, 0, 1])
       tag.materials.push({m: lead.material, rgba: style.color})
@@ -210,7 +216,7 @@ export class RetrospecsOverlay extends BaseScriptComponent {
 
     const toWorld = rootT.getWorldTransform()
     const right = {x: -dir.z, z: dir.x}
-    const besideCm = place.textHeightCm * 4
+    const besideCm = place.textHeightCm * 5.5
     return {
       id: result.id,
       tagWorldPos: toWorld.multiplyPoint(tagLocal),

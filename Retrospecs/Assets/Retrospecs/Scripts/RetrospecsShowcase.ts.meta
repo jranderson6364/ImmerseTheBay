@@ -26,6 +26,7 @@
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
+    brightness: false
     camera: false
     collapseSeconds: false
     defaultScaleCm: false
@@ -57,6 +58,7 @@
       labelScale: 0.250000
       leaderCm: !<float> 9.000000
       leaderWidthCm: 0.180000
+      brightness: 0.600000
   ScriptTypes:
     -
       {}
@@ -73,3 +75,4 @@
     - '// @input float labelScale = 0.25 {"hint":"Label size multiplier (world, independent of model scale)"}'
     - '// @input float leaderCm = 9 {"hint":"Leader line length beyond the part centre (world cm)"}'
     - '// @input float leaderWidthCm = 0.18 {"hint":"Leader line thickness (world cm)"}'
+    - '// @input float brightness = 0.6 {"hint":"Colour multiplier (0-1). Lower recedes on the additive display, so it stays in the background."}'
