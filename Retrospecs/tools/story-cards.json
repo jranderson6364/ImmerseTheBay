@@ -1,42 +1,107 @@
 {
   "hoover": [
-    {"year":"1941","headline":"A tower built for an archive.","body":"Hoover Tower rises 285 feet. Its sandstone-colored stucco echoes the Main Quad, while its library preserves work on war and peace.","source":"https://architectplanning.stanford.edu/hoover-tower","factId":"hoover.1"},
-    {"year":"1939","headline":"Bells with a world tour.","body":"Thirty-five bells came from Belgium's pavilion at the New York World's Fair. The largest bears the words: For Peace Alone Do I Ring.","source":"https://www.hoover.org/events/history-hoover-carillon","factId":"hoover.4"},
-    {"year":"14th floor","headline":"Two elevators. Different floors.","body":"Visitors reach the observation deck on floor 14. The staff elevator counts the library's in-between levels too: 21 stops.","source":"https://stanfordmag.org/contents/what-you-don-t-know-about-hoover-tower","factId":"hoover.3"},
-    {"year":"1940s","headline":"The tower had a radio room.","body":"During World War II, its first floor monitored foreign military broadcasts and relayed news to the front.","source":"https://stanfordmag.org/contents/what-you-don-t-know-about-hoover-tower","factId":""}
+    {"year":"1941","headline":"An archive in the sky","body":"Arthur Brown Jr. gave Hoover's peace archive a 285-foot landmark, with stucco tinted to echo the Main Quad's sandstone.","source":"https://architectplanning.stanford.edu/hoover-tower","factId":"hoover.1"},
+    {"year":"1939 → 2000","headline":"The bells crossed oceans","body":"The carillon began with 35 bells from Belgium's World's Fair pavilion. It now holds 48; the largest calls for peace.","source":"https://www.hoover.org/events/history-hoover-carillon","factId":"hoover.4"},
+    {"year":"14th floor","headline":"Hear it above the campus","body":"The carillon shares the tower's 14th floor with an observation deck. Look out where the sound travels.","source":"https://architectplanning.stanford.edu/hoover-tower","factId":"hoover.3"},
+    {"year":"1940s","headline":"A secret on the ground floor","body":"During World War II, a radio room here monitored foreign military broadcasts and relayed news.","source":"https://stanfordmag.org/contents/what-you-don-t-know-about-hoover-tower","factId":""}
   ],
   "huang": [
-    {"year":"1996","headline":"Before Google became Google.","body":"Page and Brin's toy-block server tested PageRank. The original cabinet is on display inside Huang.","source":"https://engineering.stanford.edu/about/visit/inside-engineering-quad","factId":"huang.3"},
-    {"year":"2010","headline":"A home for engineering.","body":"Jensen and Lori Huang's gift helped build the center. It holds the dean's office, Terman Library, and NVIDIA Auditorium.","source":"https://engineering.stanford.edu/news/huang-center-dedicated-lauded-stanfords-engineering-anchor","factId":"huang.1"},
-    {"year":"40 GB","headline":"Ten drives changed the web.","body":"The first Google storage server packed ten 4-gigabyte drives into a cabinet decorated with toy building blocks.","source":"https://engineering100.stanford.edu/stories/the-future-firmly-in-sight","factId":"huang.3"},
-    {"year":"90%","headline":"A greener engineering quad.","body":"The center's design targets up to 90% less drinking water and about half the energy of comparable buildings.","source":"https://engineering.stanford.edu/news/huang-center-dedicated-lauded-stanfords-engineering-anchor","factId":"huang.4"},
-    {"year":"1939","headline":"A garage inside Huang.","body":"A replica HP workbench connects today's engineering center to Hewlett and Packard's Palo Alto beginnings.","source":"https://engineering.stanford.edu/about/visit/inside-engineering-quad","factId":""}
+    {"year":"JENSEN + LORI","headline":"The gift behind the gateway","body":"Jensen Huang earned a Stanford engineering master's. He and Lori gave $30 million to build this engineering anchor.","source":"https://engineering.stanford.edu/news/huang-center-dedicated-lauded-stanfords-engineering-anchor","factId":"huang.1"},
+    {"year":"INSIDE","headline":"A hub for what comes next","body":"The dean's office, Terman Library, and 300-seat NVIDIA Auditorium share this engineering crossroads.","source":"https://engineering.stanford.edu/news/huang-center-dedicated-lauded-stanfords-engineering-anchor","factId":"huang.2"},
+    {"year":"1996","headline":"The web in toy blocks","body":"Page and Brin's original PageRank test servers sit in the lobby, wrapped in colorful toy building blocks.","source":"https://engineering100.stanford.edu/stories/designing-for-the-future","factId":"huang.3"},
+    {"year":"50%","headline":"A quieter kind of power","body":"Huang anchors the east–west engineering quad while using about half the energy of a comparable building.","source":"https://engineering.stanford.edu/news/huang-center-dedicated-lauded-stanfords-engineering-anchor","factId":"huang.4"}
+  ],
+  "mainquad": [
+    {"year":"1891","headline":"The campus began here","body":"Olmsted planned the grounds; Shepley, Rutan and Coolidge designed the Quad that opened with Stanford.","source":"https://pcad.lib.washington.edu/building/1683/","factId":"mainquad.1"},
+    {"year":"THE PLAN","headline":"The axis was a choice","body":"Olmsted imagined a foothill campus and an off-center church. Leland Stanford chose the flat site and centered it.","source":"https://stanfordmag.org/contents/a-gentleman-s-quarrel","factId":"mainquad.2"},
+    {"year":"1906","headline":"The arch became a ghost","body":"The earthquake took down the grand Memorial Arch. Its bases still mark the entrance where the arch once stood.","source":"https://news.stanford.edu/stories/2024/03/how-stanfords-architecture-balances-old-and-new","factId":"mainquad.3"},
+    {"year":"CLASS DAY","headline":"A message under your feet","body":"Seniors lay a plaque and bury a time capsule along the Inner Quad arcade. New stories enter the old stones.","source":"https://facts.stanford.edu/heart/","factId":"mainquad.4"}
   ],
   "hpgarage": [
-    {"year":"367 Addison","headline":"A small garage. A new region.","body":"Terman urged students to build companies nearby. Hewlett and Packard began their first product here; the site is a California landmark.","source":"https://ohp.parks.ca.gov/ListedResources/Detail/976","factId":"hpgarage.1"},
-    {"year":"$54.40","headline":"The oscillator that found Disney.","body":"HP's first 200A sold far below rival prices. Disney bought eight 200B oscillators to test its Fantasound system.","source":"https://www.hp.com/hpinfo/abouthp/histnfacts/museum/earlyinstruments/0002/0002history.html","factId":""},
-    {"year":"1957","headline":"From garage to research park.","body":"HP outgrew Addison Avenue and opened a facility in Stanford Research Park, linking the garage's story back to campus.","source":"https://www.hewlettpackardhistory.com/item/a-new-home-address/","factId":""}
+    {"year":"1939","headline":"Birthplace of Silicon Valley","body":"Encouraged by professor Frederick Terman, Bill Hewlett and David Packard started HP in this garage. It's California Historical Landmark 976.","source":"https://ohp.parks.ca.gov/ListedResources/Detail/976","factId":"hpgarage.1"}
   ],
   "memchu": [
-    {"year":"1903","headline":"Jane's memorial in mosaic.","body":"Jane Stanford built the church for Leland as a sanctuary open to people of every persuasion.","source":"https://orsl.stanford.edu/memorial-church-history","factId":"memchu.1"},
-    {"year":"1906","headline":"The spire never came back.","body":"An earthquake sent the tower through the roof and destroyed the facade mosaic. The church was restored without its spire.","source":"https://orsl.stanford.edu/memorial-church-history","factId":"memchu.3"},
-    {"year":"84 × 30 ft","headline":"A mosaic made in Venice.","body":"Salviati's team used more than 20,000 shades of tile. Twelve workers spent two years setting the enormous facade.","source":"https://orsl.stanford.edu/memorial-church-history","factId":"memchu.2"},
-    {"year":"3,300+","headline":"Listen to the pipes.","body":"The organ has more than 3,300 pipes. After the 1989 quake damaged mosaics inside, the church reopened in 1993.","source":"https://orsl.stanford.edu/memorial-church-history","factId":"memchu.2"}
+    {"year":"1903","headline":"Jane's memorial in mosaic","body":"Jane Stanford built it for Leland as a church for all faiths. The facade mosaic out front is 84 feet wide and 30 feet high.","source":"https://orsl.stanford.edu/memorial-church-history","factId":"memchu.1"}
   ],
   "varian": [
-    {"year":"1962","headline":"A physics lab named for an inventor.","body":"Gardner Dailey designed the Russell H. Varian Laboratory of Physics, built in 1962 and 1963. It's home to Physics and the Hansen Experimental Physics Lab.","source":"https://pcad.lib.washington.edu/building/8147/","factId":"varian.1"},
-    {"year":"1937","headline":"A tube that bunches electrons.","body":"In the old physics building's basement, Russell and Sigurd Varian and William Hansen demonstrated the klystron, the first very-high-frequency source, for radar.","source":"https://ginzton.stanford.edu/about-lab/history","factId":"varian.2"},
-    {"year":"1946","headline":"Two Nobel discoveries.","body":"A plaque in the courtyard honors Felix Bloch's nuclear magnetic resonance and Robert Hofstadter's electron scattering. Both earned Nobel Prizes.","source":"https://www.aps.org/funding-recognition/historic-sites/varian-physics-building","factId":"varian.3"},
-    {"year":"4.5 MeV","headline":"We have accelerated electrons.","body":"In 1947 Hansen and three graduate students sent electrons to 4.5 million electron volts. That work led to the two-mile SLAC accelerator.","source":"https://ginzton.stanford.edu/about-lab/history","factId":"varian.2"}
+    {"year":"1962","headline":"A lab named for an inventor","body":"Gardner Dailey designed it for Physics and the Hansen Experimental Physics Lab. Its namesake's big idea came earlier: the klystron.","source":"https://pcad.lib.washington.edu/building/8147/","factId":"varian.1"}
   ],
   "spilker": [
-    {"year":"2013","headline":"Named for a GPS pioneer.","body":"James Spilker Jr. earned three Stanford degrees and designed the civilian GPS signal. He and Anna Marie pledged 31 million dollars toward this building.","source":"https://engineering.stanford.edu/news/stanford-dedicates-spilker-engineering-and-applied-sciences-building","factId":"spilker.1"},
-    {"year":"1,300","headline":"Built without venture capital.","body":"Spilker co-founded Stanford Telecommunications and grew it from 3 people to about 1,300.","source":"https://engineering.stanford.edu/news/james-spilker-jr-father-gps-has-died-86","factId":"spilker.2"},
-    {"year":"UNDERGROUND","headline":"Quiet labs below the quad.","body":"Applied Physics and the Ginzton Lab keep much of their lab space underground to control vibration, light and cleanliness. The Titan microscope is here too.","source":"https://engineering.stanford.edu/news/stanford-dedicates-spilker-engineering-and-applied-sciences-building","factId":"spilker.3"},
-    {"year":"2019","headline":"A prize, given back.","body":"Spilker shared the Queen Elizabeth Prize for Engineering for GPS, then gave his share to Stanford Engineering.","source":"https://engineering.stanford.edu/news/james-spilker-jr-father-gps-has-died-86","factId":"spilker.4"}
+    {"year":"2013","headline":"Named for a GPS pioneer","body":"James Spilker Jr. designed the civilian GPS signal, part of how this map knows where you are. He and Anna Marie pledged $31 million toward it.","source":"https://engineering.stanford.edu/news/stanford-dedicates-spilker-engineering-and-applied-sciences-building","factId":"spilker.1"}
   ],
   "moore": [
-    {"year":"2000","headline":"A gift from Intel's founder.","body":"Gordon and Betty Moore made the naming gift. Moore wasn't a Stanford graduate, yet he gave to Stanford for about four decades.","source":"https://news.stanford.edu/stories/2023/04/stanford-remembers-gordon-moore","factId":"moore.1"},
-    {"year":"25,800 SQ FT","headline":"Built for new materials.","body":"Inside is the Geballe Laboratory for Advanced Materials, an independent lab for research on advanced materials across science and engineering.","source":"https://www.paloaltoonline.com/morgue/news/1994_Oct_14.SCIENCE.html","factId":"moore.2"}
+    {"year":"2000","headline":"A gift from Intel's founder","body":"Gordon and Betty Moore made the naming gift. Moore wasn't a Stanford graduate, yet he gave to Stanford for about four decades.","source":"https://news.stanford.edu/stories/2023/04/stanford-remembers-gordon-moore","factId":"moore.1"}
+  ],
+  "gates": [
+    {"year":"1996","headline":"Where Google got its start","body":"Larry Page and Sergey Brin developed PageRank here. An IEEE Milestone plaque on the fourth floor marks the birth of Google.","source":"https://ethw.org/Milestones:PageRank_and_the_Birth_of_Google,_1996-1998","factId":"gates.2"}
+  ],
+  "packard": [
+    {"year":"1994","headline":"A record gift, built in glass","body":"David Packard and Bill Hewlett gave $77.4 million to rebuild this corner of campus. Its glass prow lets passersby see engineering at work.","source":"https://engineering100.stanford.edu/stories/redevelopment-and-an-earthquake","factId":"packard.1"}
+  ],
+  "y2e2": [
+    {"year":"YANG + YAMAZAKI","headline":"A building that breathes","body":"Its windows open and close on their own with the temperature and wind, and it uses about 57 percent less energy than a typical building.","source":"https://stanfordmag.org/contents/a-building-that-breathes","factId":"y2e2.2"}
+  ],
+  "shriram": [
+    {"year":"208,000 SQ FT","headline":"The quad's largest building","body":"Bioengineering and Chemical Engineering share 34 specialized labs here, in a building using about half the power of a typical one.","source":"https://engineering.stanford.edu/news/bioengineering-and-chemical-engineering-building-named-gifts-shrirams","factId":"shriram.3"}
+  ],
+  "allen": [
+    {"year":"1985 → 1996","headline":"A guitar at the dedication","body":"It opened as the Center for Integrated Systems and took the Paul G. Allen Foundation's name. Paul Allen played electric guitar at its 1997 dedication.","source":"https://nanoguide.stanford.edu/guide/about/history","factId":"allen.1"}
+  ],
+  "hewlett": [
+    {"year":"1986","headline":"A record pledge","body":"Bill Hewlett's $50 million pledge was Stanford's largest from one person at the time. With Packard, it marks the engineering quad's entrance.","source":"https://engineering100.stanford.edu/stories/redevelopment-and-an-earthquake","factId":"hewlett.1"}
+  ],
+  "cantor": [
+    {"year":"1894","headline":"A museum for their son","body":"It opened as the Leland Stanford Junior Museum, the Stanfords' memorial to their only child. Outside, the Rodin garden holds 20 bronzes.","source":"https://museum.stanford.edu/about/history","factId":"cantor.1"}
+  ],
+  "mccullough": [
+    {"year":"1965","headline":"Built for materials science","body":"A $1.5 million grant from vacuum tube pioneer Jack McCullough, his wife, and DARPA paid for it. Varian's architect, Gardner Dailey, designed it.","source":"https://engineering100.stanford.edu/stories/new-spaces-and-expanding-influence","factId":"mccullough.1"}
+  ],
+  "durand": [
+    {"year":"1969","headline":"Named for a propeller pioneer","body":"Professor William F. Durand's research led to the first variable pitch propeller. His building is home to Aeronautics and Astronautics.","source":"https://engineering100.stanford.edu/stories/new-spaces-and-expanding-influence","factId":"durand.1"}
+  ],
+  "sequoia": [
+    {"year":"1998","headline":"Home of Statistics","body":"The new Sequoia Hall, with its Girshick library, was dedicated with remarks from President Gerhard Casper and Provost Condoleezza Rice.","source":"https://statistics.stanford.edu/events/special-events/dedication-new-sequoia-hall","factId":"sequoia.2"}
+  ],
+  "greenearth": [
+    {"year":"1993","headline":"A gift from TI's co-founder","body":"Cecil Green co-founded Texas Instruments. He never attended Stanford, but he and Ida helped fund this Earth Sciences research building.","source":"https://library.stanford.edu/news/remembering-cecil-h-green","factId":"greenearth.1"}
+  ],
+  "mitchell": [
+    {"year":"EARTH SCIENCES","headline":"A library on the second floor","body":"The Ruth Wattis Mitchell Earth Sciences Building houses Earth Sciences departments and the Branner Earth Sciences Library.","source":"https://maps.stanford.edu/ada/building-ada.cfm?FACIL_ID=04-560","factId":"mitchell.1"}
+  ],
+  "gilbert": [
+    {"year":"BIOLOGY","headline":"Named for a zoologist","body":"The Charles H. Gilbert Biological Sciences Building houses the Biology department. Gilbert's own story starts in a high school classroom.","source":"https://maps.stanford.edu/ada/building-ada.cfm?FACIL_ID=07-420","factId":"gilbert.1"}
+  ],
+  "clark": [
+    {"year":"2003","headline":"Three wings around a courtyard","body":"Jim Clark of Silicon Graphics and Netscape made a $90 million lead gift. Foster and Partners designed this home of Bio-X.","source":"https://biox.stanford.edu/about/clark-center","factId":"clark.2"}
+  ],
+  "likashing": [
+    {"year":"2010","headline":"Where doctors learn by doing","body":"The medical school's teaching hub holds a 28,000 square foot center for simulation and immersive learning on its ground floor.","source":"https://med.stanford.edu/news/all-news/2010/09/li-ka-shing-center-dedication-marks-new-era-in-medical-education.html","factId":"likashing.1"}
+  ],
+  "coda": [
+    {"year":"2025","headline":"Built in binary","body":"CoDa's two wings, one rectangular and one oval, stand for the ones and zeros of binary code. It houses Computer Science, Statistics and Data Science.","source":"https://news.stanford.edu/stories/2025/02/coda-marks-new-era-for-computing-and-data-science-at-stanford","factId":"coda.1"}
+  ],
+  "bassbio": [
+    {"year":"2019","headline":"Biology under one roof","body":"Its 133,000 square feet of wet and dry labs brought the Biology department together from five aging buildings.","source":"https://news.stanford.edu/stories/2019/03/bass-biology-provides-new-home-life-sciences-stanford","factId":"bassbio.2"}
+  ],
+  "sapp": [
+    {"year":"1902","headline":"Thirty years behind a fence","body":"Old Chem sat fenced off for almost 30 years after the 1989 earthquake. Restored for science teaching, it now carries the Sapp family's name.","source":"https://news.stanford.edu/stories/2016/09/old-chemistry-named-sapp-center-science-teaching-learning","factId":"sapp.1"}
+  ],
+  "oldunion": [
+    {"year":"1915 → 1923","headline":"Stanford's first student union","body":"Its three buildings began as women's dorms and the first union. Bakewell and Brown, Green Library's architects, gave it a Spanish Colonial look.","source":"https://historicalsociety.stanford.edu/trivia","factId":"oldunion.1"}
+  ],
+  "tresidder": [
+    {"year":"FOUR OAKS","headline":"Built around the oaks","body":"Architect Bill Busse gave the union a meandering shape to fit around four huge oak trees. Only two of them survive.","source":"https://stanfordmag.org/contents/tresidder","factId":"tresidder.2"}
+  ],
+  "greenlib": [
+    {"year":"1919","headline":"Paid for with jewels","body":"Jane Stanford directed $500,000 from the sale of her jewels to the library. This wing opened with room for more than 700,000 books.","source":"https://stanforddaily.com/2019/08/03/100-years-after-opening-green-library-is-still-guided-by-the-vision-of-jane-stanford/","factId":"greenlib.1"}
+  ],
+  "lathrop": [
+    {"year":"2014","headline":"A library with a past life","body":"The business school's former South Building became the undergraduate library, with a 24-hour study space and a digital language lab.","source":"https://stanforddaily.com/2014/08/25/meyer-library-closes-permanently-relocating-services-to-lathrop/","factId":"lathrop.1"}
+  ],
+  "bookstore": [
+    {"year":"1960","headline":"The corner students meet","body":"The Bookstore has stood in White Plaza since 1960. The plaza and the Claw fountain beside it were both built in 1964.","source":"https://news.stanford.edu/stories/2018/05/campus-community-invited-consider-bookstore-future","factId":"bookstore.1"}
+  ],
+  "littlefield": [
+    {"year":"1938 MBA","headline":"Faculty under one roof","body":"Edmund Littlefield's lead gift of about $5 million built this Kohn Pedersen Fox design, which held offices for most of the business school's faculty.","source":"https://www.gsb.stanford.edu/experience/news-history/history/littlefield-management-center","factId":"littlefield.1"}
   ]
 }

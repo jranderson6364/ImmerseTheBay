@@ -229,3 +229,90 @@ describe("depth sanity", () => {
     expect(acceptDepth(9, 4).ok).toBe(true) // absolute tolerance floor of 8 m
   })
 })
+
+describe("recenter yaw", () => {
+  const {bearingSpan, clampIntoSpan, resyncYaw, yawDiffDeg} = require("../Assets/Retrospecs/Core/Locate")
+  const {bearingToMapDir, worldDirToBearing, yawOf} = require("../Assets/Retrospecs/Core/Geo")
+  const me = {e: 0, n: 0}
+  // World direction that the frame with `yaw` calls bearing b.
+  const dirFor = (b: number, yaw: number) => {
+    const y = yawOf(bearingToMapDir(b)) + yaw
+    return {x: Math.sin(y), y: 0, z: Math.cos(y)}
+  }
+  const square = (ce: number, cn: number, half: number) => [[
+    {e: ce - half, n: cn - half}, {e: ce + half, n: cn - half}, {e: ce + half, n: cn + half}, {e: ce - half, n: cn + half}
+  ]]
+  const near = Math.abs
+
+  test("bearingSpan of a far narrow building straddling north wraps correctly", () => {
+    const s = bearingSpan(me, square(0, 200, 5))!
+    expect(s.width).toBeLessThan(4)
+    expect(near(angleDiff(s.centre, 0))).toBeLessThan(0.5)
+    expect(clampIntoSpan(0.5, s)).toBeCloseTo(0.5, 6)
+    expect(near(angleDiff(clampIntoSpan(30, s), s.hi))).toBeLessThan(1e-6)
+    expect(near(angleDiff(clampIntoSpan(-30, s), s.lo))).toBeLessThan(1e-6)
+  })
+
+  test("narrow and far: the ray is turned onto the building's centre", () => {
+    const ray = dirFor(10, 0) // the current frame thinks the building is at 10°, it is really at 0°
+    const r = resyncYaw({currentYaw: 0, gemini: {worldDir: ray, me, rings: square(0, 200, 5), centroid: {e: 0, n: 200}, name: "Tower"}, compass: null})
+    expect(r.source).toBe("gemini")
+    expect(near(angleDiff(worldDirToBearing(ray, r.yaw), 0))).toBeLessThan(0.5)
+    expect(near(r.turnDeg + 10)).toBeLessThan(0.5)
+  })
+
+  test("wide and near: a ray already on the footprint means no turn", () => {
+    const ray = dirFor(15, 0)
+    const r = resyncYaw({currentYaw: 0, gemini: {worldDir: ray, me, rings: square(0, 30, 20), centroid: {e: 0, n: 30}, name: "Quad"}, compass: null})
+    expect(r.source).toBe("gemini")
+    expect(near(r.turnDeg)).toBeLessThan(1e-6)
+  })
+
+  test("wide and near: a ray off the footprint turns only to its nearest edge", () => {
+    const rings = square(0, 30, 20)
+    const s = bearingSpan(me, rings)!
+    const ray = dirFor(s.hi + 20, 0)
+    const r = resyncYaw({currentYaw: 0, gemini: {worldDir: ray, me, rings, centroid: {e: 0, n: 30}, name: "Quad"}, compass: null})
+    expect(near(angleDiff(worldDirToBearing(ray, r.yaw), s.hi))).toBeLessThan(1e-6)
+    expect(near(r.turnDeg + 20)).toBeLessThan(1e-6)
+  })
+
+  test("Gemini disagreeing with the compass falls back to the compass", () => {
+    const ray = dirFor(0, 0)
+    const fwd = dirFor(0, 0)
+    // Building really due north, but the compass says we face 90°.
+    const r = resyncYaw({currentYaw: 0, gemini: {worldDir: ray, me, rings: square(0, 200, 5), centroid: {e: 0, n: 200}, name: "Tower"}, compass: {forwardWorld: fwd, headingDeg: 90}})
+    expect(r.source).toBe("compass")
+    expect(near(angleDiff(worldDirToBearing(fwd, r.yaw), 90))).toBeLessThan(1e-6)
+    // ...and agreeing within tolerance keeps Gemini.
+    const ok = resyncYaw({currentYaw: 0, gemini: {worldDir: ray, me, rings: square(0, 200, 5), centroid: {e: 0, n: 200}, name: "Tower"}, compass: {forwardWorld: fwd, headingDeg: 12}})
+    expect(ok.source).toBe("gemini")
+  })
+
+  test("no compass: a huge Gemini turn is rejected; nothing at all keeps the yaw", () => {
+    const ray = dirFor(170, 0)
+    const r = resyncYaw({currentYaw: 0, gemini: {worldDir: ray, me, rings: square(0, 200, 5), centroid: {e: 0, n: 200}, name: "Tower"}, compass: null})
+    expect(r.source).toBe("none")
+    expect(r.yaw).toBe(0)
+    expect(resyncYaw({currentYaw: 1.2, gemini: null, compass: null}).yaw).toBe(1.2)
+  })
+
+  test("turns wrap across ±180°", () => {
+    const yaw = (179 * Math.PI) / 180
+    const ray = dirFor(5, yaw) // frame says 5°, truth is 0°: a -5° turn, not +355°
+    const r = resyncYaw({currentYaw: yaw, gemini: {worldDir: ray, me, rings: square(0, 200, 5), centroid: {e: 0, n: 200}, name: "Tower"}, compass: null})
+    expect(r.source).toBe("gemini")
+    expect(near(r.turnDeg + 5)).toBeLessThan(0.5)
+    expect(near(yawDiffDeg(-Math.PI + 0.01, Math.PI - 0.01))).toBeLessThan(1.2)
+  })
+
+  test("recenter position skips spot snapping", () => {
+    const p = enToLatLon({e: outside.e + 4, n: outside.n - 3})
+    const fix = {lat: p.lat, lon: p.lon, accuracyM: 5, timestampMs: 0, receivedMs: 0}
+    const snapped = chooseWearerPosition(fix, {e: 0, n: 0}, {nowMs: 0})
+    const raw = chooseWearerPosition(fix, {e: 0, n: 0}, {nowMs: 0, noSnap: true})
+    expect(snapped.source).toBe("spot")
+    expect(raw.source).toBe("gps")
+    expect(near(raw.en.e - (outside.e + 4))).toBeLessThan(0.5)
+  })
+})

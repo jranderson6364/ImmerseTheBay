@@ -2,11 +2,17 @@
  * Locked judge demo (`demoMode` on the controller): a fixed two-minute path a first-timer can't get lost in.
  *
  *   open   "Pinch to open the map."                     any pinch places the map in front of you
- *   aim    "Aim your right hand's ray at the Main Quad"  ONLY the stop's building can light up or be picked
- *   cards  "Pinch the card for the next one"            each card pinch shows the stop's next scripted card;
- *                                                        on the last card, a pinch moves on (Next Stop glows)
+ *   aim    "Point your right hand at the Main Quad"     ONLY the stop's building can light up or be picked
+ *   cards  "Pinch Next Card"                            each card pinch shows the stop's next scripted card;
+ *                                                        on the last card, a pinch moves on. Ask Me More and
+ *                                                        Next Stop stay hidden until the ask step / free roam.
+ *   archive "Look right · Pinch the Archive Gallery"      Main Quad only (`archive: true`): the collage right of the
+ *                                                        card explodes into framed real photos splayed out on the
+ *                                                        right; pinching any photo folds them back and moves on
  *          ... the same aim + cards for Huang ...
- *   ask    "Pinch Ask on the card"                       only the glowing Ask button (then a question chip or voice)
+ *   ask    "Pinch Ask Me More"                           Huang only (`ask: true`): only the glowing Ask button, which
+ *                                                        appears now (then a question chip or voice); the answer moves on
+ *          ... then aim + cards for Hoover Tower ...
  *   end    "Now it's all yours"                         the guided part is over: everything unlocks (free roam)
  *
  * Presenter controls: hold BOTH pinches for 5 s at any step to skip straight to free roam (for filming), and say
@@ -18,18 +24,23 @@
  * Pure TypeScript (no Lens Studio APIs), unit-tested in tests/demoscript.test.ts.
  */
 
-export type DemoStep = "open" | "aim" | "cards" | "ask" | "end" | "off"
+export type DemoStep = "open" | "aim" | "cards" | "archive" | "ask" | "end" | "off"
 
 export interface DemoStop {
   /** Landmark / card id. */
   id: string
-  /** Narration segment indices to show, in order (0 = overview). Two per stop keeps the demo near two minutes. */
+  /** Narration segment indices to show, in order (0 = overview). Two per stop keeps the three-stop demo near two and a half minutes. */
   cards: number[]
+  /** After the cards, open the Archive Gallery (Core/Archive.ts) before moving on. */
+  archive?: boolean
+  /** After the cards (and archive), the Ask Me More question before moving on. */
+  ask?: boolean
 }
 
 export const DEMO_STOPS: DemoStop[] = [
-  {id: "mainquad", cards: [0, 1]},
-  {id: "huang", cards: [0, 2]}
+  {id: "mainquad", cards: [0, 1], archive: true},
+  {id: "huang", cards: [0, 2], ask: true},
+  {id: "hoover", cards: [0, 1]}
 ]
 
 /** A question the checked cards answer, so it works even when the venue Wi-Fi doesn't. */
@@ -37,10 +48,23 @@ export const DEMO_STOPS: DemoStop[] = [
 export const DEMO_SUGGESTED_QUESTION = "Who's it named after?"
 
 /** Spoken when Ask is pinched before the ask step. */
-export const DEMO_ASK_LATER_LINE = "Questions come at the end. Pinch the card for the next one."
+export const DEMO_ASK_LATER_LINE = "Questions come a little later. Pinch the card for the next one."
 
-/** The ask step moves on once the answer finishes speaking, or after this long whatever happens (s). */
-export const DEMO_ASK_TIMEOUT_SEC = 25
+/**
+ * The ask step moves on when the answer FINISHES speaking (its own done callback), never on a timer that could cut
+ * it off. Safety nets only: no answer at all after DEMO_ASK_TIMEOUT_SEC (the web lookup tries two providers at up
+ * to 18 s each), or an answer whose audio never reports finishing (demoAnswerMaxSec).
+ */
+export const DEMO_ASK_TIMEOUT_SEC = 45
+
+/** Pause between the end of the answer and the closing line (s). */
+export const DEMO_AFTER_ANSWER_SEC = 0.8
+
+/** Most an answer may take from the moment it is handed to speech: TTS latency plus generous reading time (s). */
+export function demoAnswerMaxSec(text: string): number {
+  const words = (text || "").trim().split(/\s+/).filter(Boolean).length
+  return 20 + words / 2
+}
 
 /** Hold both pinches this long (s) to skip the guided demo. The countdown tip shows after DEMO_SKIP_SHOW_SEC. */
 export const DEMO_SKIP_HOLD_SEC = 5
@@ -66,7 +90,7 @@ export interface DemoState {
   card: number
 }
 
-export type DemoEvent = "mapOpened" | "picked" | "cardPinch" | "answered" | "restart"
+export type DemoEvent = "mapOpened" | "picked" | "cardPinch" | "archiveDone" | "answered" | "restart"
 
 export function demoStart(): DemoState {
   return {step: "open", stop: 0, card: 0}
@@ -84,17 +108,31 @@ export function demoNext(s: DemoState, ev: DemoEvent, stops: DemoStop[] = DEMO_S
       if (ev !== "cardPinch") return s
       const n = stops[s.stop] ? stops[s.stop].cards.length : 0
       if (s.card + 1 < n) return {step: "cards", stop: s.stop, card: s.card + 1}
-      if (s.stop + 1 < stops.length) return {step: "aim", stop: s.stop + 1, card: 0}
-      return {step: "ask", stop: s.stop, card: s.card}
+      if (stops[s.stop] && stops[s.stop].archive) return {step: "archive", stop: s.stop, card: s.card}
+      return afterCards(s, stops)
     }
+    case "archive":
+      return ev === "archiveDone" ? afterCards(s, stops) : s
     case "ask":
-      return ev === "answered" ? {step: "end", stop: s.stop, card: s.card} : s
+      return ev === "answered" ? afterStop(s, stops) : s
     default:
       return s
   }
 }
 
-/** The stop's building ("" outside a stop). In `ask` and `end`, the last stop's building stays in focus. */
+/** After a stop's cards (and archive): its question, if it has one, else the next stop. */
+function afterCards(s: DemoState, stops: DemoStop[]): DemoState {
+  if (stops[s.stop] && stops[s.stop].ask) return {step: "ask", stop: s.stop, card: s.card}
+  return afterStop(s, stops)
+}
+
+/** Where a finished stop leads: the next stop's aim, or free roam after the last one. */
+function afterStop(s: DemoState, stops: DemoStop[]): DemoState {
+  if (s.stop + 1 < stops.length) return {step: "aim", stop: s.stop + 1, card: 0}
+  return {step: "end", stop: s.stop, card: s.card}
+}
+
+/** The stop's building ("" outside a stop). In `ask` and `end`, that stop's building stays in focus. */
 export function demoStopId(s: DemoState, stops: DemoStop[] = DEMO_STOPS): string {
   if (s.step === "open" || s.step === "off") return ""
   return stops[s.stop] ? stops[s.stop].id : ""
@@ -118,15 +156,20 @@ export function demoIsLastCard(s: DemoState, stops: DemoStop[] = DEMO_STOPS): bo
   return !!stop && s.card === stop.cards.length - 1
 }
 
-/** True when the last card's pinch leads to another building (Next Stop), false when it leads to the question. */
+/** True when the last card's pinch leads straight to another building (Next Stop), not a question or the end. */
 export function demoHasNextStop(s: DemoState, stops: DemoStop[] = DEMO_STOPS): boolean {
-  return s.stop + 1 < stops.length
+  const stop = stops[s.stop]
+  return s.stop + 1 < stops.length && !(stop && (stop.ask || stop.archive))
+}
+
+/** True when the stop's last card leads to its Archive Gallery. */
+export function demoHasArchive(s: DemoState, stops: DemoStop[] = DEMO_STOPS): boolean {
+  return !!stops[s.stop] && !!stops[s.stop].archive
 }
 
 /** Step label for the caption, like "Stop 1 of 2". */
 export function demoProgress(s: DemoState, stops: DemoStop[] = DEMO_STOPS): string {
-  if (s.step === "aim" || s.step === "cards") return `Stop ${s.stop + 1} of ${stops.length}`
-  if (s.step === "ask") return "Last step"
+  if (s.step === "aim" || s.step === "cards" || s.step === "archive" || s.step === "ask") return `Stop ${s.stop + 1} of ${stops.length}`
   return ""
 }
 
@@ -137,22 +180,23 @@ export function demoHint(s: DemoState, label: string, onTarget = false, stops: D
     case "open":
       return "Pinch your thumb and index finger together to open the map."
     case "aim":
-      if (onTarget) return `${t} turned blue. Pinch now!`
-      return s.stop === 0
-        ? `Raise your right hand. Aim its ray at ${t}, the big gold one.`
-        : `Now aim at ${t}, the gold one. Follow the arc.`
+      if (onTarget) return `${t} is blue. Pinch now!`
+      return s.stop === 0 ? `Point your right hand at ${t}, then pinch` : `Point at ${t}, then pinch`
     case "cards": {
       const n = stops[s.stop] ? stops[s.stop].cards.length : 1
       const count = `Card ${s.card + 1} of ${n}`
-      // The animation, person and diagram sit beside the card, past the edge of the display: say where to look.
-      const look = s.card === 0 ? "  ·  Turn your head left and right to see more" : ""
-      if (!demoIsLastCard(s, stops)) return `${count}${look}  ·  Aim at the card and pinch for the next one`
-      return demoHasNextStop(s, stops) ? `${count}  ·  Pinch Next Stop on the card to move on` : `${count}  ·  Pinch the card when you're ready for the last step`
+      // The 3D animation and the founder sit either side of the card, past the edge of the display: say where to look.
+      const look = s.card === 0 ? "  ·  Look left and right" : ""
+      if (!demoIsLastCard(s, stops)) return `${count}${look}  ·  Pinch Next Card`
+      if (demoHasArchive(s, stops)) return `${count}  ·  Pinch the card for real photos`
+      return demoHasNextStop(s, stops) ? `${count}  ·  Pinch the card for the next stop` : `${count}  ·  Pinch the card to continue`
     }
+    case "archive":
+      return "Look right  ·  Pinch the Archive Gallery"
     case "ask":
-      return `Pinch the glowing Ask button on the card, then tap a question or say one. Try "${DEMO_SUGGESTED_QUESTION}"`
+      return `Pinch Ask Me More, then ask out loud or tap a question. Try "${DEMO_SUGGESTED_QUESTION}"`
     case "end":
-      return "Now it's all yours: point at any building and pinch  ·  Pinch Ask on a card to ask"
+      return "Now it's all yours  ·  Pinch any building  ·  Pinch Ask Me More to ask"
     default:
       return ""
   }
@@ -163,15 +207,17 @@ export function demoLine(s: DemoState, label: string): string {
   const t = label || "the gold building"
   switch (s.step) {
     case "open":
-      return "Welcome to Retrospecs, a tour guide for Stanford. Pinch your thumb and finger together to open the map."
+      return "Welcome to Retrospecs, your Stanford tour guide. Pinch your thumb and finger together to open the map."
     case "aim":
       return s.stop === 0
-        ? `Raise your right hand. The ray from your hand is your cursor. Aim it at ${t}, the big gold building. When it turns blue, pinch.`
-        : `Next stop: ${t}. Follow the arc and aim at the gold building, then pinch.`
+        ? `Point your right hand at ${t}. When it turns blue, pinch.`
+        : `Next up, ${t}. Point at it and pinch.`
+    case "archive":
+      return "Want to see the real thing? Look to your right and pinch the archive gallery."
     case "ask":
-      return "Last thing. You can ask me anything. Pinch the glowing Ask button on the card, then tap a question, or just say it out loud."
+      return "Now you ask. Pinch Ask Me More, and ask me anything."
     case "end":
-      return "That's the guided part. Now it's all yours. Point at any building on the map and pinch, and pinch Ask on its card to ask me anything."
+      return "That's the guided tour. Now it's all yours. Pinch any building to explore."
     default:
       return ""
   }
@@ -181,12 +227,19 @@ export function demoLine(s: DemoState, label: string): string {
 export function demoNudgeLine(s: DemoState, label: string): string {
   switch (s.step) {
     case "aim":
-      return `Aim at ${label || "the gold building"} first, then pinch.`
+      return `Point at ${label || "the gold building"} first, then pinch.`
     case "cards":
-      return "Point your right hand at the card, then pinch."
+      return "Point at the card, then pinch."
+    case "archive":
+      return "Look right, point at the archive gallery, and pinch."
     case "ask":
-      return "Pinch the glowing Ask button on the card."
+      return "Pinch Ask Me More on the card."
     default:
       return ""
   }
+}
+
+/** Caption while the Archive Gallery's prints are out. */
+export function demoArchiveOpenHint(): string {
+  return "Look over the photos  ·  Pinch any photo to put them back and move on"
 }

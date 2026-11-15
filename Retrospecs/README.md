@@ -1,30 +1,84 @@
 # Retrospecs Lens
 
-A Stanford tour guide in your glasses. A 3D campus map unfolds on the floor around you, lined up with the real campus. Look at a building and pinch to hear who it's named for, the founder story behind it, and what's inside. The four centerpiece stops (Hoover Tower, Huang, the HP Garage and Memorial Church) each play an illustrated story deck alongside the narration. Ask anything the checked cards don't cover, and the guide searches the web live and tells you the answer came from the web. Concept: [docs/retrospecs-concept.md](../docs/retrospecs-concept.md).
+A Stanford tour guide in your glasses. A 3D campus map unfolds on the floor around you, lined up with the real campus. Look at a building and pinch to hear who it's named for, the founder story behind it, and what's inside. Main Quad, Huang and Hoover Tower each play an illustrated story deck alongside the narration, and open an Archive Gallery of real historical photos. Ask anything the checked cards don't cover, and the guide searches the web live and tells you the answer came from the web. Concept: [docs/retrospecs-concept.md](../docs/retrospecs-concept.md).
 
 Built on Snap's MIT-licensed [Depth Cache sample](https://github.com/specs-devs/samples/tree/5.15.4) (`5.15.4` branch). It reuses the sample's Remote Service Gateway setup, ASR, and WorldLabel prefab. Map data (buildings, roads, bike and foot paths) © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0.
 
+## For judges: the two-minute tour
+
+1. **Put the Specs on and pinch.** The RETROSPECS title lifts away. Pinch again and a 3D map of Stanford unfolds in front of you. It's built from real OpenStreetMap footprints, roads and bike paths.
+2. **Main Quad.** Point at the glowing building and pinch. An illustrated story card opens, with an animated 3D lesson on its left, and the guide narrates. Pinch the card for the next story.
+3. **Archive Gallery.** Look right and pinch the photo collage. It explodes into real archival photos of the Quad from the 1890s to the 1906 earthquake, each credited. Pinch any photo to fold them back.
+4. **Huang, then a question.** Same flow at the Huang Engineering Center. Then pinch **Ask Me More** and ask anything out loud. Checked facts answer instantly and offline. Anything else is looked up live and labelled as coming from the web.
+5. **Hoover Tower**, then free roam: every building on the map is yours to explore.
+
+Presenter controls: hold both pinches for 5 s to skip to free roam, and say "restart demo" to reset for the next judge.
+
+## How it works
+
+```
+ Spectacles input (SIK hand rays, pinches, ASR)
+          │
+          ▼
+ Scripts/RetrospecsController.ts ── the conductor: modes, pinches, the guided demo, focus on a building
+          │
+          ├─ Scripts/RetrospecsMap.ts ........ builds the 3D campus at runtime from Data/CampusData.ts + PathsData.ts
+          ├─ Scripts/RetrospecsInfoPanel.ts .. the story card, side screens and the Archive Gallery
+          ├─ Scripts/RetrospecsExperiences.ts  the animated 3D lesson beside each stop
+          ├─ Scripts/RetrospecsGuide.ts ...... voice: baked narration clips, Gemini Q&A, live web answers, TTS
+          └─ Scripts/AskChat.ts .............. the Ask Me More window (mic, transcript, suggested questions)
+
+ Core/*.ts: pure TypeScript logic with no Lens Studio APIs, unit-tested with bun (tests/*.test.ts)
+ Data/*.ts: generated data (OSM campus, paths, narration). Art/: baked cards, holograms, archive photos
+```
+
+**Trust model.** The guide only states facts from `Core/Cards.ts`, and every fact there carries a source URL that was opened and checked. The AI picks and frames those facts but can't add new ones: `Core/Guide.ts` validates every answer and drops invented buildings, facts and numbers. Live web answers (`Core/AskLive.ts`) are always labelled as coming from the web. Archive photos are public domain or Creative Commons, with credits on each print ([Art/ARCHIVE_PHOTOS.md](Assets/Retrospecs/Art/ARCHIVE_PHOTOS.md)). The people holograms are AI illustrations and are documented as such ([Art/PEOPLE_HOLOGRAMS.md](Assets/Retrospecs/Art/PEOPLE_HOLOGRAMS.md)).
+
 ## What's here
+
+Everything Retrospecs-specific lives under `Assets/Retrospecs/`. The rest of `Assets/` is Snap's Depth Cache sample, which supplies the gateway, ASR and label prefab.
+
+**Scripts: Lens Studio components and runtime glue**
 
 | Path | What it is |
 | --- | --- |
-| `Assets/Retrospecs/Data/CampusData.ts` | **Generated.** 562 OSM buildings within 1.1 km of Huang: footprints, heights, roof triangles, plus 13 landmark records. Regenerate with `bun Retrospecs/tools/bake-campus.ts`. |
-| `Assets/Retrospecs/Core/Geo.ts` | Lat/long to local metres, bearings, wall-pinch calibration math. Pure TypeScript, unit-tested. |
-| `Assets/Retrospecs/Core/MapMesh.ts` | Footprints to MeshBuilder arrays (roofs and walls, chunks kept under 65k vertices), plus tubes and arcs. Unit-tested. |
-| `Assets/Retrospecs/Core/Cards.ts` | **The only facts the guide may speak**, each with a source URL. Edit facts here. |
-| `tools/render_story_decks.py` | Renders the four centerpiece decks plus one or two illustrated cards for every other selectable building, using the sourced facts in `Cards.ts`. Run `python Retrospecs/tools/render_story_decks.py` after editing them. |
-| `Assets/Retrospecs/Core/Guide.ts` | Gemini prompt and schema, the validator (drops invented buildings, facts and numbers), profile themes, fact picker, point-to-guess scoring. Unit-tested. |
-| `Assets/Retrospecs/Scripts/RetrospecsMap.ts` | Builds the map at runtime, plus highlights, labels, threads, arcs and sightline pillars. |
-| `Assets/Retrospecs/Core/AskLive.ts` | Ask further: grounded-answer prompt, reply parsing (Gemini grounding and OpenAI citations), speech cleanup, "from the web" labelling. Unit-tested. |
-| `Assets/Retrospecs/Scripts/RetrospecsGuide.ts` | Gemini Q&A, live web answers (`askLive`), and OpenAI text-to-speech over the Remote Service Gateway. |
-| `Assets/Retrospecs/Scripts/RetrospecsController.ts` | Calibration, floor/table map, gaze pick, voice commands, coach, Next Stop, map respawn, point-to-guess (off for the demo), saved progress. |
-| `Assets/Retrospecs/Scripts/StoryDeck.ts` · `StoryHolograms.ts` | **Generated.** Illustrated story cards and opening loops for each stop. See [docs/story-decks.md](docs/story-decks.md). |
-| `Assets/Retrospecs/Core/Coach.ts` | Indoor demo coach: the Main-Quad-only first step and its cursor-aware tips. Unit-tested. |
-| `Assets/Retrospecs/Core/DemoScript.ts` | Locked judge demo: Main Quad → Huang → one question, with directions at every step. Unit-tested. |
-| `Assets/Retrospecs/Core/NextSpot.ts` · `Centerpieces.ts` | Next Stop tour order, plus centerpiece highlighting and pick padding. Unit-tested. |
-| `Assets/Retrospecs/Core/CardLayout.ts` | Card sizes in degrees at 140 cm, using Snap's far-field guidance, plus button hit areas. Unit-tested. |
-| `Assets/Retrospecs/Core/Respawn.ts` | "Bring the map here" rules. Unit-tested. |
-| `tests/` | `bun test Retrospecs/tests` (263 tests). |
+| `Scripts/RetrospecsController.ts` | The main component. Title screen, guided judge demo, calibration and indoor modes, pinch routing, focus on a building, voice commands, Next Stop, map respawn. |
+| `Scripts/RetrospecsMap.ts` | Builds the map at runtime, plus highlights, labels, threads, arcs and sightline pillars. |
+| `Scripts/RetrospecsInfoPanel.ts` | The focus card (baked story-card PNGs with live buttons), the diagram and people side screens, and the Archive Gallery collage that explodes into prints. |
+| `Scripts/RetrospecsExperiences.ts` | Builds and animates the 3D lesson beside each stop (`Core/Experiences.ts`). |
+| `Scripts/RetrospecsGuide.ts` | Voice and brain: baked ElevenLabs narration, Gemini Q&A with a response schema, live web answers, OpenAI TTS over the Remote Service Gateway. |
+| `Scripts/AskChat.ts` · `AskBridge.ts` | The Ask Me More window, plus the hand-off from the sample's mic bubble. |
+| `Scripts/TitleScreen.ts` | The opening RETROSPECS title card. |
+| `Scripts/RetrospecsLocator.ts` · `RetrospecsOverlay.ts` | Outdoors: GPS plus Gemini identify the real building you're looking at, and a life-size nametag and outline float on it. |
+| `Scripts/RetrospecsShowcase.ts` · `RetrospecsMoney.ts` | Optional extras (off by default): exploded product diagrams and real-scale "pile of money" gifts. |
+| `Scripts/LabelStyle.ts` · `ScreenBezel.ts` | Small visual helpers: free-floating WorldLabels and TV bezels. |
+| `Scripts/StoryDeck.ts` · `StoryHolograms.ts` · `PeopleHolograms.ts` · `ArchivePhotos.ts` | Texture lookups (`requireAsset` switches). `StoryDeck` and `ArchivePhotos` are **generated** by their render scripts. |
+
+**Core: pure logic, unit-tested (`tests/<name>.test.ts`)**
+
+| Path | What it is |
+| --- | --- |
+| `Core/Cards.ts` | **The only facts the guide may speak**, each with a source URL. Edit facts here. |
+| `Core/Guide.ts` | Gemini prompt and schema, the validator (drops invented buildings, facts and numbers), profile themes, the fact picker and point-to-guess scoring. |
+| `Core/AskLive.ts` · `AskBubble.ts` | Ask further (web-grounded answers, labelled as from the web), plus spoken-question routing. |
+| `Core/DemoScript.ts` | The locked judge demo as a state machine: Main Quad → Archive Gallery → Huang → question → Hoover → free roam. |
+| `Core/Archive.ts` | Archive Gallery layout and animation (`tools/archive-photos.json` holds the photo list and credits). |
+| `Core/Experiences.ts` · `Products.ts` · `Money.ts` · `LandmarkModels.ts` | Procedural 3D: per-building lessons, exploded products, money piles, low-poly landmark models. |
+| `Core/Geo.ts` · `MapMesh.ts` · `Pick.ts` · `Locate.ts` · `Overlay.ts` | Geometry: lat/long ↔ map frame, calibration math, mesh building, picking on the map and in the world, GPS snapping, the real-world overlay. |
+| `Core/Focus.ts` · `CardLayout.ts` · `CardTheme.ts` · `LookNudge.ts` | Card and side-screen layout in degrees at 140 cm (Snap's far-field guidance), themes, and "look left / right" nudges. |
+| `Core/Selection.ts` · `NextSpot.ts` · `Centerpieces.ts` · `Respawn.ts` · `Coach.ts` | Interaction rules: selection lock-in, Next Stop order, centerpiece emphasis, "bring the map here", and the indoor coach. |
+| `Core/Throttle.ts` · `Sfx.ts` | Gateway request pacing and UI sounds. |
+
+**Data, art, tools, tests**
+
+| Path | What it is |
+| --- | --- |
+| `Data/CampusData.ts` · `PathsData.ts` | **Generated.** 562 OSM buildings and 2,086 paths around Huang. Regenerate with `bun Retrospecs/tools/bake-campus.ts` / `bake-paths.ts`. |
+| `Data/NarrationData.ts` · `NarrationClips.ts` | **Generated** by `tools/build-narration.ts` from `tools/narration/narration.json`. The baked mp3s are in `Audio/narration/`. |
+| `Art/<building>/` | Baked story cards, hologram loops, 3D models and archive photos for each building. Credits: [ARCHIVE_PHOTOS.md](Assets/Retrospecs/Art/ARCHIVE_PHOTOS.md), [PEOPLE_HOLOGRAMS.md](Assets/Retrospecs/Art/PEOPLE_HOLOGRAMS.md). |
+| `tools/` | Offline bakers, listed in [tools/README.md](tools/README.md). |
+| `tests/` | `bun test Retrospecs/tests` (332 tests), covering every `Core/` module plus the generated data. |
+| `docs/` | [story-decks.md](docs/story-decks.md) (how the cards are made), plus card-style and model previews. |
 
 ## One-time setup in Lens Studio (about 15 minutes)
 
@@ -60,7 +114,7 @@ Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is th
 
 | Input | What happens |
 | --- | --- |
-| **Guided judge demo** (`demoMode` on the controller, default ON) | Any pinch opens the map, then a fixed path ([Core/DemoScript.ts](Assets/Retrospecs/Core/DemoScript.ts)): (1) aim at the **Main Quad** (only it can light up or be picked) and pinch; (2) pinch the card for its next card; on the last card, Next Stop blinks and a pinch on the card moves on; (3) the same for **Huang**; (4) pinch your **left** hand and ask one question (the bubble works too). The demo moves on when the answer finishes, or after 25 s. (5) "Now it's all yours": **everything unlocks** (free roam, exactly as with `demoMode` off). Each stop plays only the narration segments listed in `DEMO_STOPS` (Main Quad 0, 1 · Huang 0, 2), so it stays near two minutes. Every step has a spoken direction and an on-screen tip. While guided, cards never time out, and map picks, voice commands, respawn and the card's X are off. **Presenter controls:** hold **both pinches for 5 s** at any point to skip straight to free roam (for filming; a countdown shows after 1 s), and say **"restart demo"** any time to set the guided path up again for the next judge. |
+| **Guided judge demo** (`demoMode` on the controller, default ON) | Any pinch opens the map, then a fixed path ([Core/DemoScript.ts](Assets/Retrospecs/Core/DemoScript.ts)): (1) aim at the **Main Quad** (only it can light up or be picked) and pinch; (2) pinch the card for its next card; on the last card, a pinch on the card moves on; (3) **Archive Gallery**: look right and pinch the small photo collage (it breathes); it explodes into framed archival photos splayed out on the right, and pinching any photo folds them back and moves on (see [Art/ARCHIVE_PHOTOS.md](Assets/Retrospecs/Art/ARCHIVE_PHOTOS.md)); (4) aim and cards for **Huang**, then pinch the glowing Ask Me More and ask one question; the demo moves on when the answer finishes; (5) aim and cards for **Hoover Tower**; (6) "Now it's all yours": **everything unlocks** (free roam, exactly as with `demoMode` off). Each stop plays only the narration segments listed in `DEMO_STOPS` (Main Quad 0, 1 · Huang 0, 2 · Hoover 0, 1), so it stays near two minutes. Every step has a spoken direction and an on-screen tip. While guided, cards never time out, and map picks, voice commands, respawn and the card's X are off. **Presenter controls:** hold **both pinches for 5 s** at any point to skip straight to free roam (for filming; a countdown shows after 1 s), and say **"restart demo"** any time to set the guided path up again for the next judge. |
 | **Indoor demo coach** (`indoorDemo`, used when `demoMode` is off) | No calibration: any pinch opens the map in front of you. A short coach then walks a first-timer through it: (1) "Aim its ray at the Main Quad"; only that building can be selected until it's picked; (2) "Pinch the card for more · Next spot · X to close"; (3) "You've got it…", which fades after 8 s. Say "demo" or "show me how" to run it again. Turn it OFF when filming outdoors to get the start-point calibration below. |
 | **Calibrate** (first thing, `indoorDemo` off) | At the default start point, stand where the North-South and East-West walkways cross just east of Huang, face east between Physics and Moore, and pinch once. The pink arrow at “You are here” follows your facing direction. With `useStartPoint` off, use two wall pinches at the surveyed spot instead. |
 | **Right pinch** | Tells you about the building you're looking at: on the map if you look down, or the real direction if you look out. |

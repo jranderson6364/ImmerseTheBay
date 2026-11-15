@@ -11,7 +11,7 @@
  * in degrees clockwise from north. BUILDINGS rings are in DECIMETRES (divide by 10).
  */
 import {BUILDINGS, BakedBuilding, CAMPUS_RADIUS_M, LANDMARKS} from "../Data/CampusData"
-import {EN, angleDiff, bearingDeg, distanceM, enToLatLon, latLonToEN, norm360} from "./Geo"
+import {DEG, EN, V3, angleDiff, bearingDeg, distanceM, enToLatLon, latLonToEN, mapYawFor, norm360, worldDirToBearing} from "./Geo"
 
 // ---------------------------------------------------------------------------
 // Standing spots
@@ -88,6 +88,8 @@ export interface WearerOptions {
   nowMs: number
   /** Explicitly chosen spot ("" = auto). An indoor spot forces the survey position. */
   forcedSpotId?: string
+  /** Use the raw GPS fix, never a snapped standing spot (recenter: the spots' radii are wide and some are estimates). */
+  noSnap?: boolean
 }
 
 export function chooseWearerPosition(fix: GpsFix | null, survey: EN, o: WearerOptions): WearerPosition {
@@ -103,7 +105,7 @@ export function chooseWearerPosition(fix: GpsFix | null, survey: EN, o: WearerOp
   const fixEN = latLonToEN(fix.lat, fix.lon)
   const offM = Math.hypot(fixEN.e, fixEN.n)
   if (offM > CAMPUS_RADIUS_M) return {en: survey, source: "survey", spotId: "", reason: `GPS fix is ${(offM / 1000).toFixed(1)} km from campus (outside the ${CAMPUS_RADIUS_M} m map): using survey position`}
-  const s = nearestSpot(fix.lat, fix.lon)
+  const s = o.noSnap ? null : nearestSpot(fix.lat, fix.lon)
   if (s) return {en: latLonToEN(s.spot.lat, s.spot.lon), source: "spot", spotId: s.spot.id, reason: `GPS ±${Math.round(fix.accuracyM)} m snapped to ${s.spot.name} (${Math.round(s.distanceM)} m away)`}
   return {en: latLonToEN(fix.lat, fix.lon), source: "gps", spotId: "", reason: `GPS ±${Math.round(fix.accuracyM)} m`}
 }
@@ -410,6 +412,120 @@ export function parseIdentifyReply(raw: unknown, candidateIds: string[]): Identi
     pixel = {x, y}
   }
   return {ok: true, buildingId: id, confidence: conf, pixel: id === "none" ? null : pixel}
+}
+
+// ---------------------------------------------------------------------------
+// Recenter (voice "recenter"): re-derive the map yaw from a Gemini-identified building, or the compass
+
+export interface BearingSpan {
+  /** Clockwise edges of the footprint as seen from the wearer (deg, [0, 360)). */
+  lo: number
+  hi: number
+  centre: number
+  width: number
+}
+
+/** Bearing span of a footprint's outer ring as seen from p (null if p is inside it or there's no ring). */
+export function bearingSpan(p: EN, rings: EN[][]): BearingSpan | null {
+  if (!rings.length || !rings[0].length || insideFootprint(p, rings)) return null
+  let ce = 0
+  let cn = 0
+  for (const v of rings[0]) {
+    ce += v.e
+    cn += v.n
+  }
+  const ref = bearingDeg(p, {e: ce / rings[0].length, n: cn / rings[0].length})
+  let lo = Infinity
+  let hi = -Infinity
+  for (const v of rings[0]) {
+    const d = angleDiff(bearingDeg(p, v), ref)
+    lo = Math.min(lo, d)
+    hi = Math.max(hi, d)
+  }
+  if (hi - lo >= 180) return null // wraps around the wearer: no useful direction
+  return {lo: norm360(ref + lo), hi: norm360(ref + hi), centre: norm360(ref + (lo + hi) / 2), width: hi - lo}
+}
+
+/** Bearing b clamped into a span (unchanged when already inside). */
+export function clampIntoSpan(b: number, s: BearingSpan): number {
+  const fromLo = norm360(b - s.lo)
+  if (fromLo <= s.width) return norm360(b)
+  // Outside: snap to the nearer edge.
+  return Math.abs(angleDiff(b, s.lo)) <= Math.abs(angleDiff(b, s.hi)) ? s.lo : s.hi
+}
+
+export interface ResyncInput {
+  /** Current map yaw (radians), from calibration or an earlier recenter. */
+  currentYaw: number
+  /** Gemini's pick: horizontal world direction of its pixel ray (or the gaze), and the building as seen from `me`. */
+  gemini: {worldDir: V3; me: EN; rings: EN[][]; centroid: EN; name: string} | null
+  /** Horizontal camera forward (world) and the north-aligned compass heading at the same moment. */
+  compass: {forwardWorld: V3; headingDeg: number} | null
+  /** Gemini's yaw must land within this of the compass yaw (covers a possible ~13° magnetic offset). */
+  compassTolDeg?: number
+  /** Without a compass, a Gemini turn bigger than this is treated as a misidentification. */
+  noCompassMaxDeg?: number
+  /** A footprint narrower than this (deg) and farther than farM is aimed at its centre... */
+  narrowSpanDeg?: number
+  farM?: number
+}
+
+export interface ResyncYaw {
+  yaw: number
+  source: "gemini" | "compass" | "none"
+  /** Signed change from currentYaw (deg). */
+  turnDeg: number
+  reason: string
+}
+
+/** Signed smallest difference between two yaws, degrees. */
+export function yawDiffDeg(a: number, b: number): number {
+  return angleDiff(a / DEG, b / DEG)
+}
+
+/**
+ * The new map yaw for a recenter. Gemini first: point the pixel ray at the building (its centre when the building is
+ * narrow and far, else the smallest turn that puts the ray on its footprint), checked against the compass when there
+ * is one. Otherwise the compass alone, otherwise no change.
+ */
+export function resyncYaw(i: ResyncInput): ResyncYaw {
+  const tol = i.compassTolDeg == null ? 30 : i.compassTolDeg
+  const maxNoCompass = i.noCompassMaxDeg == null ? 90 : i.noCompassMaxDeg
+  const narrow = i.narrowSpanDeg == null ? 15 : i.narrowSpanDeg
+  const far = i.farM == null ? 60 : i.farM
+  const compassYaw = i.compass ? mapYawFor(i.compass.forwardWorld, i.compass.headingDeg) : null
+  const result = (yaw: number, source: ResyncYaw["source"], reason: string): ResyncYaw => ({yaw, source, turnDeg: yawDiffDeg(yaw, i.currentYaw), reason})
+  let why = "no building identified"
+  if (i.gemini) {
+    const g = i.gemini
+    const rayB = worldDirToBearing(g.worldDir, i.currentYaw)
+    let target: number | null = null
+    let how = ""
+    const span = bearingSpan(g.me, g.rings)
+    if (!g.rings.length) {
+      target = bearingDeg(g.me, g.centroid)
+      how = "its centre"
+    } else if (span) {
+      const farEnough = distanceM(g.me, g.centroid) >= far
+      if (span.width <= narrow && farEnough) {
+        target = span.centre
+        how = "its centre"
+      } else {
+        target = clampIntoSpan(rayB, span)
+        how = `its nearest edge (${Math.round(span.width)}° wide)`
+      }
+    } else why = `you seem to be inside ${g.name}`
+    if (target != null) {
+      const yaw = mapYawFor(g.worldDir, target)
+      if (compassYaw != null && Math.abs(yawDiffDeg(yaw, compassYaw)) > tol) {
+        why = `${g.name} disagrees with the compass by ${Math.round(Math.abs(yawDiffDeg(yaw, compassYaw)))}°`
+      } else if (compassYaw == null && Math.abs(yawDiffDeg(yaw, i.currentYaw)) > maxNoCompass) {
+        why = `${g.name} would turn the map ${Math.round(Math.abs(yawDiffDeg(yaw, i.currentYaw)))}° (no compass to confirm)`
+      } else return result(yaw, "gemini", `lined up on ${g.name}, ${how}`)
+    }
+  }
+  if (compassYaw != null) return result(compassYaw, "compass", `compass (${why})`)
+  return result(i.currentYaw, "none", why + ", no compass")
 }
 
 // ---------------------------------------------------------------------------

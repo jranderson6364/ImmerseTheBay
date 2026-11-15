@@ -136,3 +136,28 @@ export function isTourCommand(raw: string): boolean {
     /^(i like|i love|i study|i'?m (a|an|into|studying)|i am (a|an|into|studying)|my (major|favou?rite))\b/.test(t)
   )
 }
+
+/**
+ * The building a "just show me where it is" request names ("show me where Hoover Tower is", "where's Green
+ * Library?", "find the HP garage"), or "" when the question asks anything more ("where is Hoover and when was it
+ * built?", "why is Hoover where it is?"). The Ask chat selects that building on the map and closes instead of answering.
+ */
+export function locateOnlyTarget(question: string, cards: Card[]): string {
+  const id = buildingMentioned(question, cards)
+  if (!id) return ""
+  const card = cards.find((c) => c.id === id)
+  if (!card) return ""
+  // Replace the building's name with X (longest phrase first), then the rest must be a pure "where / show me".
+  let q = normalizeForMatch(question)
+  const phrases = phrasesFor(card).sort((a, b) => b.length - a.length)
+  for (const p of phrases) q = q.split(" " + p + " ").join(" X ")
+  q = q.replace(/\s+/g, " ").trim()
+  const lead = "(?:(?:hey|ok|okay|um|uh|so) )*(?:(?:can|could|would) you |please |i want to see |i d like to see )*"
+  const tail = "(?: (?:is|are|located|at|on the map|please|again|for me))*"
+  const the = "(?:the )?"
+  const patterns = [
+    `^${lead}(?:show me|show|point (?:me )?(?:to|at|out)|find|highlight|select|take me to|go to|open)(?: where)? ${the}X${tail}$`,
+    `^${lead}(?:where is|where s|wheres|where are|which (?:one|building) is|where can i find|where do i find) ${the}X${tail}$`
+  ]
+  return patterns.some((p) => new RegExp(p).test(q)) ? id : ""
+}

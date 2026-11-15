@@ -4,7 +4,9 @@ import {
   BELL_GROUPS, CARILLON_BELLS, CARILLON_ORIGINAL, CLARK_LOOP, DESIGN_SCALE_CM, KL_BEADS, KL_BUNCHES, KL_LOOP, KL_SQUEEZE, KL_X0, KL_X1, KL_XB, KL_XC,
   clarkWindow, icosahedron, klystronBeadX, klystronBunching, klystronPulseAge, EXPERIENCES, EXPERIENCE_MESH_BUDGET, EXPERIENCE_VERTEX_BUDGET, EXP_COLORS,
   GATES_EDGES, GATES_NODES, GPS_PIN, bellGroupSlots, bellSlot, buildNode, experienceById, experienceFor, experienceStats, labelWeight, pageRank,
-  posedBounds, qAxis, qFromTo, qMul, qRot, satellitePositions, surferWalks, visibleSatellites, windowOpen
+  posedBounds, qAxis, qFromTo, qMul, qRot, satellitePositions, surferWalks, visibleSatellites, windowOpen,
+  HOOVER_LOOP, HOOVER_STRIKE, HUANG_HOP_S, HUANG_LOOP, HUANG_PARALLEL_START, HUANG_SERIAL_START, MQ_ARCH_Z, MQ_CHURCH_OFF, MQ_LOOP, MQ_T,
+  hooverSwing, huangCoreHeight, huangWave
 } from "../Assets/Retrospecs/Core/Experiences"
 import {buildPrims, primitiveVertexCount} from "../Assets/Retrospecs/Core/Products"
 
@@ -13,9 +15,9 @@ const SAMPLE_TIMES: number[] = []
 for (let t = 0; t <= 30; t += 0.1) SAMPLE_TIMES.push(t)
 
 describe("experiences: registry", () => {
-  test("ten experiences covering the key buildings", () => {
-    expect(EXPERIENCES.map((e) => e.id)).toEqual(["huang", "gates", "spilker", "y2e2", "hoover", "memchu", "hp", "varian", "clark", "moore"])
-    for (const id of ["huang", "gates", "spilker", "y2e2", "hoover", "memchu", "varian", "clark", "moore"]) expect(experienceFor(id).id).toBe(id)
+  test("eleven experiences covering the key buildings", () => {
+    expect(EXPERIENCES.map((e) => e.id)).toEqual(["mainquad", "huang", "gates", "spilker", "y2e2", "hoover", "memchu", "hp", "varian", "clark", "moore"])
+    for (const id of ["mainquad", "huang", "gates", "spilker", "y2e2", "hoover", "memchu", "varian", "clark", "moore"]) expect(experienceFor(id).id).toBe(id)
     for (const id of ["packard", "hewlett", "hpgarage"]) expect(experienceFor(id).id).toBe("hp")
     expect(experienceFor("allen")).toBeUndefined()
     expect(experienceFor("nope")).toBeUndefined()
@@ -343,5 +345,118 @@ describe("experiences: lessons", () => {
 
   test("varian and clark use the cardinal pop palette only", () => {
     for (const id of ["varian", "clark"]) for (const n of experienceById(id).nodes) expect(["cardinal", "softgold", "linen"]).toContain(n.color)
+  })
+})
+
+describe("experiences: the redesigned Quad, Huang and Hoover scenes", () => {
+  const nodeIndex = (id: string, name: string) => {
+    const i = experienceById(id).nodes.findIndex((n) => n.name === name)
+    expect(i).toBeGreaterThanOrEqual(0)
+    return i
+  }
+  const visible = (p: {scale: {x: number; y: number; z: number}}) => Math.max(p.scale.x, p.scale.y, p.scale.z) >= 0.01
+
+  test("each loops seamlessly: poses repeat one loop later", () => {
+    for (const [id, loop] of [["mainquad", MQ_LOOP], ["huang", HUANG_LOOP], ["hoover", HOOVER_LOOP]] as [string, number][]) {
+      const e = experienceById(id)
+      expect(e.loop).toBe(loop)
+      for (const t of [0.5, 3.3, 7.7, loop - 1.3]) {
+        const a = e.poses(t), b = e.poses(t + loop)
+        for (let i = 0; i < a.length; i++) {
+          near(a[i].pos.x, b[i].pos.x, 1e-6)
+          near(a[i].pos.y, b[i].pos.y, 1e-6)
+          near(a[i].scale.y, b[i].scale.y, 1e-6)
+        }
+      }
+      // Every looped label has an end inside the loop, so no caption outlives its scene.
+      for (const l of e.labels) if (l.to !== undefined) expect(l.to).toBeLessThanOrEqual(loop)
+    }
+  })
+
+  test("no pop at the loop wrap, and nothing reaches back through the focus-wall bezel (z = -22)", () => {
+    for (const [id, loop] of [["mainquad", MQ_LOOP], ["huang", HUANG_LOOP], ["hoover", HOOVER_LOOP]] as [string, number][]) {
+      const e = experienceById(id)
+      for (const k of [1, 2]) {
+        const a = e.poses(k * loop - 0.02), b = e.poses(k * loop + 0.02)
+        for (let i = 0; i < a.length; i++) {
+          if (!visible(a[i]) && !visible(b[i])) continue
+          const sa = Math.max(a[i].scale.x, a[i].scale.y, a[i].scale.z), sb = Math.max(b[i].scale.x, b[i].scale.y, b[i].scale.z)
+          expect(`${id}.${e.nodes[i].name} ${Math.abs(sa - sb) < 0.15}`).toBe(`${id}.${e.nodes[i].name} true`)
+        }
+      }
+      // Posed vertices, not posedBounds: rotated boxes overstate how far the spinning bell groups reach.
+      const chunks = e.nodes.map(buildNode)
+      for (let t = 0; t <= 30; t += 0.2) {
+        const poses = e.poses(t)
+        let minZ = Infinity
+        poses.forEach((p, i) => {
+          if (!visible(p)) return
+          const v = chunks[i].verts
+          for (let k = 0; k < v.length; k += 8) minZ = Math.min(minZ, p.pos.z + qRot(p.rot, {x: v[k] * p.scale.x, y: v[k + 1] * p.scale.y, z: v[k + 2] * p.scale.z}).z)
+        })
+        expect(minZ).toBeGreaterThan(-21)
+      }
+    }
+  })
+
+  test("main quad: the church starts off the axis and slides onto it (mainquad.2)", () => {
+    const e = experienceById("mainquad"), c = nodeIndex("mainquad", "church")
+    near(e.poses(MQ_T.churchRise[1])[c].pos.x, MQ_CHURCH_OFF, 1e-9)
+    near(e.poses(MQ_T.churchSlide[1] + 0.1)[c].pos.x, 0, 1e-9)
+  })
+
+  test("main quad: the ghost arch closes over solid bases and stays up (mainquad.3)", () => {
+    const e = experienceById("mainquad")
+    const L = nodeIndex("mainquad", "ghost_crown_l"), R = nodeIndex("mainquad", "ghost_crown_r"), B = nodeIndex("mainquad", "arch_bases")
+    // Before the bases come up there is no ghost.
+    expect(visible(e.poses(MQ_T.bases[0] - 0.1)[L])).toBe(false)
+    // Mid-way the two halves lean apart; once closed both are upright and their crowns meet on the centre line.
+    const mid = e.poses((MQ_T.crowns[0] + MQ_T.crowns[1]) / 2)
+    expect(Math.abs(mid[L].rot.w)).toBeLessThan(0.999)
+    const p = e.poses(MQ_T.attic[1] + 1)
+    near(Math.abs(p[L].rot.w), 1, 1e-9)
+    near(Math.abs(p[R].rot.w), 1, 1e-9)
+    near(p[L].pos.x + p[R].pos.x, 0, 1e-9)
+    near(p[L].pos.z, MQ_ARCH_Z, 1e-9)
+    for (const t of [MQ_T.legs[0], MQ_T.attic[1], e.settle]) expect(visible(e.poses(t)[B])).toBe(true)
+  })
+
+  test("main quad: the time capsule is buried, then hidden, and never sinks past the floor (mainquad.4)", () => {
+    const e = experienceById("mainquad"), c = nodeIndex("mainquad", "time_capsule")
+    expect(visible(e.poses(MQ_T.capsuleDrop[1])[c])).toBe(true)
+    expect(visible(e.poses(MQ_T.capsuleSink[1] + 0.1)[c])).toBe(false)
+    for (let t = MQ_T.capsuleDrop[0]; t < MQ_T.capsuleSink[1] + 0.5; t += 0.05) expect(posedBounds(e, t).min.y).toBeGreaterThan(-3)
+  })
+
+  test("huang: serial cores are computed one at a time and stay frozen; parallel cores all track the live wave", () => {
+    const N = 5
+    for (let t = HUANG_SERIAL_START + 0.01; t < HUANG_PARALLEL_START - 0.05; t += 0.07) {
+      for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+        const visit = HUANG_SERIAL_START + (i * N + j) * HUANG_HOP_S
+        near(huangCoreHeight(i, j, t), t < visit ? 1 : huangWave(i, j, visit), 1e-9)
+      }
+    }
+    // The serial picture, once finished, is not the live wave: it's stale.
+    let stale = 0
+    const t = HUANG_PARALLEL_START - 0.1
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) stale = Math.max(stale, Math.abs(huangCoreHeight(i, j, t) - huangWave(i, j, t)))
+    expect(stale).toBeGreaterThan(1)
+    for (const tp of [HUANG_PARALLEL_START + 0.5, HUANG_PARALLEL_START + 3]) {
+      for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) near(huangCoreHeight(i, j, tp), huangWave(i, j, tp), 1e-9)
+    }
+  })
+
+  test("hoover: the largest bell is still until the strike, sound only after it, and all 48 bells are up by settle", () => {
+    const e = experienceById("hoover")
+    for (let t = 0; t < HOOVER_STRIKE; t += 0.1) {
+      expect(hooverSwing(t)).toBe(0)
+      for (let r = 0; r < 4; r++) expect(visible(e.poses(t)[nodeIndex("hoover", "sound_" + r)])).toBe(false)
+    }
+    let swing = 0
+    for (let t = HOOVER_STRIKE; t < HOOVER_STRIKE + 3; t += 0.05) swing = Math.max(swing, Math.abs(hooverSwing(t)))
+    expect(swing).toBeGreaterThan(15)
+    expect(e.poses(HOOVER_STRIKE + 2).some((p, i) => e.nodes[i].name.startsWith("sound_") && visible(p))).toBe(true)
+    const p = e.poses(e.settle)
+    for (let g = 1; g < BELL_GROUPS.length; g++) near(p[nodeIndex("hoover", "bells_" + g)].scale.y, 1, 1e-9)
   })
 })

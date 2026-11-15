@@ -3507,6 +3507,8 @@
     compactBodyLineDeg: true
     storyCardWidthDeg: true
     minTargetDeg: true
+    archiveWidthDeg: true
+    archiveForwardCm: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -3554,6 +3556,8 @@
       compactBodyLineDeg: 0.760000
       storyCardWidthDeg: 20.299999
       minTargetDeg: !<float> 3.000000
+      archiveWidthDeg: !<float> 34.000000
+      archiveForwardCm: !<float> 14.000000
   ScriptTypes:
     "":
       {}
@@ -3865,6 +3869,7 @@
   ScriptInputsDefault:
     indoorDemo: true
     demoMode: true
+    showTitle: true
     showMoneyPiles: true
     showExplodedModels: true
     useStartPoint: true
@@ -3877,7 +3882,6 @@
     wallBearing: true
     facingHint: true
     eyeHeightCm: true
-    tableBelowEyesCm: true
     youAreHereHeightCm: true
     youAreHereScale: true
     handleRadiusCm: true
@@ -3899,13 +3903,12 @@
     focusSideGapCm: true
     ambientExtras: true
     ambientDropCm: true
-    experienceSideDeg: true
-    hologramSideDeg: true
     sideDistanceCm: true
     sideScaleCm: true
     hologramWidthCm: true
-    peopleHologramSideDeg: true
     peopleHologramWidthCm: true
+    flankGapDeg: true
+    lookNudge: true
     pickSlackCm: true
     respawnEnabled: true
     respawnMinMapDistM: true
@@ -3922,6 +3925,8 @@
       asr: !<MappingBased.AssignableType_2> 6767c277-2c0a-44a4-ac63-db02d284997c
       indoorDemo: true
       demoMode: true
+      showTitle: true
+      titleSlogan: Every place has a story. Just ask.
       showMoneyPiles: false
       showExplodedModels: false
       useStartPoint: true
@@ -3934,15 +3939,15 @@
       wallBearing: !<float> 15.000000
       facingHint: !<float> 105.000000
       eyeHeightCm: !<float> 160.000000
-      floorForwardCm: !<float> 106.000000
-      tableBelowEyesCm: !<float> 105.000000
-      tableForwardCm: !<float> 80.000000
+      floorForwardCm: !<float> 116.000000
+      tableBelowEyesCm: !<float> 87.000000
+      tableForwardCm: !<float> 105.000000
       startLifted: true
       youAreHereHeightCm: !<float> 16.000000
       youAreHereScale: 1.800000
       handleRadiusCm: !<float> 4.000000
       handleGrabCm: !<float> 10.000000
-      startMapScale: 0.500000
+      startMapScale: 0.357000
       statusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
       showStatusLabel: true
       autoQuiz: true
@@ -3969,13 +3974,15 @@
       ambientDistanceCm: !<float> 300.000000
       ambientScaleCm: !<float> 34.000000
       ambientDropCm: !<float> 105.000000
-      experienceSideDeg: !<float> 21.000000
-      hologramSideDeg: !<float> 42.000000
+      experienceSideDeg: !<float> 17.000000
+      hologramSideDeg: !<float> 34.000000
       sideDistanceCm: !<float> 150.000000
       sideScaleCm: !<float> 30.000000
       hologramWidthCm: !<float> 56.000000
-      peopleHologramSideDeg: !<float> 42.000000
+      peopleHologramSideDeg: !<float> 23.000000
       peopleHologramWidthCm: !<float> 56.000000
+      flankGapDeg: !<float> 4.000000
+      lookNudge: true
       pickSlackCm: !<float> 6.000000
       respawnEnabled: true
       respawnMinMapDistM: !<float> 6.000000

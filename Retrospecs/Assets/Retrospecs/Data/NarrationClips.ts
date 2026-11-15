@@ -17,7 +17,6 @@ export const NARRATION_CLIPS: Record<string, () => AudioTrackAsset> = {
   huang_1: () => requireAsset("../Audio/narration/huang_1.mp3") as AudioTrackAsset,
   huang_2: () => requireAsset("../Audio/narration/huang_2.mp3") as AudioTrackAsset,
   huang_3: () => requireAsset("../Audio/narration/huang_3.mp3") as AudioTrackAsset,
-  huang_4: () => requireAsset("../Audio/narration/huang_4.mp3") as AudioTrackAsset,
   gates_0: () => requireAsset("../Audio/narration/gates_0.mp3") as AudioTrackAsset,
   gates_1: () => requireAsset("../Audio/narration/gates_1.mp3") as AudioTrackAsset,
   gates_2: () => requireAsset("../Audio/narration/gates_2.mp3") as AudioTrackAsset,

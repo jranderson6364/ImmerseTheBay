@@ -22,14 +22,18 @@ import {
 import {MeshChunk} from "../Core/MapMesh"
 import {
   CompactLayout, SPECTACLES, STORY_CARD, cmForDeg, compactCardSize, compactLayout, compactTextWidth, crossChunk, degForCm, inRect,
-  micGlyphRects, storyAskButton, storyCardHits, storyCardScale
+  micGlyphRects, shapeChunk, shapeFrameChunk, STORY_SPLIT_PX, storyAskButton, storyCardHits, storyCardScale, storySliceChunk
 } from "../Core/CardLayout"
+import {CardTheme, RENDER_BASE, TEXT_LAYER, cornerFor, hasBakedAsk, isSimpleFocus, lighten, meshLayer, themeFor} from "../Core/CardTheme"
 import {SIK} from "SpectaclesInteractionKit.lspkg/SIK"
 import {InteractorInputType} from "SpectaclesInteractionKit.lspkg/Core/Interactor/Interactor"
 import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
 import {storyCardTexture} from "./StoryDeck"
+import {playSfx} from "../Core/Sfx"
 import {storyHologram} from "./StoryHolograms"
 import {peopleHologram} from "./PeopleHolograms"
+import {ARCHIVE_ASPECTS, archiveCover, archiveFrame} from "./ArchivePhotos"
+import {ArchiveHit, archiveEase, archiveExtent, archiveLayout} from "../Core/Archive"
 
 /** What the card's buttons do (the controller acts on it). */
 export type PanelButton = "close" | "next" | "more" | "ask" | ""
@@ -42,12 +46,9 @@ const BUTTON_COLORS = {
   closeMark: [1, 0.92, 0.9, 1], closeMarkHover: [1, 1, 1, 1],
   nextFill: [0.36, 0.26, 0.1, 1], nextFillHover: [0.75, 0.55, 0.2, 1],
   nextText: [1.0, 0.88, 0.62, 1], nextTextHover: [1, 1, 1, 1],
-  rim: [0.95, 0.82, 0.58, 1], rimHover: [1.0, 0.96, 0.82, 1],
-  // Ask: the chat window's cyan, so the button and the window it opens read as one thing.
-  askFill: [0.07, 0.28, 0.4, 1], askFillHover: [0.18, 0.58, 0.8, 1],
-  askRim: [0.55, 0.9, 1.0, 1], askRimHover: [0.85, 1.0, 1.0, 1],
-  askMark: [0.85, 0.97, 1.0, 1], askMarkHover: [1, 1, 1, 1]
+  rim: [0.95, 0.82, 0.58, 1], rimHover: [1.0, 0.96, 0.82, 1]
 }
+// The Ask Me More button takes its colours from the card's theme (Core/CardTheme), like the window it opens.
 
 interface ButtonView {
   kind: "close" | "next" | "more" | "ask"
@@ -55,6 +56,8 @@ interface ButtonView {
   parts: {part: FadePart; base: number[]; hover: number[]}[]
   /** Objects shown only while the button is hovered (or pulsing): the story card's outline. */
   toggles?: SceneObject[]
+  /** The button's own slice of a story card's art, switched off while the button is hidden. */
+  art?: SceneObject
 }
 
 /** Story card hover outline: the bright copper of the card's own frame (render_story_decks.py COPPER, lifted). */
@@ -331,7 +334,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     print(`[Retrospecs] people hologram ${id}: ${screen.width.toFixed(0)} x ${screen.height.toFixed(0)} cm`)
   }
 
-  private createSideScreen(tex: Texture, id: string, pos: vec3, eye: vec3, widthCm: number, prefix: string):
+  private createSideScreen(tex: Texture, id: string, pos: vec3, eye: vec3, widthCm: number, prefix: string, isVideo = true):
       {object: SceneObject; video: VideoTextureProvider; width: number; height: number} | null {
     const mat = this.mediaMaterial || loadBuiltinMaterial()
     if (!tex || !mat) return null
@@ -349,6 +352,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     material.mainPass.twoSided = true
     visual.mainMaterial = material
     let video: VideoTextureProvider = null
+    if (!isVideo) return {object, video, width: 2 * hw, height: 2 * hh}
     try {
       video = tex.control as VideoTextureProvider
       video.volume = 0
@@ -369,6 +373,14 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     return {object, video, width: 2 * hw, height: 2 * hh}
   }
 
+  /** The side screens currently up (diagram loop, people screen), for the look-around nudge. */
+  sideScreens(): {id: string; object: SceneObject}[] {
+    const out: {id: string; object: SceneObject}[] = []
+    if (this.hologram) out.push({id: "diagram", object: this.hologram})
+    if (this.peopleScreen) out.push({id: "people", object: this.peopleScreen})
+    return out
+  }
+
   hideSideHologram() {
     if (this.hologram) this.hologram.enabled = false
     if (this.hologramVideo) try { this.hologramVideo.stop() } catch (e) { /* Already stopped. */ }
@@ -378,7 +390,212 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     this.hologramVideo = null
   }
 
+  // -------------------------------------------------------------------------
+  // Archive Gallery (Core/Archive.ts): on Main Quad, Huang and Hoover a small collage replaces the people hologram.
+  // Pinching it explodes the collage into separate framed prints splayed out to the right; pinching a print folds
+  // them back.
+
+  @input @hint("Archive Gallery: height of each exploded print (cm)") archivePrintHeightCm: number = 20
+  @input @hint("Archive Gallery: gap between exploded prints (cm)") archiveGapCm: number = 4
+  @input @hint("Archive Gallery: explode / fold time (s)") archiveAnimSec: number = 0.45
+
+  private archiveId = ""
+  private archiveCoverObj: SceneObject = null
+  private archiveCoverTarget: Interactable = null
+  private archiveCoverHalf = {w: 0, h: 0}
+  private archiveCoverPulse = false
+  private archiveClock = 0
+  private archivePrints: {obj: SceneObject; target: Interactable; to: vec3}[] = []
+  private archiveFrom: vec3 = null
+  /** Explode progress 0 (folded into the collage) .. 1 (splayed out), and where it is heading. */
+  private archiveT = 0
+  private archiveGoal = 0
+
+  /** The Archive Gallery collage in the people screen's place (same size and spot). */
+  showArchiveCover(id: string, pos: vec3, eye: vec3, widthCm: number) {
+    if (this.archiveId === id && this.archiveCoverObj) return
+    this.hidePeopleHologram() // also clears any previous archive
+    let tex: Texture = null
+    try {
+      tex = archiveCover(id)
+    } catch (e) {
+      print("[Retrospecs] archive cover missing for " + id + ": " + e)
+    }
+    const screen = this.createSideScreen(tex, id, pos, eye, widthCm, "Archive_cover_", false)
+    if (!screen) return
+    this.archiveId = id
+    this.archiveCoverObj = screen.object
+    this.archiveCoverHalf = {w: screen.width / 2, h: screen.height / 2}
+    this.archiveCoverTarget = this.rayTarget(screen.object, screen.width, screen.height, "archive_cover_ray_target")
+    print(`[Retrospecs] archive cover ${id}: ${screen.width.toFixed(0)} x ${screen.height.toFixed(0)} cm`)
+  }
+
+  /** Locked demo: the collage gently breathes so the judge finds it. */
+  setArchivePulse(on: boolean) {
+    this.archiveCoverPulse = on
+    this.archiveClock = 0
+    if (!on && this.archiveCoverObj) this.archiveCoverObj.getTransform().setLocalScale(vec3.one())
+  }
+
+  /** True while the prints are out (or flying out). */
+  isGalleryOpen(): boolean {
+    return this.archivePrints.length > 0 && this.archiveGoal > 0
+  }
+
+  /** Explodes the collage: one framed print per photo flies out to its slot on the right. */
+  openGallery(): boolean {
+    const id = this.archiveId
+    if (!id || !this.archiveCoverObj) return false
+    if (this.archivePrints.length) {
+      this.archiveGoal = 1
+      return true
+    }
+    const base = loadStoryMaterial() || this.mediaMaterial || loadBuiltinMaterial()
+    const aspects = ARCHIVE_ASPECTS[id] || []
+    if (!base || !aspects.length) return false
+    const eye = this.eyeNow()
+    const from = this.archiveCoverObj.getTransform().getWorldPosition()
+    // The collage's plane, facing the wearer: right, up, and toward the eye.
+    const toEye = eye.sub(from).normalize()
+    let right = vec3.up().cross(toEye)
+    right = right.length > 1e-4 ? right.normalize() : vec3.right()
+    const up = toEye.cross(right).normalize()
+    const slots = archiveLayout(aspects, this.archivePrintHeightCm, this.archiveGapCm)
+    const ext = archiveExtent(slots)
+    // Splay out to the right: the layout's left edge starts at the collage's left edge, a little closer to the eye.
+    const anchor = from.add(right.uniformScale(ext.hw - this.archiveCoverHalf.w)).add(toEye.uniformScale(6))
+    slots.forEach((s, i) => {
+      let tex: Texture = null
+      try {
+        tex = archiveFrame(id, i)
+      } catch (e) {
+        print(`[Retrospecs] archive frame missing ${id} ${i}: ${e}`)
+      }
+      if (!tex) return
+      const to = anchor.add(right.uniformScale(s.x)).add(up.uniformScale(s.y)).add(toEye.uniformScale(s.z))
+      const obj = global.scene.createSceneObject(`Archive_print_${id}_${i}`)
+      const d = eye.sub(to)
+      const yaw = quat.angleAxis(Math.atan2(d.x, d.z), vec3.up())
+      const pitch = quat.angleAxis(-Math.atan2(d.y, Math.hypot(d.x, d.z)), vec3.right())
+      const tilt = quat.angleAxis((s.tilt * Math.PI) / 180, vec3.forward())
+      const tr = obj.getTransform()
+      tr.setWorldPosition(from)
+      tr.setWorldRotation(yaw.multiply(pitch).multiply(tilt))
+      tr.setLocalScale(vec3.one().uniformScale(0.2))
+      const visual = this.meshObject(obj, quadsChunk([{x0: -s.w / 2, y0: -s.h / 2, x1: s.w / 2, y1: s.h / 2}], 0))
+      const material = base.clone()
+      material.mainPass.baseTex = tex
+      material.mainPass.twoSided = true
+      visual.mainMaterial = material
+      const target = this.rayTarget(obj, s.w, s.h, "archive_print_ray_target")
+      this.archivePrints.push({obj, target, to})
+    })
+    if (!this.archivePrints.length) return false
+    this.archiveFrom = from
+    this.archiveT = 0
+    this.archiveGoal = 1
+    this.archiveCoverObj.enabled = false // the collage becomes the prints
+    this.setArchivePulse(false)
+    print(`[Retrospecs] archive gallery ${id}: ${this.archivePrints.length} prints, ${(2 * ext.hw).toFixed(0)} x ${(2 * ext.hh).toFixed(0)} cm`)
+    return true
+  }
+
+  /** Folds the prints back into the collage (animated; the collage returns when they land). */
+  closeGallery() {
+    if (this.archivePrints.length) this.archiveGoal = 0
+  }
+
+  /** What the right-hand ray (or the Preview mouse) is on: the collage ("open") or any exploded print ("close"). */
+  archiveUnderRay(): ArchiveHit {
+    if (!this.archiveCoverTarget && !this.archivePrints.length) return ""
+    let interactors
+    try {
+      interactors = SIK.InteractionManager.getTargetingInteractors()
+    } catch (e) {
+      return ""
+    }
+    for (const it of interactors) {
+      if (!(it.inputType & (InteractorInputType.RightHand | InteractorInputType.Mouse))) continue
+      const info = it.targetHitInfo
+      if (!info || !info.interactable) continue
+      if (this.archiveGoal > 0 && this.archivePrints.some((p) => p.target && p.target === info.interactable)) return "close"
+      if (this.archiveCoverTarget && info.interactable === this.archiveCoverTarget && this.archiveCoverObj.enabled) return "open"
+    }
+    return ""
+  }
+
+  private archiveRayOn(): boolean {
+    return !!this.archiveUnderRay()
+  }
+
+  private eyeNow(): vec3 {
+    if (this.camera) return this.camera.getTransform().getWorldPosition()
+    return this.root ? this.root.getTransform().getWorldPosition().add(new vec3(0, 0, 80)) : vec3.zero()
+  }
+
+  /** A thin box collider + indirect SIK Interactable over a centred w x h quad on `parent`. */
+  private rayTarget(parent: SceneObject, w: number, h: number, name: string): Interactable {
+    try {
+      const o = global.scene.createSceneObject(name)
+      o.setParent(parent)
+      o.getTransform().setLocalPosition(new vec3(0, 0, 0.2))
+      const collider = o.createComponent("Physics.ColliderComponent") as ColliderComponent
+      collider.fitVisual = false
+      const box = Shape.createBoxShape()
+      box.size = new vec3(w, h, 1)
+      collider.shape = box
+      const it = o.createComponent(Interactable.getTypeName()) as Interactable
+      it.targetingMode = 2 // TargetingMode.Indirect
+      return it
+    } catch (e) {
+      print("[Retrospecs] archive: ray target unavailable: " + e)
+      return null
+    }
+  }
+
+  private updateArchive(dt: number) {
+    if (this.archiveCoverObj && this.archiveCoverPulse && !this.archivePrints.length) {
+      this.archiveClock += dt
+      const s = 1 + 0.05 * (0.5 + 0.5 * Math.sin(this.archiveClock * 5))
+      this.archiveCoverObj.getTransform().setLocalScale(new vec3(s, s, s))
+    }
+    if (!this.archivePrints.length || !this.archiveFrom) return
+    const step = dt / Math.max(0.05, this.archiveAnimSec)
+    this.archiveT = this.archiveGoal > this.archiveT ? Math.min(1, this.archiveT + step) : Math.max(0, this.archiveT - step)
+    const e = archiveEase(this.archiveT)
+    for (const p of this.archivePrints) {
+      const tr = p.obj.getTransform()
+      tr.setWorldPosition(vec3.lerp(this.archiveFrom, p.to, e))
+      tr.setLocalScale(vec3.one().uniformScale(0.2 + 0.8 * e))
+    }
+    if (this.archiveT <= 0 && this.archiveGoal <= 0) this.destroyPrints(true)
+  }
+
+  private destroyPrints(showCover: boolean) {
+    for (const p of this.archivePrints) {
+      p.obj.enabled = false
+      p.obj.destroy()
+    }
+    this.archivePrints = []
+    this.archiveT = 0
+    this.archiveGoal = 0
+    if (showCover && this.archiveCoverObj) this.archiveCoverObj.enabled = true
+  }
+
+  hideArchive() {
+    this.destroyPrints(false)
+    if (this.archiveCoverObj) {
+      this.archiveCoverObj.enabled = false
+      this.archiveCoverObj.destroy()
+    }
+    this.archiveCoverObj = null
+    this.archiveCoverTarget = null
+    this.archiveCoverPulse = false
+    this.archiveId = ""
+  }
+
   hidePeopleHologram() {
+    this.hideArchive()
     if (this.peopleScreen) this.peopleScreen.enabled = false
     if (this.peopleVideo) try { this.peopleVideo.stop() } catch (e) { /* Already stopped. */ }
     if (this.peopleScreen) this.peopleScreen.destroy()
@@ -422,6 +639,8 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     // Switching cards while showing: appear in place (no second fly-out).
     // A different building flies out fresh to its new spot.
     const inPlace = wasShowing && !newBuilding
+    // Whoosh as a card flies out; a softer one when the next story card swaps in place.
+    playSfx("whoosh", inPlace ? 0.5 : 1)
     this.fly = !inPlace
     this.t = inPlace ? 0.6 : 0
     this.target = 1
@@ -487,6 +706,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       return
     }
     this.cycleArt(dt)
+    this.updateArchive(dt)
     this.updateButtons()
     this.apply(dt)
   }
@@ -512,13 +732,14 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       const info = it.targetHitInfo
       if (!info || info.interactable !== this.hitTarget || !info.hit) continue
       const p = inv.multiplyPoint(info.hit.position)
-      for (const b of this.buttons) if (inRect(b.hit, p.x, p.y)) return b.kind
+      for (const b of this.buttons) if (inRect(b.hit, p.x, p.y) && !this.isHidden(b.kind)) return b.kind
     }
     return ""
   }
 
   /** True while the ray is anywhere on the card (a pinch there must not select a building behind it). */
   rayOnCard(): boolean {
+    if (this.archiveRayOn()) return true
     if (!this.root || !this.hitTarget || this.target <= 0) return false
     try {
       for (const it of SIK.InteractionManager.getTargetingInteractors()) {
@@ -544,11 +765,38 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     this.hovered = "-" as PanelButton // force a repaint on the next frame
   }
 
+  /**
+   * Locked demo: buttons the visitor doesn't need yet (Ask Me More, Next Stop) are hidden: their art is switched off
+   * and they can't be hovered, pinched or pulsed. Kept across card rebuilds until changed; [] shows everything.
+   * (Story cards with the buttons baked in, which every demo stop has, can hide and show them live.)
+   */
+  private hiddenButtons: PanelButton[] = []
+
+  setHiddenButtons(kinds: PanelButton[]) {
+    const same = kinds.length === this.hiddenButtons.length && kinds.every((k) => this.hiddenButtons.indexOf(k) >= 0)
+    if (same) return
+    this.hiddenButtons = kinds.slice()
+    this.applyHiddenButtons()
+  }
+
+  private isHidden(kind: PanelButton): boolean {
+    return this.hiddenButtons.indexOf(kind) >= 0
+  }
+
+  private applyHiddenButtons() {
+    for (const b of this.buttons) {
+      const hide = this.isHidden(b.kind)
+      if (b.art) b.art.enabled = !hide
+      if (hide && b.toggles) for (const o of b.toggles) o.enabled = false
+    }
+    this.hovered = "-" as PanelButton // repaint the hover state on the next frame
+  }
+
   private updateButtons() {
     if (!this.buttons.length) return
     const h = this.buttonUnderRay()
     let lit = false
-    if (this.pulse && this.buttons.some((b) => b.kind === this.pulse)) {
+    if (this.pulse && !this.isHidden(this.pulse) && this.buttons.some((b) => b.kind === this.pulse)) {
       this.pulseClock += getDeltaTime()
       lit = Math.floor(this.pulseClock / 0.6) % 2 === 0
     }
@@ -556,7 +804,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     this.hovered = h
     this.pulseLit = lit
     for (const b of this.buttons) {
-      const on = b.kind === h || (lit && b.kind === this.pulse)
+      const on = !this.isHidden(b.kind) && (b.kind === h || (lit && b.kind === this.pulse))
       for (const p of b.parts) p.part.rgba = on ? p.hover : p.base
       if (b.toggles) for (const o of b.toggles) o.enabled = on
     }
@@ -597,12 +845,26 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     this.cardWidthLocal = STORY_CARD.widthCm
     const hw = STORY_CARD.widthCm / 2, hh = STORY_CARD.heightCm / 2
     const rect = {x0: -hw, y0: -hh, x1: hw, y1: hh}
-    const visual = this.meshObject(this.root, quadsChunk([rect], 0))
     const material = mat.clone()
     material.mainPass.baseTex = tex
     material.mainPass.twoSided = true
-    visual.mainMaterial = material
-    if (storyIndex === 0 && cardId !== "hpgarage") {
+    // The art in three slices (texture pixels, top-left origin), so the baked Ask Me More and Next Stop buttons in
+    // the right-hand column can be hidden on their own (setHiddenButtons). The rest of that column is empty (black).
+    const sliceObj = (name: string, x0: number, y0: number, x1: number, y1: number): SceneObject => {
+      const o = global.scene.createSceneObject(name)
+      o.setParent(this.root)
+      const v = this.meshObject(o, storySliceChunk(x0, y0, x1, y1))
+      v.mainMaterial = material
+      return o
+    }
+    sliceObj("story_art", 0, 0, STORY_SPLIT_PX, STORY_CARD.texH)
+    const baked = hasBakedAsk(cardId)
+    const askArt = baked ? sliceObj("story_art_ask", STORY_SPLIT_PX, 770, STORY_CARD.texW, 980) : null
+    const nextArt = sliceObj("story_art_next", STORY_SPLIT_PX, 985, STORY_CARD.texW, 1160)
+    // The rest of the column stays on, so nothing else drawn there is ever clipped.
+    sliceObj("story_art_col_top", STORY_SPLIT_PX, 0, STORY_CARD.texW, baked ? 770 : 985)
+    sliceObj("story_art_col_bottom", STORY_SPLIT_PX, 1160, STORY_CARD.texW, STORY_CARD.texH)
+    if (storyIndex === 0 && cardId !== "hpgarage" && !isSimpleFocus(cardId)) {
       const video = storyHologram(cardId)
       const videoMat = this.mediaMaterial || loadBuiltinMaterial()
       if (video && videoMat) {
@@ -619,31 +881,35 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     // Hit areas grown to at least minTargetDeg (the drawn buttons in the art are smaller; Snap counts the collider).
     const minLocal = cmForDeg(Math.max(SPECTACLES.minTargetDeg, this.minTargetDeg), D) / this.cardScale
     const hits = storyCardHits(minLocal)
+    const ask = storyAskButton(minLocal)
+    // The featured cards (tools/story_cards_featured.py) have the Ask Me More tab baked in above Next Stop.
     this.buttons = [
       {kind: "close", hit: hits.close, parts: []},
       {kind: "more", hit: hits.more, parts: []},
-      {kind: "next", hit: hits.next, parts: []}
+      {kind: "next", hit: hits.next, parts: [], art: nextArt}
     ]
-    // Hover feedback: the buttons are baked into the art, so each gets a thin outline in the card's own copper,
+    if (baked) this.buttons.push({kind: "ask", hit: ask.hit, parts: [], art: askArt})
+    // Hover feedback: the buttons are baked into the art, so each gets a thin outline in the card's own colour,
     // drawn just OUTSIDE the drawn button so it never sits over the label. Nothing covers the button itself, and
     // the outline is switched off (not merely black) at rest, so it can't show as a dark box in a recording.
-    const drawn = storyCardHits(0)
+    const drawn: Record<string, Rect2> = {...storyCardHits(0), ask: ask.drawn}
+    const rimColor = baked ? themeFor(cardId).rim : STORY_BUTTON_RIM
     for (const b of this.buttons) {
       const r = drawn[b.kind]
       const pad = 0.9
       const outer = {x0: r.x0 - pad, y0: r.y0 - pad, x1: r.x1 + pad, y1: r.y1 + pad}
       const n = this.parts.length
-      const rim = this.quads("hover_rim_" + b.kind, frameRects(outer, 0.35), STORY_BUTTON_RIM, 0.16)
-      this.buttonPart(b, n, STORY_BUTTON_RIM, STORY_BUTTON_RIM)
+      const rim = this.quads("hover_rim_" + b.kind, frameRects(outer, 0.35), rimColor, 0.16)
+      this.buttonPart(b, n, rimColor, rimColor)
       if (rim) {
         rim.enabled = false
         b.toggles = [rim]
       }
     }
-    // Ask isn't in the texture: drawn as a mesh button in the empty column above Next Stop, so it can glow.
-    const ask = storyAskButton(minLocal)
-    this.buttons.push(this.buildAskButton(ask.drawn, ask.hit, 84))
+    // Older cards (render_story_decks.py) don't have it: drawn as a mesh button in the same empty column.
+    if (!baked) this.buttons.push(this.buildAskButton(ask.drawn, ask.hit, themeFor(cardId), true))
     this.hovered = ""
+    this.applyHiddenButtons()
     this.blockHeight = STORY_CARD.heightCm
     this.lift = 0
     this.makeHitTarget({x0: rect.x0 - 3, y0: rect.y0 - 3, x1: rect.x1 + 3, y1: rect.y1 + 3})
@@ -729,7 +995,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     const nw = L.next.x1 - L.next.x0, nh = L.next.y1 - L.next.y0
     this.text("next_label", "Next spot  >", (L.next.x0 + L.next.x1) / 2, (L.next.y0 + L.next.y1) / 2, nw - 1, nh * 0.7, S.button, BUTTON_COLORS.nextText, HorizontalAlignment.Center)
     this.buttonPart(next, n, BUTTON_COLORS.nextText, BUTTON_COLORS.nextTextHover)
-    this.buttons = [close, next, this.buildAskButton(L.ask, L.askHit, S.button)]
+    this.buttons = [close, next, this.buildAskButton(L.ask, L.askHit, themeFor(card.id), false)]
     this.hovered = ""
 
     if (L.art && L.artBox) this.buildCompactArt(art, L)
@@ -738,28 +1004,54 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   }
 
   /**
-   * The Ask button: a cyan pill with a microphone and "Ask". The one way to ask a question; it opens the chat's mic
-   * and its suggested-question chips. `size` is the label's text size.
+   * The Ask Me More button, as a mesh in the card's theme (the same dress as the tab baked into the featured cards):
+   * a dark tab with a thin rim, an accent mic badge and white "Ask Me More". `tall` (the story card's column) adds
+   * the "HAVE A QUESTION?" kicker above and a "Tap, then just speak" hint below; the compact card's short pill is one
+   * row. The one way to ask a question; it opens the Ask Me More window's mic and its suggested-question chips.
    */
-  private buildAskButton(r: Rect2, hit: Rect2, size: number): ButtonView {
-    const C = BUTTON_COLORS
+  private buildAskButton(r: Rect2, hit: Rect2, theme: CardTheme, tall: boolean): ButtonView {
     const b: ButtonView = {kind: "ask", hit, parts: []}
-    let n = this.parts.length
-    this.quads("ask_fill", [r], C.askFill, 0.03)
-    this.buttonPart(b, n, C.askFill, C.askFillHover)
-    n = this.parts.length
-    this.quads("ask_rim", frameRects(r, 0.35), C.askRim, 0.04)
-    this.buttonPart(b, n, C.askRim, C.askRimHover)
-    const h = r.y1 - r.y0
-    const s = h * 0.62
-    const gx = r.x0 + Math.max(0.6, h * 0.14) + s / 2, cy = (r.y0 + r.y1) / 2
-    n = this.parts.length
-    this.quads("ask_mic", micGlyphRects(gx, cy, s), C.askMark, 0.05)
-    this.buttonPart(b, n, C.askMark, C.askMarkHover)
-    const lx0 = gx + s / 2 + h * 0.08, lx1 = r.x1 - h * 0.1
-    n = this.parts.length
-    this.text("ask_label", "Ask", (lx0 + lx1) / 2, cy, Math.max(1, lx1 - lx0), h * 0.7, size, C.askMark, HorizontalAlignment.Center)
-    this.buttonPart(b, n, C.askMark, C.askMarkHover)
+    const w = r.x1 - r.x0, h = r.y1 - r.y0
+    const corner = cornerFor(theme)
+    const rad = Math.min(w, h) * corner.radius
+    const white = [1, 1, 1, 1]
+    const add = (fn: () => void, base: number[], hover: number[]) => {
+      const n = this.parts.length
+      fn()
+      this.buttonPart(b, n, base, hover)
+    }
+    add(() => this.chunkPart("ask_fill", shapeChunk(r, rad, corner.chamfer, 0.03), theme.top), theme.top, lighten(theme.button[1], 0.05))
+    add(() => this.chunkPart("ask_rim", shapeFrameChunk(r, rad, 0.3, corner.chamfer, 0.04), theme.rim), theme.rim, white)
+    // Mic badge: an accent disc with the mic in the card's dark colour (it reads as a cut-out on the additive display).
+    const badge = (cx: number, cy: number, d: number) => {
+      const sq: Rect2 = {x0: cx - d / 2, y0: cy - d / 2, x1: cx + d / 2, y1: cy + d / 2}
+      add(() => this.chunkPart("ask_badge", shapeChunk(sq, d / 2, false, 0.05), theme.accent), theme.accent, white)
+      add(() => this.quads("ask_mic", micGlyphRects(cx, cy, d * 0.62), theme.bottom, 0.06), theme.bottom, theme.bottom)
+    }
+    const S = COMPACT_SIZES
+    if (tall) {
+      const px = w * 0.1
+      const tw = w - 2 * px
+      const x = r.x0 + px + tw / 2
+      const row = (f: number) => r.y1 - h * f
+      const d = h * 0.26
+      badge(r.x1 - px * 0.6 - d / 2, row(0.235), d)
+      add(() => this.text("ask_kicker", "HAVE A QUESTION?", x - d / 2, row(0.235), tw - d - 0.6, h * 0.16, 34, theme.accent, HorizontalAlignment.Left), theme.accent, white)
+      add(() => this.text("ask_label", "Ask Me More", x, row(0.54), tw, h * 0.26, 66, white, HorizontalAlignment.Left), white, white)
+      add(() => this.text("ask_hint", "Tap, then just speak", x, row(0.78), tw, h * 0.16, 32, [0.72, 0.72, 0.72, 1], HorizontalAlignment.Left), [0.72, 0.72, 0.72, 1], white)
+    } else {
+      const d = h * 0.62
+      const cy = (r.y0 + r.y1) / 2
+      const gx = r.x0 + Math.max(0.6, h * 0.16) + d / 2
+      badge(gx, cy, d)
+      const lx0 = gx + d / 2 + h * 0.14, lx1 = r.x1 - h * 0.16
+      const lw = Math.max(1, lx1 - lx0)
+      // Always one line: the size that fits the pill's width (with a margin for wide glyphs). When the pill is
+      // squeezed (a card with art) and the full label would get too small to read, it says just "Ask".
+      const fitSize = (s: string) => Math.min(S.button, (lw * 0.85) / (CHAR_CM_PER_PT * s.length))
+      const label = fitSize("Ask Me More") >= 32 ? "Ask Me More" : "Ask"
+      add(() => this.text("ask_label", label, (lx0 + lx1) / 2, cy, lw, h * 0.6, Math.floor(fitSize(label)), white, HorizontalAlignment.Left), white, white)
+    }
     return b
   }
 
@@ -809,7 +1101,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     const o = global.scene.createSceneObject("panel_" + name)
     o.setParent(this.root)
     const visual = this.meshObject(o, chunk)
-    const m = this.material.clone()
+    const m = this.overlayMaterial(chunk.verts.length > 2 ? chunk.verts[2] : 0)
     visual.mainMaterial = m
     this.parts.push({material: m, rgba})
   }
@@ -1130,7 +1422,7 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     const o = global.scene.createSceneObject("panel_" + name)
     o.setParent(parent || this.root)
     const visual = this.meshObject(o, chunk)
-    const m = this.material.clone()
+    const m = this.overlayMaterial(z)
     visual.mainMaterial = m
     this.parts.push({material: m, rgba})
     return o
@@ -1142,9 +1434,12 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   ) {
     const o = global.scene.createSceneObject("panel_text_" + name)
     o.setParent(this.root)
-    o.getTransform().setLocalPosition(new vec3(cx, cy, 0.08))
+    // In front of every mesh layer (the hover outline is at 0.16) and drawn after all of them: Text doesn't write
+    // depth, so without the order a button fill drawn later paints over its label (Core/CardTheme draw order).
+    o.getTransform().setLocalPosition(new vec3(cx, cy, 0.2))
     try {
       const t = o.createComponent("Component.Text") as Text
+      t.renderOrder = RENDER_BASE.panel + TEXT_LAYER
       if (this.font) t.font = this.font
       t.text = s
       // Size picked here to fit the box (no Shrink, which dropped lines); top-aligned in a box as tall as the lines,
@@ -1184,7 +1479,22 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     builder.updateMesh()
     const visual = o.createComponent("Component.RenderMeshVisual") as RenderMeshVisual
     visual.mesh = builder.getMesh()
+    // Fixed draw order by layer (z), so stacked parts never swap as the head moves.
+    visual.renderOrder = RENDER_BASE.panel + meshLayer(chunk.verts.length > 2 ? chunk.verts[2] : 0)
     return visual
+  }
+
+  /** Material for a part stacked on the card: drawn by order alone, so it never writes depth over the text. */
+  private overlayMaterial(z: number): Material {
+    const m = this.material.clone()
+    if (z > 0) {
+      try {
+        m.mainPass.depthWrite = false
+      } catch (e) {
+        // No depth settings on this material: the draw order still holds.
+      }
+    }
+    return m
   }
 
   private clear() {

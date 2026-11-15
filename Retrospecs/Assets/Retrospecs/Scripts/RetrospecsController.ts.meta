@@ -41,6 +41,7 @@
     experiences: false
     eyeHeightCm: false
     facingHint: false
+    flankGapDeg: false
     floorForwardCm: false
     focusIdleSec: false
     focusSideGapCm: false
@@ -54,6 +55,7 @@
     liveFollowUpSec: false
     locator: false
     longPinchSec: false
+    lookNudge: false
     map: false
     money: false
     moneyMapExaggeration: false
@@ -71,6 +73,7 @@
     showExplodedModels: false
     showMoneyPiles: false
     showStatusLabel: false
+    showTitle: false
     showcase: false
     showcaseForwardCm: false
     showcaseNearBuilding: false
@@ -88,6 +91,7 @@
     surveyLon: false
     tableBelowEyesCm: false
     tableForwardCm: false
+    titleSlogan: false
     useStartPoint: false
     wallBearing: false
     youAreHereHeightCm: false
@@ -107,6 +111,8 @@
       asr: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
       indoorDemo: true
       demoMode: true
+      showTitle: true
+      titleSlogan: A campus tour you can see.
       showMoneyPiles: false
       showExplodedModels: false
       useStartPoint: true
@@ -161,6 +167,8 @@
       hologramWidthCm: !<float> 56.000000
       peopleHologramSideDeg: !<float> 42.000000
       peopleHologramWidthCm: !<float> 56.000000
+      flankGapDeg: !<float> 4.000000
+      lookNudge: true
       pickSlackCm: !<float> 6.000000
       respawnEnabled: true
       respawnMinMapDistM: !<float> 6.000000
@@ -178,7 +186,11 @@
     - // @input AssignableType_2 asr
     - '// @ui {"widget":"group_start", "label":"Indoor demo"}'
     - '// @input bool indoorDemo = true {"hint":"ON (judging indoors): no calibration, any pinch opens the map, then a short coach shows how to pick a building and use the card. OFF (filming outdoors): the start-point calibration below."}'
-    - '// @input bool demoMode = true {"hint":"LOCKED JUDGE DEMO (Core/DemoScript): Main Quad, then Huang, then one voice question, in that order only. Nothing else can be picked or said, and every step has a spoken direction. Replaces the coach. Turn OFF for the free-roam video."}'
+    - "// @input bool demoMode = true {\"hint\":\"GUIDED JUDGE DEMO (Core/DemoScript): Main Quad, then Huang, then Hoover Tower, then one voice question, in that order only, with a spoken direction at every step. When it's done, everything unlocks. Hold BOTH pinches 5 s to skip it (filming); say \\\"restart demo\\\" to set it up again for the next judge. OFF = straight to free roam.\"}"
+    - '// @ui {"widget":"group_end"}'
+    - '// @ui {"widget":"group_start", "label":"Title screen"}'
+    - '// @input bool showTitle = true {"hint":"Opening title: RETROSPECS and the slogan, floating ahead. One pinch fades it and starts the demo. \"restart demo\" shows it again for the next judge."}'
+    - '// @input string titleSlogan = "Every place has a story. Just ask."'
     - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Declutter"}'
     - '// @input bool showMoneyPiles {"hint":"Money piles beside a selected building (the gift in $1 bills). OFF = card, animation, person hologram and diagram only."}'
@@ -199,15 +211,15 @@
     - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Placement"}'
     - '// @input float eyeHeightCm = 160 {"hint":"Head height above the floor when standing (cm)"}'
-    - '// @input float floorForwardCm = 106 {"hint":"Map centre ahead, so the wearer stands near its back edge (cm)"}'
-    - "// @input float tableBelowEyesCm = 105 {\"hint\":\"Table mode: how far below your eyes the map sits (cm), measured from your head each time it's placed or brought over, so it always lands well below eye level. 105 = about 55 cm off the floor for a 160 cm eye height: you look steeply down onto it and the cursor reaches the far side. (Replaces the old floor-based tableHeightCm, whose saved 100 put it only 60 cm below the eyes.)\"}"
-    - "// @input float tableForwardCm = 65 {\"hint\":\"How far in front of you the table-mode map's centre sits (cm). Keep it above the map radius (58 cm at size 0.5) so the near edge is in front of you.\"}"
+    - '// @input float floorForwardCm = 116 {"hint":"Map centre ahead, so the wearer stands near its back edge (cm)"}'
+    - "// @input float tableBelowEyesCm = 87 {\"hint\":\"Table mode: how far below your eyes the map sits (cm), measured from your head each time it's placed or brought over, so it always lands well below eye level. 87 = about 73 cm off the floor for a 160 cm eye height (raised from 105 / 55 cm): you look down onto it and the cursor reaches the far side. (Replaces the old floor-based tableHeightCm, whose saved 100 put it only 60 cm below the eyes.)\"}"
+    - "// @input float tableForwardCm = 105 {\"hint\":\"How far in front of you the table-mode map's centre sits (cm). Keep it above the map radius (58 cm at size 0.5) so the near edge is in front of you.\"}"
     - '// @input bool startLifted = true {"hint":"ON: start with the map floating at table height in front of you. OFF: on the floor around you."}'
     - '// @input float youAreHereHeightCm = 16 {"hint":"Height of the floating \"You are here\" tag above your pin on the map (map cm)"}'
     - // @input float youAreHereScale = 1.8
     - '// @input float handleRadiusCm = 4 {"hint":"Move/resize handle on the map rim: size and how close a pinch must be to grab it (cm)"}'
     - // @input float handleGrabCm = 10
-    - '// @input float startMapScale = 0.5 {"hint":"Starting map size (1 = about 2.3 m across, 0.5 = about 1.2 m, a tabletop)."}'
+    - '// @input float startMapScale = 0.357 {"hint":"Starting map size (1 = about 2.3 m across, 0.5 = about 1.2 m, a tabletop)."}'
     - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Optional"}'
     - // @input Component.Text statusText
@@ -240,13 +252,15 @@
     - '// @input float ambientDistanceCm = 300 {"hint":"Ambient extras: distance from the eyes (cm) and size (cm)"}'
     - // @input float ambientScaleCm = 34
     - '// @input float ambientDropCm = 105 {"hint":"Ambient extras: how far below eye level (cm)"}'
-    - "// @input float experienceSideDeg = 21 {\"hint\":\"Side pieces sit at the card's height: the 3D experience this many degrees left of the card's centre (the card spans about 12 each side)\"}"
-    - "// @input float hologramSideDeg = 42 {\"hint\":\"Each key building's hologram loop: degrees left of the card's centre (farther out than the experience)\"}"
+    - "// @input float experienceSideDeg = 17 {\"hint\":\"Side pieces sit at the card's height: the 3D experience this many degrees left of the card's centre (the card spans about 12 each side)\"}"
+    - "// @input float hologramSideDeg = 34 {\"hint\":\"Each key building's hologram loop: degrees left of the card's centre (farther out than the experience)\"}"
     - '// @input float sideDistanceCm = 150 {"hint":"Side pieces: distance from the eyes (cm), experience / exploded model size (cm), hologram width (cm)"}'
     - // @input float sideScaleCm = 30
     - // @input float hologramWidthCm = 56
-    - '// @input float peopleHologramSideDeg = 42 {"hint":"People screen: degrees right of the card when a building also has a diagram"}'
+    - '// @input float peopleHologramSideDeg = 23 {"hint":"People screen: degrees right of the card when a building also has a diagram"}'
     - '// @input float peopleHologramWidthCm = 56 {"hint":"People screen width (cm)"}'
+    - '// @input float flankGapDeg = 4 {"hint":"Main Quad / Huang / Hoover (Core/CardTheme SIMPLE_FOCUS_IDS): the same gap (degrees) between the card and the 3D animation on its left and the founder screen on its right"}'
+    - "// @input bool lookNudge = true {\"hint\":\"Look-around nudge: a pulsing arrow at the edge of the view points at side pieces you haven't looked at yet (and back down at the map after a while looking away)\"}"
     - '// @input float pickSlackCm = 6 {"hint":"Map cursor forgiveness: a pinch this close to a building (map cm) still picks it"}'
     - '// @ui {"widget":"group_end"}'
     - '// @ui {"widget":"group_start", "label":"Bring the map here (walked away from it)"}'

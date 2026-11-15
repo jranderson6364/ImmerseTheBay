@@ -1,25 +1,35 @@
 # Retrospecs
 
-Our Immerse the Bay 2026 project: workspace for the November 13–15 Stanford XR hackathon.
+**A Stanford tour guide in your Spectacles.** A 3D map of campus unfolds in front of you, built from real OpenStreetMap data. Point at a building and pinch: an illustrated story card opens, the guide tells you who it's named for and what happened there, and an Archive Gallery explodes into real historical photos. Ask anything out loud. Checked facts answer instantly, and anything else is looked up live and labelled as coming from the web.
 
-## Start here
+Built for Immerse the Bay 2026 (Stanford XR hackathon, November 13–15) on Snap Spectacles with Lens Studio 5.15.4.
 
-- **[Retrospecs Lens](Retrospecs/README.md):** the active build. It covers Lens Studio setup, controls, venue calibration and the device test checklist.
-- **[Retrospecs concept](docs/retrospecs-concept.md):** current direction. A Stanford tour guide in your glasses: a north-aligned 3D campus map at your feet, ask about any building (namesakes, founders, what's inside), answers that light up the map, and point-to-guess to learn something new at each one.
-- **[Retrospecs pitch](docs/retrospecs-pitch.md):** 30-second vertical video shot list, two-minute table demo script, judge Q&A, and claim checks.
-- **[Pocket KO](parked/PocketKO/STATUS.md):** parked prototype. Everyday objects become moves, with a live Orbis KO cinematic. Build and concept files are together in `parked/PocketKO/`.
-- **[Partsight Lens](Partsight/README.md):** an earlier build. It covers setup, controls, and the device test checklist. The decision behind it is in [docs/partsight-decision.md](docs/partsight-decision.md).
+## Judges, start here
 
-- [Event brief](docs/event-brief.md): confirmed schedule, rules status, equipment, and links.
-- [Project brief](docs/project-brief.md): fill in the concept, team, device, and technical choices once decided.
-- [Submission checklist](docs/submission-checklist.md): working checklist for the Sunday deadline and demo.
+| | |
+| --- | --- |
+| **What to try** | [The two-minute tour](Retrospecs/README.md#for-judges-the-two-minute-tour): Main Quad → Archive Gallery → Huang → ask a question → Hoover Tower → free roam. |
+| **How it works** | [Architecture and trust model](Retrospecs/README.md#how-it-works). The guide only speaks facts that carry a checked source, and the AI can frame them but never invent them. |
+| **Where the code is** | [`Retrospecs/Assets/Retrospecs/`](Retrospecs/README.md#whats-here): `Scripts/` (Lens components), `Core/` (pure logic, 332 unit tests), `Data/` (baked OSM campus and narration), `Art/` (cards, holograms, archive photos). |
+| **Run it** | [Lens Studio setup](Retrospecs/README.md#one-time-setup-in-lens-studio-about-15-minutes) and `bun test Retrospecs/tests`. |
+| **Credits** | Map © OpenStreetMap contributors (ODbL). Archive photos: Wikimedia Commons, public domain / CC ([list](Retrospecs/Assets/Retrospecs/Art/ARCHIVE_PHOTOS.md)). People holograms are AI illustrations ([note](Retrospecs/Assets/Retrospecs/Art/PEOPLE_HOLOGRAMS.md)). Built on Snap's MIT-licensed Depth Cache sample. |
 
-The competitive build began **Friday, November 13 at 9:00 PM Pacific**. Partsight and Pocket KO are prototypes; consult each project's status before attempting a device demo.
+## Repository map
+
+| Path | Status | What it is |
+| --- | --- | --- |
+| [`Retrospecs/`](Retrospecs/README.md) | **Active, the submission** | The Lens project, its tests, its offline bakers ([`tools/`](Retrospecs/tools/README.md)) and its design notes. |
+| [`docs/`](docs/README.md) | Notes | Concept, pitch, research and event notes. The [index](docs/README.md) separates current docs from early brainstorms. |
+| `out/` | Notes | Submission drafts (Devpost copy) and preview renders. |
+| `scripts/` | Utility | A render test for the parked Pocket KO prototype. |
+| [`Partsight/`](Partsight/README.md) | Earlier prototype | Our first build this weekend. It's kept for reference and isn't part of the submission. Why we moved on: [docs/partsight-decision.md](docs/partsight-decision.md). |
+| [`parked/PocketKO/`](parked/PocketKO/STATUS.md) | Parked prototype | Everyday objects become fighting moves. It's kept for reference and isn't part of the submission. |
 
 ## Working practices
 
 - Keep the experience small enough to demo reliably in a few minutes.
-- Test on the actual target hardware early and keep a fallback demo recording.
-- Keep source, assets, setup steps, and credits together so teammates can reproduce the build.
-- Do not commit credentials or large generated build artifacts.
-- Record any external assets or prior work used once the organizers publish their policy.
+- Test on the actual hardware early and keep a fallback demo recording.
+- Keep source, assets, setup steps and credits together, so teammates can reproduce the build.
+- Never commit credentials. Gateway tokens are stripped by a git filter (see [Tokens](Retrospecs/README.md#tokens)).
+
+Licensed under the [MIT License](LICENSE).

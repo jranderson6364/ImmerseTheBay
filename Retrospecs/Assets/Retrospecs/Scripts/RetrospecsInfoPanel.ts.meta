@@ -27,6 +27,9 @@
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
     appearSec: false
+    archiveAnimSec: false
+    archiveGapCm: false
+    archivePrintHeightCm: false
     artCycleSec: false
     artLiftCm: false
     artMaxHeightCm: false
@@ -121,6 +124,9 @@
       compactBodyLineDeg: 0.760000
       storyCardWidthDeg: 20.299999
       minTargetDeg: !<float> 3.000000
+      archivePrintHeightCm: !<float> 24.000000
+      archiveGapCm: !<float> 4.000000
+      archiveAnimSec: 0.450000
   ScriptTypes:
     -
       {}
@@ -169,3 +175,6 @@
     - "// @input float compactBodyLineDeg = 0.76 {\"hint\":\"Compact card body line height (degrees). Sets the text size, and with it the card's scale.\"}"
     - '// @input float storyCardWidthDeg = 20.3 {"hint":"Illustrated story card width (degrees, the whole texture including Next Stop)"}'
     - '// @input float minTargetDeg = 3 {"hint":"Smallest button hit area (degrees). Snap: at least 2, about 3 is best."}'
+    - '// @input float archivePrintHeightCm = 24 {"hint":"Archive Gallery: height of each exploded print (cm)"}'
+    - '// @input float archiveGapCm = 4 {"hint":"Archive Gallery: gap between exploded prints (cm)"}'
+    - '// @input float archiveAnimSec = 0.45 {"hint":"Archive Gallery: explode / fold time (s)"}'

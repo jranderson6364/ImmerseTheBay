@@ -2,6 +2,7 @@
 
 import json
 import re
+import sys
 import uuid
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
@@ -18,7 +19,7 @@ COPPER = (245, 169, 103, 255)
 WHITE = (255, 255, 255, 255)
 NAMES = {"hoover": "Hoover Tower", "huang": "Huang Engineering Center", "hpgarage": "The HP Garage", "memchu": "Memorial Church"}
 CARDS_TS = (ROOT / "Assets/Retrospecs/Core/Cards.ts").read_text(encoding="utf-8")
-# Hand-written decks (centerpieces plus the start-point corner buildings) follow their baked narration card for card.
+# Hand-written cards (tools/story-cards.json). A building missing there gets one card from its first Cards.ts fact.
 HAND = set(DATA)
 for match in re.finditer(r'    id: "([a-z0-9]+)", name: "([^"]+)", label: "[^"]+", namesake: "[^"]*",', CARDS_TS):
     card_id, name = match.groups()
@@ -29,7 +30,7 @@ for match in re.finditer(r'    id: "([a-z0-9]+)", name: "([^"]+)", label: "[^"]+
     block = CARDS_TS[match.end():end]
     facts = re.findall(r'\{id: "([^"]+)", theme: "([^"]+)", text: "([^"]+)", source: ([^}]+)\}', block)
     DATA[card_id] = [{"year": "STANFORD", "headline": theme.title(), "body": body,
-                      "source": source, "factId": fact_id} for fact_id, theme, body, source in facts[:2]]
+                      "source": source, "factId": fact_id} for fact_id, theme, body, source in facts[:1]]
     NAMES[card_id] = name
 
 
@@ -58,7 +59,7 @@ def poly(x0, y0, x1, y1, cut=34):
 
 def source_art(id, index):
     # These existing drawings depict exactly these two stories; they are not reused for later slides.
-    if (id, index) not in (("huang", 0), ("hpgarage", 0)):
+    if (id, index) != ("hpgarage", 0):
         return None
     src = ART / id / f"{id}_nazeli_art.png"
     im = Image.open(src).convert("RGBA")
@@ -78,6 +79,60 @@ def draw_visual(d, id, index):
     c = (245,169,103,235)
     pale = (248,239,226,235)
     if draw_corner_visual(d, id, index):
+        return
+    if id == "mainquad":
+        # A changing architectural plan: axis, relocated church, absent arch, buried capsule.
+        for x in (332, 612):
+            d.line((x, 342, x, 630), fill=pale, width=6)
+            for y in (370, 455, 540):
+                d.arc((x-35, y, x+35, y+64), 180, 360, fill=c, width=5)
+        d.line((472, 300, 472, 677), fill=c, width=7)
+        if index == 0:
+            d.polygon([(440,327),(472,285),(504,327)], outline=pale, width=6)
+            d.rectangle((444,328,500,390), outline=pale, width=5)
+        elif index == 1:
+            d.ellipse((380,420,420,460), outline=pale, width=5)
+            d.line((405,442,472,442), fill=pale, width=5)
+            d.ellipse((452,420,492,460), outline=c, width=6)
+        elif index == 2:
+            d.line((375,630,375,470), fill=pale, width=7)
+            d.line((565,630,565,470), fill=pale, width=7)
+            d.arc((375,385,565,575), 180, 360, fill=c, width=8)
+            for x in range(392,555,23): d.line((x,420,x+13,432), fill=pale, width=3)
+        else:
+            d.rectangle((421,536,523,591), outline=c, width=7)
+            d.ellipse((441,459,503,532), outline=pale, width=6)
+            d.line((472,456,472,391), fill=pale, width=5)
+        return
+    if id == "huang":
+        if index == 0:
+            d.rounded_rectangle((337,320,615,630), radius=24, outline=c, width=8)
+            for row in range(4):
+                for col in range(4):
+                    x,y=365+col*57,346+row*62
+                    d.rectangle((x,y,x+38,y+38), outline=pale, width=4)
+            d.arc((292,281,660,672), 25, 155, fill=c, width=7)
+            d.arc((292,281,660,672), 205, 335, fill=c, width=7)
+        elif index == 1:
+            d.polygon([(286,616),(472,345),(658,616)], outline=c, width=7)
+            for row in range(3):
+                for col in range(5-row):
+                    x=345+row*28+col*61
+                    d.ellipse((x,524-row*55,x+32,546-row*55), outline=pale, width=4)
+            d.line((317,638,627,638), fill=pale, width=6)
+        elif index == 2:
+            for row in range(5):
+                for col in range(2):
+                    x,y=355+col*123,337+row*62
+                    d.rectangle((x,y,x+95,y+46), outline=c if (row+col)%2 else pale, width=5)
+                    d.ellipse((x+67,y+14,x+82,y+29), fill=c)
+            d.rectangle((333,316,602,664), outline=pale, width=7)
+        else:
+            d.polygon([(310,579),(471,345),(634,579)], outline=c, width=7)
+            for x in (385,470,555):
+                d.line((x,530,x,627), fill=pale, width=7)
+            d.line((290,642,654,642), fill=pale, width=6)
+            d.arc((315,293,625,617), 200, 340, fill=c, width=7)
         return
     if (id,index) == ("hoover",0):  # tower
         d.polygon([(384,680),(384,328),(411,298),(509,298),(536,328),(536,680)], outline=c, width=7)
@@ -184,7 +239,47 @@ def draw_visual(d, id, index):
         d.line((left-44,top+height+12,left+width+44,top+height+12),fill=c,width=7)
 
 
+# Stops drawn with the deck template plus a big hero picture (tools/story_cards_deck.py; pictures from tools/heroes/).
+def save_atomic(im, out):
+    # Lens Studio re-imports a PNG the moment it changes: a slow, chunked save can be read half-written ("Cannot load
+    # image") and the old texture stays, and a delete + rename shows up as a duplicate new asset. So encode in memory
+    # and overwrite the existing file in a single write (a plain "modified" event).
+    import io
+    buf = io.BytesIO()
+    im.save(buf, format="PNG", optimize=True)
+    with open(out, "wb") as f:
+        f.write(buf.getvalue())
+
+
+# Every stop uses the copper deck template. Main Quad, Huang and Hoover keep their four-card decks and hand-drawn
+# heroes (tools/heroes/<id>.py); every other building has exactly one card, pictured by its real footprint
+# (tools/heroes/footprint.py; the HP Garage, off the map, by Nazeli's drawing in tools/heroes/hpgarage.py).
+MULTI_CARD_IDS = ("mainquad", "huang", "hoover")
+DECK_HERO_IDS = tuple(DATA)
+
+
+# Card titles for names too long for the header beside the close button (Cards.ts keeps the full names).
+SHORT_TITLES = {"shriram": "Shriram Center", "spilker": "Spilker Engineering Building",
+                "moore": "Moore Materials Research Building", "likashing": "Li Ka Shing Center",
+                "sapp": "Sapp Center", "y2e2": "Y2E2, Environment and Energy"}
+
+
+def next_label(id, count):
+    """Text on the Next Card button. A one-card stop's button plays the next narration segment, so it says Hear More
+    (Replay Card when the building has a single segment); the deck template's own labels otherwise."""
+    if count != 1:
+        return None
+    return "Hear More" if len(NARRATION.get(id, [])) > 1 else "Replay Card"
+
+
 def draw_slide(id, index, slide, count):
+    if id in DECK_HERO_IDS:
+        from story_cards_deck import render_deck_card
+        out = ART / id / f"{id}_story_card_{index}.png"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        save_atomic(render_deck_card(id, index, slide, count, SHORT_TITLES.get(id, NAMES[id]), visual=draw_visual,
+                                     next_label=next_label(id, count)), out)
+        return out
     im = Image.new("RGBA", (W,H), (0,0,0,0))
     d = ImageDraw.Draw(im)
     d.polygon(poly(28,28,888,1252),fill=PANEL,outline=COPPER,width=7)
@@ -230,18 +325,26 @@ def draw_slide(id, index, slide, count):
     d.text((953,1049),"Next Stop  ›",font=face(23,True,True),fill=WHITE)
     out = ART / id / f"{id}_story_card_{index}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
-    im.save(out,optimize=True)
+    save_atomic(im, out)
     return out
 
 
 all_outputs=[]
+only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else ""
+if only and only not in DATA:
+    raise SystemExit(f"Unknown story id: {only}")
 for id, slides in DATA.items():
     if not 1 <= len(slides) <= 5: raise ValueError(f"{id}: expected 1–5 cards")
-    if id in HAND and len(slides) != len(NARRATION[id]):
+    if id not in MULTI_CARD_IDS and len(slides) != 1:
+        raise ValueError(f"{id}: only {', '.join(MULTI_CARD_IDS)} have more than one card")
+    # A multi-card deck follows its narration card for card; a one-card stop's card matches the opening segment.
+    if id in HAND and len(slides) > 1 and len(slides) != len(NARRATION[id]):
         raise ValueError(f"{id}: cards and voice segments differ")
     for i, slide in enumerate(slides):
         if id in HAND and slide["source"] not in NARRATION[id][i]["sources"]:
             raise ValueError(f"{id} {i}: card source is absent from matching narration")
+        if only and id != only:
+            continue
         out = draw_slide(id,i,slide,len(slides))
         all_outputs.append(out)
         meta = out.with_suffix(out.suffix + ".meta")
@@ -269,7 +372,7 @@ for id, slides in DATA.items():
       Mipmap: false
 ''', encoding="utf-8")
 
-lines=["// GENERATED by tools/render_story_decks.py. Hand-written narration decks (centerpieces and the start-point corner buildings) plus one or two cards per other building.",
+lines=["// GENERATED by tools/render_story_decks.py. Four-card decks for Main Quad, Huang and Hoover; one card for every other building.",
        "export const STORY_CARD_COUNTS: Record<string, number> = {" + ", ".join(f"{k}: {len(v)}" for k,v in DATA.items()) + "}",
        "export function storyCardTexture(id: string, index: number): Texture | null {",
        "  index = index % (STORY_CARD_COUNTS[id] || 1)",

@@ -7,6 +7,7 @@ Requires Pillow, numpy, and imageio-ffmpeg. Run from any directory:
 from pathlib import Path
 import math
 import subprocess
+import sys
 
 import imageio_ffmpeg
 import numpy as np
@@ -14,7 +15,7 @@ from PIL import Image, ImageOps
 
 
 ART = Path(__file__).resolve().parents[1] / "Assets" / "Retrospecs" / "Art"
-IDS = ("hoover", "huang", "memchu", "varian", "spilker", "moore")
+IDS = ("mainquad", "hoover", "huang", "memchu", "varian", "spilker", "moore")
 WIDTH, HEIGHT, FPS, SECONDS = 640, 360, 24, 4
 
 
@@ -62,5 +63,8 @@ def encode(story_id: str) -> None:
 
 
 if __name__ == "__main__":
-    for story_id in IDS:
+    selected = tuple(sys.argv[1:]) or IDS
+    if any(story_id not in IDS for story_id in selected):
+        raise SystemExit(f"Choose from: {', '.join(IDS)}")
+    for story_id in selected:
         encode(story_id)

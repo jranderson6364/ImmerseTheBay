@@ -1,0 +1,140 @@
+{
+  "_about": "Real photos for the Photo Archive gallery (tools/render_archive_gallery.py). Every file is from Wikimedia Commons, public domain or CC BY / CC BY-SA; the credit line is baked onto each slide. Captions are written from the file's own description and the stop's checked cards (tools/story-cards.json).",
+  "mainquad": {
+    "name": "Main Quad",
+    "cover": 3,
+    "photos": [
+      {
+        "file": "File:Western entrance to inner quadrangle, Leland Stanford Junior University-LCCN2008678137.jpg",
+        "year": "c. 1900",
+        "headline": "The Inner Quad's western gate",
+        "caption": "Palms and sandstone at the western entrance to the Inner Quad, within a decade of opening day.",
+        "credit": "Detroit Publishing Co. · Library of Congress · Public domain",
+        "license": "Public domain"
+      },
+      {
+        "file": "File:East side of quadrangle of Leland Stanford, Jr. University (no 51253) - Detroit Photographic Company.jpg",
+        "year": "c. 1900",
+        "headline": "The arcades, brand new",
+        "caption": "The Quad's east side on a hand-colored photochrom postcard, the long arcade fresh from the quarry.",
+        "credit": "Detroit Photographic Co. · Beinecke Library, Yale · Public domain",
+        "license": "Public domain"
+      },
+      {
+        "file": "File:View of the chapel from the corridor at Stanford University (CHS-1851).jpg",
+        "year": "BEFORE 1906",
+        "headline": "Memorial Church through the arches",
+        "caption": "The church seen from the Quad's corridor, with the tall spire the 1906 earthquake would bring down.",
+        "credit": "California Historical Society · USC Digital Library · Public domain",
+        "license": "Public domain"
+      },
+      {
+        "file": "File:The massive arch at Stanford University (CHS-1850).jpg",
+        "year": "c. 1900",
+        "headline": "The Memorial Arch",
+        "caption": "The grand arch at the Quad's entrance, crowned by a carved frieze of soldiers and horses.",
+        "credit": "California Historical Society · USC Digital Library · Public domain",
+        "license": "Public domain"
+      },
+      {
+        "file": "File:San Francisco Earthquake of 1906, Entrance gate at Stanford University - NARA - 513318.tif",
+        "year": "APRIL 1906",
+        "headline": "The arch becomes a ghost",
+        "caption": "The earthquake left the Memorial Arch a broken shell. It came down; only its bases still mark the spot.",
+        "credit": "W. E. Worden · U.S. National Archives · Public domain",
+        "license": "Public domain"
+      }
+    ]
+  },
+  "huang": {
+    "name": "Huang Engineering Center",
+    "photos": [
+      {
+        "file": "File:Jen-Hsun Huang Engineering Center in 2016.jpg",
+        "year": "2016",
+        "headline": "The engineering anchor",
+        "caption": "Huang Center opened in 2010 at the head of the Science and Engineering Quad.",
+        "credit": "Photo: Frank Schulenburg · CC BY-SA 4.0 · Wikimedia Commons",
+        "license": "CC BY-SA 4.0"
+      },
+      {
+        "file": "File:Jen-Hsun Huang Engineering Center 1.jpg",
+        "year": "2021",
+        "headline": "The name over the door",
+        "caption": "Jen-Hsun Huang Engineering Center, carved beside the main entrance.",
+        "credit": "Photo: Leijurv · CC BY-SA 4.0 · Wikimedia Commons",
+        "license": "CC BY-SA 4.0"
+      },
+      {
+        "file": "File:Stanford Huang Nvidia.jpg",
+        "year": "2013",
+        "headline": "Huang and the NVIDIA Auditorium",
+        "caption": "The Huang building (left) and the NVIDIA Auditorium wing (right), across the lawn.",
+        "credit": "Photo: Jim Heaphy (Cullen328) · CC BY-SA 3.0 · Wikimedia Commons",
+        "license": "CC BY-SA 3.0"
+      },
+      {
+        "file": "File:Jensen huang stanford 2026-04-09 011.jpg",
+        "year": "APRIL 9, 2026",
+        "headline": "Jensen Huang, back at Stanford",
+        "caption": "The NVIDIA co-founder speaks at a Stanford GSB discussion on U.S. leadership in AI.",
+        "credit": "Photo: Anders Eidesvik · CC BY 4.0 · Wikimedia Commons",
+        "license": "CC BY 4.0"
+      },
+      {
+        "file": "File:Jensen huang stanford 2026-04-30 012.jpg",
+        "year": "APRIL 30, 2026",
+        "headline": "In the classroom",
+        "caption": "Huang (right) at a fireside chat in Stanford's CS 153 course.",
+        "credit": "Photo: Anders Eidesvik · CC BY 4.0 · Wikimedia Commons",
+        "license": "CC BY 4.0"
+      }
+    ]
+  },
+  "hoover": {
+    "name": "Hoover Tower",
+    "cover": 4,
+    "photos": [
+      {
+        "file": "File:Hoover StanfordQuad p253 Class-of-1901(1900).jpg",
+        "year": "1900",
+        "headline": "Hoover, as students drew him",
+        "caption": "A caricature of Herbert Hoover, from Stanford's first graduating class, in the 1900 Stanford Quad yearbook.",
+        "credit": "Stanford Quad yearbook, 1900 · Public domain",
+        "license": "Public domain"
+      },
+      {
+        "file": "File:Herbert Hoover, head and shoulders portrait, as a young man, facing right LCCN2005694773.jpg",
+        "year": "c. 1917",
+        "headline": "Herbert Hoover",
+        "caption": "The Stanford geology graduate around the time he ran U.S. food relief in World War I.",
+        "credit": "Library of Congress · Public domain",
+        "license": "Public domain"
+      },
+      {
+        "file": "File:Tower, Hoover Institute and Library, Stanford - Front.png",
+        "year": "c. 1960",
+        "headline": "The tower on a postcard",
+        "caption": "Hoover Tower opened in 1941 to house his archive of war and peace.",
+        "credit": "Postcard · Wikimedia Commons · Public domain",
+        "license": "Public domain"
+      },
+      {
+        "file": "File:Hoover Tower carillon bells 1.JPG",
+        "year": "2010",
+        "headline": "The carillon bells",
+        "caption": "Bells of the carillon, which shares the tower's 14th floor with the observation deck.",
+        "credit": "Photo: BrokenSphere · CC BY 3.0 · Wikimedia Commons",
+        "license": "CC BY 3.0"
+      },
+      {
+        "file": "File:Orange skies day - Stanford Hoover Tower.jpg",
+        "year": "SEPT. 9, 2020",
+        "headline": "Under an orange sky",
+        "caption": "Wildfire smoke turned the sky orange over Jane Stanford Way and the tower.",
+        "credit": "Photo: Suiren2022 · CC BY-SA 4.0 · Wikimedia Commons",
+        "license": "CC BY-SA 4.0"
+      }
+    ]
+  }
+}

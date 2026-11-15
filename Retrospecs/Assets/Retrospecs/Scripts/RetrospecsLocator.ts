@@ -49,6 +49,18 @@ export interface LocateResult {
   /** True for the gps-cone fallback. */
   estimated: boolean
   wearer: WearerPosition
+  /**
+   * Horizontal world direction (unit) of the ray through Gemini's pixel at capture time, or the gaze when there is
+   * no pixel. Independent of the compass frame, so recenter can solve for the frame from it.
+   */
+  rayWorldDir: vec3
+}
+
+export interface IdentifyOptions {
+  /** Choose candidates in the north-aligned compass frame instead of the calibrated map frame (recenter). */
+  compassFrame?: boolean
+  /** Use this wearer position instead of wearer() (recenter passes the unsnapped GPS fix). */
+  wearer?: WearerPosition
 }
 
 @component
@@ -178,6 +190,19 @@ export class RetrospecsLocator extends BaseScriptComponent {
     })
   }
 
+  /** Wearer position from the raw GPS fix (no spot snapping), for recenter. */
+  wearerUnsnapped(): WearerPosition {
+    return chooseWearerPosition(this.latestFix, this.survey, {
+      maxAccuracyM: this.maxAccuracyM, maxAgeS: this.maxFixAgeS, nowMs: Date.now(), forcedSpotId: this.spotId, noSnap: true
+    })
+  }
+
+  /** Horizontal camera forward (world) and the compass heading, or null without a compass reading. */
+  compassReading(): {forwardWorld: vec3; headingDeg: number} | null {
+    if (this.compassHeadingDeg == null) return null
+    return {forwardWorld: this.forward(), headingDeg: this.compassHeadingDeg}
+  }
+
   /** The controller's survey position (local metres), used whenever GPS isn't trusted. */
   setSurvey(en: EN) {
     this.survey = {e: en.e, n: en.n}
@@ -204,21 +229,21 @@ export class RetrospecsLocator extends BaseScriptComponent {
   // -------------------------------------------------------------------------
   // Identify
 
-  identify(): Promise<LocateResult | null> {
+  identify(opts: IdentifyOptions = {}): Promise<LocateResult | null> {
     if (this.busy) {
       print("[Retrospecs] locator: identify already running")
       return Promise.resolve(null)
     }
-    const wearer = this.wearer()
+    const wearer = opts.wearer || this.wearer()
     print("[Retrospecs] locator position: " + wearer.reason)
-    const q = this.frameRotation()
+    const q = (opts.compassFrame && this.compassFrameRotation()) || this.frameRotation()
     if (!q) {
       print("[Retrospecs] locator: not calibrated and no compass heading yet; calibrate first")
       return Promise.resolve(null)
     }
     if (!this.map || !this.map.worldRoot) print("[Retrospecs] locator: not calibrated, using the compass as the frame (coarse)")
     const camT = this.camera.getTransform()
-    const capture = {pos: camT.getWorldPosition(), xf: camT.getWorldTransform(), rot: q, floorY: this.floorY()}
+    const capture: Capture = {pos: camT.getWorldPosition(), xf: camT.getWorldTransform(), rot: q, floorY: this.floorY(), fwd: this.forward()}
     const heading = this.bearingOfWorldDir(q, this.forward())
     const cands = viewConeCandidates(wearer.en, heading, {halfAngleDeg: this.halfAngleDeg, maxDistM: this.maxDistM, minDistM: this.minDistM, limit: this.maxCandidates})
     if (!cands.length) {
@@ -320,18 +345,22 @@ export class RetrospecsLocator extends BaseScriptComponent {
     wearer: WearerPosition, capture: Capture
   ): LocateResult {
     let aim = c.aim
+    let ray = capture.fwd
     if (pixel && this.colorCam) {
       try {
         // Pixel -> device-reference point (DeviceCamera.unproject) -> world via the capture-time camera transform.
         const devRef = this.colorCam.unproject(new vec2(pixel.x / 1000, pixel.y / 1000), 100)
         const w = capture.xf.multiplyPoint(devRef)
-        const pixBearing = this.bearingOfWorldDir(capture.rot, w.sub(capture.pos))
+        const d = w.sub(capture.pos)
+        const len = Math.hypot(d.x, d.z)
+        if (len > 1e-4) ray = new vec3(d.x / len, 0, d.z / len)
+        const pixBearing = this.bearingOfWorldDir(capture.rot, d)
         aim = aimAlongBearing(wearer.en, c, pixBearing)
       } catch (e) {
         print("[Retrospecs] locator: pixel ray failed (" + e + ")")
       }
     }
-    const base = this.resultFor(c, aim, wearer, capture, "gemini", confidence, false)
+    const base = {...this.resultFor(c, aim, wearer, capture, "gemini", confidence, false), rayWorldDir: ray}
     if (!pixel || !this.depthCache || depthId < 0) return base
     try {
       const px = new vec2((pixel.x / 1000) * frame.getWidth(), (pixel.y / 1000) * frame.getHeight())
@@ -357,7 +386,7 @@ export class RetrospecsLocator extends BaseScriptComponent {
     const worldPos = new vec3(capture.pos.x, capture.floorY, capture.pos.z).add(dir.uniformScale(d * 100))
     return {
       id: c.id, name: c.name, landmark: c.landmark, worldPos, displayPos: this.clampDisplay(capture, worldPos),
-      distanceM: d, bearingDeg: b, en: aim, heightM: c.heightM, source, confidence, estimated, wearer
+      distanceM: d, bearingDeg: b, en: aim, heightM: c.heightM, source, confidence, estimated, wearer, rayWorldDir: capture.fwd
     }
   }
 
@@ -376,6 +405,11 @@ export class RetrospecsLocator extends BaseScriptComponent {
   /** Rotation q such that q * bearingToMapDir(b) is the world direction of compass bearing b. */
   private frameRotation(): quat | null {
     if (this.map && this.map.worldRoot) return this.map.worldRoot.getTransform().getWorldRotation()
+    return this.compassFrameRotation()
+  }
+
+  /** The same frame built from the compass heading alone (null without a compass reading). */
+  private compassFrameRotation(): quat | null {
     if (this.compassHeadingDeg == null) return null
     const f = this.forward()
     return quat.angleAxis(mapYawFor({x: f.x, y: 0, z: f.z}, this.compassHeadingDeg), vec3.up())
@@ -413,5 +447,7 @@ interface Capture {
   xf: mat4
   rot: quat
   floorY: number
+  /** Horizontal camera forward (world, unit) at capture. */
+  fwd: vec3
 }
 
