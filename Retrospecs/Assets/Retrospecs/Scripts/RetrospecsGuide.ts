@@ -11,6 +11,7 @@ import {NARRATION_CLIPS} from "../Data/NarrationClips"
 import {GUIDE_SCHEMA, GUIDE_SYSTEM_PROMPT, ValidatedAnswer, buildGuidePrompt, validateGuide} from "../Core/Guide"
 import {LIVE_SYSTEM_PROMPT, LiveAnswer, LiveTurn, buildLivePrompt, parseLiveReply, parseOpenAILiveReply} from "../Core/AskLive"
 import {Card} from "../Core/Cards"
+import {PRI_PREFETCH, PRI_SPEAK, TTS_MAX_IN_FLIGHT, pickNext, retryDelaySec, shouldRetry, startWaitSec} from "../Core/Throttle"
 
 @component
 export class RetrospecsGuide extends BaseScriptComponent {
@@ -69,7 +70,8 @@ export class RetrospecsGuide extends BaseScriptComponent {
         systemInstruction: {parts: [{text: LIVE_SYSTEM_PROMPT}]},
         // Grounding can't be combined with a JSON response schema on 2.5, so this call returns plain text.
         tools: [{google_search: {}} as any],
-        generationConfig: {temperature: 0.4, maxOutputTokens: 400}
+        // No thinking: it counts against maxOutputTokens (answers came back cut off) and adds latency.
+        generationConfig: {temperature: 0.4, maxOutputTokens: 800, thinkingConfig: {thinkingBudget: 0}} as any
       }
     }
     const gemini = withTimeout(Gemini.models(req), this.liveTimeoutSec, this).then((response) => {
@@ -201,31 +203,49 @@ export class RetrospecsGuide extends BaseScriptComponent {
     return Promise.resolve()
   }
 
-  /** Makes the next clip start instantly: nothing to do if it is baked, else warm the live TTS cache. */
-  prefetchClip(name: string, text: string) {
-    if (!this.bakedClip(name)) this.prefetch([text])
+  /** True when a baked clip exists (dragged in or bundled), without loading the audio. */
+  hasBakedClip(name: string): boolean {
+    if (!this.speakResponses) return false
+    if (!this.clipIndex) this.bakedClip("") // builds the index of dragged-in clips
+    return !!this.clipIndex[name] || !!NARRATION_CLIPS[name]
   }
 
-  /** Warms the clip cache in the background, two requests at a time. Safe to call repeatedly. */
+  /** Makes the next clip start instantly: nothing to do if it is baked, else warm the live TTS cache. */
+  prefetchClip(name: string, text: string) {
+    if (!this.hasBakedClip(name)) this.prefetch([text])
+  }
+
+  /** Warms the clip cache in the background, at low priority behind anything being spoken. Safe to call repeatedly. */
   prefetch(texts: string[]) {
     if (!this.speakResponses) return
     for (const t of texts) {
       const k = (t || "").trim()
-      if (k && !this.cache[k] && this.prefetchQueue.indexOf(k) < 0) this.prefetchQueue.push(k)
+      if (k && !this.cache[k]) this.tts(k, PRI_PREFETCH)
     }
-    this.pumpPrefetch()
   }
 
   private cache: Record<string, Promise<AudioTrackAsset>> = {}
   private ready: Record<string, boolean> = {}
-  private prefetchQueue: string[] = []
-  private prefetchActive = 0
+  private ttsQueue: TtsJob[] = []
+  private ttsActive = 0
+  private ttsLastStart = -1
+  private ttsCooldownUntil = 0
+  private ttsPumpPending = false
+  private ttsRateLimits = 0
   private lastCachedFlags: boolean[] = []
 
-  private tts(text: string): Promise<AudioTrackAsset> {
+  /**
+   * Text-to-speech through one paced queue (Core/Throttle.ts): at most TTS_MAX_IN_FLIGHT requests, a short gap
+   * between starts, spoken lines ahead of warming, and a pause-then-retry when the gateway says "Rate limited".
+   * Cached by text, so a line that is already warming is reused (and moved up if it is now being spoken).
+   */
+  private tts(text: string, pri: number = PRI_SPEAK): Promise<AudioTrackAsset> {
     const k = text.trim()
-    if (this.cache[k]) return this.cache[k]
-    const p = OpenAI.speech({model: "gpt-4o-mini-tts", input: k, voice: this.ttsVoice as any, instructions: "Warm, upbeat Stanford campus tour guide. Clear and quick."})
+    if (this.cache[k]) {
+      if (pri > PRI_PREFETCH) for (const j of this.ttsQueue) if (j.k === k && j.pri < pri) j.pri = pri
+      return this.cache[k]
+    }
+    const p = new Promise<AudioTrackAsset>((resolve, reject) => this.ttsQueue.push({k, pri, attempts: 0, resolve, reject}))
     this.cache[k] = p
     p.then(
       () => (this.ready[k] = true),
@@ -233,19 +253,47 @@ export class RetrospecsGuide extends BaseScriptComponent {
         delete this.cache[k] // let a later call retry
       }
     )
+    this.pumpTts()
     return p
   }
 
-  private pumpPrefetch() {
-    while (this.prefetchActive < 2 && this.prefetchQueue.length) {
-      const k = this.prefetchQueue.shift()
-      if (this.cache[k]) continue
-      this.prefetchActive++
-      const done = () => {
-        this.prefetchActive--
-        this.pumpPrefetch()
+  private pumpTts() {
+    while (this.ttsActive < TTS_MAX_IN_FLIGHT && this.ttsQueue.length) {
+      const wait = startWaitSec(getTime(), this.ttsCooldownUntil, this.ttsLastStart)
+      if (wait > 0) {
+        if (!this.ttsPumpPending) {
+          this.ttsPumpPending = true
+          this.after(wait, () => {
+            this.ttsPumpPending = false
+            this.pumpTts()
+          })
+        }
+        return
       }
-      this.tts(k).then(done, done)
+      const job = this.ttsQueue.splice(pickNext(this.ttsQueue), 1)[0]
+      this.ttsActive++
+      this.ttsLastStart = getTime()
+      OpenAI.speech({model: "gpt-4o-mini-tts", input: job.k, voice: this.ttsVoice as any, instructions: "Warm, upbeat Stanford campus tour guide. Clear and quick."}).then(
+        (track) => {
+          this.ttsActive--
+          job.resolve(track)
+          this.pumpTts()
+        },
+        (e) => {
+          this.ttsActive--
+          if (shouldRetry(e, job.pri, job.attempts)) {
+            job.attempts++
+            this.ttsRateLimits++
+            const pause = retryDelaySec(job.attempts)
+            this.ttsCooldownUntil = Math.max(this.ttsCooldownUntil, getTime() + pause)
+            print(`[Retrospecs] TTS rate limited (${this.ttsRateLimits} so far); pausing ${pause}s, retry ${job.attempts} for "${job.k.slice(0, 40)}"`)
+            this.ttsQueue.unshift(job)
+          } else {
+            job.reject(e)
+          }
+          this.pumpTts()
+        }
+      )
     }
   }
 
@@ -299,4 +347,12 @@ function withTimeout<T>(p: Promise<T>, seconds: number, owner: BaseScriptCompone
       }
     )
   })
+}
+
+interface TtsJob {
+  k: string
+  pri: number
+  attempts: number
+  resolve: (t: AudioTrackAsset) => void
+  reject: (e: any) => void
 }

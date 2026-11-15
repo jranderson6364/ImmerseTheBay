@@ -34,7 +34,7 @@ import {FocusLayout, focusLayout} from "../Core/Focus"
 import {pickByBearing} from "../Core/Pick"
 import {HoverState, SWITCH_DWELL_SEC, SelectionAction, SelectionInput, decideSelection, focusIdleExpired, hoverHeldSec, isLocked, newHoverState, selectionTarget, stepHover} from "../Core/Selection"
 import {narrationFor} from "../Data/NarrationData"
-import {LOOKING_UP_LINE, LiveTurn, isAskFurtherIntent, presentLive, stripAskFurtherCommand} from "../Core/AskLive"
+import {LIVE_PREFIX_GENERAL, LIVE_PREFIX_WEB, LOOKING_UP_LINE, LiveTurn, isAskFurtherIntent, presentLive, stripAskFurtherCommand} from "../Core/AskLive"
 
 type Mode = "calibrate" | "tour" | "guess"
 
@@ -102,7 +102,6 @@ export class RetrospecsController extends BaseScriptComponent {
   @ui.group_start("Focus mode (selected building)")
   @input @allowUndefined @hint("Floating card above the selected building: name, namesake, the fact, a number graphic") infoPanel: RetrospecsInfoPanel
   @input @hint("Ask further: when the checked notes don't cover a question about the building in focus, answer from the live web (Gemini + Google Search). Say \"look it up\" to go there directly.") askFurther: boolean = true
-  @input @hint("Dev: typed as if spoken ~4 s after calibrating (e.g. \"look up whether the Hoover deck is open\"). Leave empty.") debugUtterance: string = ""
   @input @hint("Ask further: seconds after a live answer during which questions about the same building stay on the web path (follow-ups)") liveFollowUpSec: number = 45
   // HOOK for the per-building 3D experiences (Scripts/RetrospecsExperiences.ts, another session's class). Typed as a
   // plain script component and called through `any`: show(id, anchorWorldPos: vec3, faceToward: vec3, scaleCm) and
@@ -357,13 +356,6 @@ export class RetrospecsController extends BaseScriptComponent {
     if (here) this.map.setState(here, "focus")
     const hereName = here ? cardById(here).name : "Stanford"
     this.say(`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, `You're at ${hereName}. Look at a building and pinch. Left pinch to ask.`)
-
-    // Dev hook: a typed "voice" question a few seconds after calibrating, to exercise the voice path in Preview.
-    if (this.debugUtterance) {
-      const ev = this.createEvent("DelayedCallbackEvent")
-      ev.bind(() => this.handleUtterance(this.debugUtterance))
-      ev.reset(4)
-    }
   }
 
   /** Puts the map on the floor centred on the wearer, or at table height in front of them. */
@@ -712,12 +704,20 @@ export class RetrospecsController extends BaseScriptComponent {
   private prefetchStartup() {
     const here = this.nearestLandmark(this.me)
     const hereName = here ? cardById(here).name : "Stanford"
-    const lines = [`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, THINKING_LINE, LOOKING_UP_LINE, "Here's something new."]
+    const lines = [`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, THINKING_LINE, LOOKING_UP_LINE, LIVE_PREFIX_WEB, LIVE_PREFIX_GENERAL]
+    // Buildings with narration play their baked clips, so only warm the ones that would fall back to live speech.
+    // (Warming every building's fact used to queue ~68 requests per start and trip the gateway's rate limit.)
     const themes = themesFromProfile(this.state.profile)
     for (const c of CARDS) {
+      const segs = narrationFor(c.id)
+      if (segs.length) {
+        this.guide.prefetchClip(segs[0].clip, segs[0].text)
+        continue
+      }
       const f = nextFact(c.id, this.state.heard, themes)
       if (f) lines.push(`${c.name}.`, f.text)
     }
+    if (QUIZ_ENABLED) lines.push("Here's something new.")
     if (QUIZ_ENABLED) for (const c of CARDS) lines.push(guessPrompt(c.id))
     this.guide.prefetch(lines)
   }

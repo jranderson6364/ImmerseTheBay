@@ -30,7 +30,6 @@
     asr: false
     autoQuiz: false
     camera: false
-    debugUtterance: false
     experienceScaleCm: false
     experiences: false
     eyeHeightCm: false
@@ -118,7 +117,6 @@
       longPinchSec: 0.600000
       infoPanel: !<MappingBased.AssignableType_7> 00000000-0000-0000-0000-000000000000
       askFurther: true
-      debugUtterance: "look it up: what is the Geballe lab working on these days"
       liveFollowUpSec: !<float> 45.000000
       experiences: !<reference.ScriptComponent> 00000000-0000-0000-0000-000000000000
       experienceScaleCm: !<float> 30.000000
@@ -179,7 +177,6 @@
     - '// @ui {"widget":"group_start", "label":"Focus mode (selected building)"}'
     - '// @input AssignableType_7 infoPanel {"hint":"Floating card above the selected building: name, namesake, the fact, a number graphic"}'
     - "// @input bool askFurther = true {\"hint\":\"Ask further: when the checked notes don't cover a question about the building in focus, answer from the live web (Gemini + Google Search). Say \\\"look it up\\\" to go there directly.\"}"
-    - '// @input string debugUtterance {"hint":"Dev: typed as if spoken ~4 s after calibrating (e.g. \"look up whether the Hoover deck is open\"). Leave empty."}'
     - '// @input float liveFollowUpSec = 45 {"hint":"Ask further: seconds after a live answer during which questions about the same building stay on the web path (follow-ups)"}'
     - "// @input Component.ScriptComponent experiences {\"hint\":\"Per-building 3D experience (RetrospecsExperiences). Shown to the wearer's left of the card.\"}"
     - '// @input float experienceScaleCm = 30 {"hint":"Experience size (world cm)"}'
