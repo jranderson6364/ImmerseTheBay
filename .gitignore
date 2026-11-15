@@ -23,3 +23,7 @@ coverage/
 *.mp4
 *.mov
 *.zip
+
+# Teammate-provided Sightlines reference clips
+!Retrospecs/Assets/Retrospecs/Art/nazeli_samples/*.mp4
+!Retrospecs/Assets/Retrospecs/Art/*/*_nazeli_anim.mp4

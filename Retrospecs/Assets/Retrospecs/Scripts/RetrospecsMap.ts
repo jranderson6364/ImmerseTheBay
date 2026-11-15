@@ -640,6 +640,26 @@ export class RetrospecsMap extends BaseScriptComponent {
     this.worldTemp.push(o)
   }
 
+  /**
+   * Landmark under the cursor at a map-local point (cm): the one whose footprint the point falls in or nearest to,
+   * with `slackCm` of grace beyond the footprint edge so small buildings are still easy to hit.
+   */
+  pickUnderCursor(local: vec3, slackCm = 2): string | null {
+    let best: string = null
+    let bestGap = slackCm
+    for (const id of Object.keys(this.landmarks)) {
+      const l = this.landmarks[id]
+      // The focused building has grown, so its target grows with it.
+      const radius = id === this.focusId ? Math.max(l.footprintCm, this.focusClearanceCm(id)) : l.footprintCm
+      const gap = Math.hypot(l.map.x - local.x, l.map.z - local.z) - radius
+      if (gap < bestGap) {
+        bestGap = gap
+        best = id
+      }
+    }
+    return best
+  }
+
   /** Nearest landmark to a map-local point (cm), within `maxCm`. */
   pickAtMapPoint(local: vec3, maxCm = 4): string | null {
     let best: string = null

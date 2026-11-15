@@ -7,8 +7,8 @@
  *                `facingHint` picks which face you're looking at. Two-hand twist nudges the yaw afterwards.
  *  2. TOUR       The map unfolds on the floor, centred on you. Right pinch = "tell me about what I'm looking at"
  *                (real building or one on the map). Left pinch = ask by voice. Say "lift" / "floor".
- *  3. GUESS      After each building: "Point to where you think X is, then pinch." Scored in degrees; the true
- *                direction arcs out on the map and a sightline pillar appears in the room; a new fact unlocks.
+ *  3. GUESS      (disabled: QUIZ_ENABLED) After each building: "Point to where you think X is, then pinch." Scored in
+ *                degrees; the true direction arcs out on the map and a sightline pillar appears in the room.
  *
  * Editor Preview: tap = calibrate (camera forward as the wall facing), then tap = right pinch.
  */
@@ -36,6 +36,9 @@ type Mode = "calibrate" | "tour" | "guess"
 
 const STORE_KEY = "sightlines.v1" // pre-rename key, kept so saved calibration survives
 const THINKING_LINE = "Let me check my notes."
+/** "Point to X, then pinch" quiz. Off for now (content first); the code stays for a later interactive pass.
+ *  This overrides the scene's autoQuiz input and the "quiz / guess / test me" voice command. */
+const QUIZ_ENABLED = false
 
 @component
 export class RetrospecsController extends BaseScriptComponent {
@@ -327,7 +330,7 @@ export class RetrospecsController extends BaseScriptComponent {
       if (!(it.inputType & (InteractorInputType.RightHand | InteractorInputType.Mouse))) continue
       const info = it.targetHitInfo
       if (!info || info.interactable !== target || !info.hit) continue
-      const id = this.map.pickAtMapPoint(inv.multiplyPoint(info.hit.position), 5)
+      const id = this.map.pickUnderCursor(inv.multiplyPoint(info.hit.position))
       if (id) return id
     }
     return ""
@@ -379,7 +382,7 @@ export class RetrospecsController extends BaseScriptComponent {
     this.enterFocus(id, fact)
     if (!fact) {
       if (this.showcase) this.showcase.hide()
-      this.say(`That's all my notes on ${card.name}. Let's try another one.`, `${card.label}: all facts heard`, this.quizAfterSpeech(id))
+      this.say(`That's all my notes on ${card.name}. Look at another building and pinch.`, `${card.label}: all facts heard`, this.quizAfterSpeech(id))
       return
     }
     this.markHeard(fact.id)
@@ -558,7 +561,7 @@ export class RetrospecsController extends BaseScriptComponent {
       const f = nextFact(c.id, this.state.heard, themes)
       if (f) lines.push(`${c.name}.`, f.text)
     }
-    for (const c of CARDS) lines.push(guessPrompt(c.id))
+    if (QUIZ_ENABLED) for (const c of CARDS) lines.push(guessPrompt(c.id))
     this.guide.prefetch(lines)
   }
 
@@ -568,7 +571,7 @@ export class RetrospecsController extends BaseScriptComponent {
     const lines: string[] = []
     const f = nextFact(id, this.state.heard, themes)
     if (f) lines.push(f.text)
-    const target = nextGuessTarget(this.me, this.positions, this.state.guessed, id)
+    const target = QUIZ_ENABLED ? nextGuessTarget(this.me, this.positions, this.state.guessed, id) : null
     if (target) {
       lines.push(guessPrompt(target))
       const tf = nextFact(target, this.state.heard, themes)
@@ -643,7 +646,7 @@ export class RetrospecsController extends BaseScriptComponent {
   /** Starts the next quiz 1.5 s after the current narration finishes (if nothing else happened meanwhile). */
   private quizAfterSpeech(fromId: string): () => void {
     return () => {
-      if (!this.autoQuiz) return
+      if (!QUIZ_ENABLED || !this.autoQuiz) return
       const ev = this.createEvent("DelayedCallbackEvent")
       ev.bind(() => {
         if (this.mode === "tour" && this.focus === fromId && !this.guide.isSpeaking()) this.startGuess(fromId)
@@ -714,7 +717,7 @@ export class RetrospecsController extends BaseScriptComponent {
       return this.hideExtras()
     }
     if (/\breset (the )?tour\b/.test(t)) return this.resetTour()
-    if (/\b(quiz|guess|test me)\b/.test(t)) return this.startGuess(this.focus)
+    if (QUIZ_ENABLED && /\b(quiz|guess|test me)\b/.test(t)) return this.startGuess(this.focus)
     if (/\b(something new|tell me more|another (one|fact))\b/.test(t) && this.focus) return this.tellAbout(this.focus)
     if (/^(i'?m|i am|i like|i love|i want|i study|my )/.test(t)) return this.setProfile(raw)
     this.askGuide(raw)
@@ -793,6 +796,26 @@ export class RetrospecsController extends BaseScriptComponent {
     // Gold outline on the building under the cursor. Never in guess mode: it would give the answer away.
     this.map.setHover(this.mode === "tour" ? this.cursorLandmark() : "")
     if (this.mode !== "calibrate") this.updateTwist()
+    this.debugCursor() // DEBUG-CURSOR (temporary)
+  }
+
+  // DEBUG-CURSOR (temporary): auto-calibrates in Preview and logs what the cursor rays hit.
+  private dbgT = 0
+  private dbgNext = 3
+  private debugCursor() {
+    if (!this.isEditor) return
+    this.dbgT += getDeltaTime()
+    if (this.mode === "calibrate" && this.dbgT > 2) return this.finishCalibration(this.viewHorizontal())
+    if (this.dbgT < this.dbgNext || !this.map.root) return
+    this.dbgNext = this.dbgT + 1
+    const all = SIK.InteractionManager.getInteractorsByType(InteractorInputType.All)
+    const desc = all.map((i: any) => `${i.inputType}${i.isTargeting() ? "T" : "-"}${i.isActive() ? "A" : "-"}:${i.targetHitInfo ? i.targetHitInfo.interactable.sceneObject.name : "none"}`).join(", ")
+    const t: any = this.map.cursorTarget
+    print(`[dbg] interactors ${desc} | target ${t ? "yes" : "no"} colliders ${t && t.colliders ? t.colliders.length : -1} mode ${t ? t.targetingMode : -1} enabled ${t ? t.enabled : "-"}`)
+    const cam = this.camera.getTransform().getWorldPosition()
+    const rt = this.map.root.getTransform()
+    const end = cam.add(rt.getWorldPosition().sub(cam).uniformScale(1.5))
+    Physics.createGlobalProbe().rayCast(cam, end, (hit) => print(`[dbg] probe cam->map: ${hit ? hit.collider.getSceneObject().name + " at " + hit.position.toString() + " registered=" + (SIK.InteractionManager.getInteractableByCollider(hit.collider) === t) : "nothing"} | map at ${rt.getWorldPosition().toString()} scale ${rt.getWorldScale().toString()} cam ${cam.toString()}`))
   }
 
   /** Two-hand pinch and twist nudges the map yaw (calibration correction). */

@@ -54,12 +54,27 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   @input bodySize: number = 72
   @input @hint("Turn fully toward the wearer (on) or only around the vertical axis (off)") tiltToViewer: boolean = true
 
+  // Artist media (Nazeli's illustrations and animations), shown in a row above the card for comparison.
+  @input @hint("Show artist illustrations / animations above the card. Turn off to compare with the plain card.") showMedia: boolean = true
+  @input @allowUndefined @hint("Material with a baseTex texture slot (e.g. Assets/Materials/CaptureTexture.mat). Cloned per item.") mediaMaterial: Material
+  // Four slots: a card id (e.g. "huang") and an image or video texture. Black is see-through on Spectacles: use art on black.
+  @input media1Id: string = ""
+  @input @allowUndefined media1Texture: Texture
+  @input media2Id: string = ""
+  @input @allowUndefined media2Texture: Texture
+  @input media3Id: string = ""
+  @input @allowUndefined media3Texture: Texture
+  @input media4Id: string = ""
+  @input @allowUndefined media4Texture: Texture
+  @input @hint("Height of the media row above the card (world cm)") mediaHeightCm: number = 14
+
   private root: SceneObject = null
   private parts: FadePart[] = []
   private t = 0
   private target = 0
   private anchor: vec3 = null
   private faceToward: vec3 = null
+  private videos: VideoTextureProvider[] = []
 
   onAwake() {
     this.createEvent("UpdateEvent").bind(() => this.onUpdate())
@@ -124,6 +139,74 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       this.text("fact", fact.text, 0, y - h / 2, inner, h, this.bodySize, PANEL_COLORS.body, HorizontalAlignment.Left, VerticalAlignment.Top)
     }
     if (g) this.buildGraphic(g, x0 + pad, x1 - pad, y0 + pad, y0 + pad + graphicH)
+    this.buildMedia(card.id, y1 + 1.2)
+  }
+
+  /** Artist media for `cardId`, side by side in a row whose bottom edge is at `bottomY` (panel cm). */
+  private buildMedia(cardId: string, bottomY: number) {
+    if (!this.showMedia || !this.mediaMaterial) return
+    const slots: [string, Texture][] = [
+      [this.media1Id, this.media1Texture], [this.media2Id, this.media2Texture],
+      [this.media3Id, this.media3Texture], [this.media4Id, this.media4Texture]
+    ]
+    const items: Texture[] = slots.filter(([id, tex]) => id === cardId && !!tex).map(([, tex]) => tex)
+    if (!items.length) return
+    const h = this.mediaHeightCm
+    const gap = 1.2
+    const widths = items.map((tex) => {
+      let aspect = 16 / 9
+      try {
+        const w = tex.getWidth(), ht = tex.getHeight()
+        if (w > 0 && ht > 0) aspect = w / ht
+      } catch (e) {
+        // Keep 16:9 for a texture that cannot report its size yet (video before its first frame).
+      }
+      return h * aspect
+    })
+    const total = widths.reduce((a, b) => a + b, 0) + gap * (items.length - 1)
+    print(`[Retrospecs] artist media for ${cardId}: ${items.length} item(s), row ${total.toFixed(1)} x ${h} cm`)
+    let x = -total / 2
+    items.forEach((tex, i) => {
+      const o = global.scene.createSceneObject("panel_media_" + i)
+      o.setParent(this.root)
+      const builder = new MeshBuilder([
+        {name: "position", components: 3},
+        {name: "normal", components: 3},
+        {name: "texture0", components: 2}
+      ])
+      const chunk = quadsChunk([{x0: x, y0: bottomY, x1: x + widths[i], y1: bottomY + h}], 0)
+      builder.topology = MeshTopology.Triangles
+      builder.indexType = MeshIndexType.UInt16
+      builder.appendVerticesInterleaved(chunk.verts)
+      builder.appendIndices(chunk.idx)
+      builder.updateMesh()
+      const visual = o.createComponent("Component.RenderMeshVisual") as RenderMeshVisual
+      visual.mesh = builder.getMesh()
+      const m = this.mediaMaterial.clone()
+      try {
+        m.mainPass.baseTex = tex
+        m.mainPass.twoSided = true
+      } catch (e) {
+        print("[Retrospecs] media material has no baseTex: " + e)
+      }
+      visual.mainMaterial = m
+      // Video textures: loop, muted, from the start each time the card opens.
+      try {
+        const vp = tex.control as VideoTextureProvider
+        if (vp && typeof (vp as any).play === "function") {
+          try {
+            vp.volume = 0
+          } catch (e) {
+            // No volume control: the Lens copies have no audio track anyway.
+          }
+          vp.play(-1)
+          this.videos.push(vp)
+        }
+      } catch (e) {
+        // Still image.
+      }
+      x += widths[i] + gap
+    })
   }
 
   /** The number graphic, inside the box x0..x1, y0..y1 (panel cm). */
@@ -259,6 +342,14 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
   }
 
   private clear() {
+    for (const v of this.videos) {
+      try {
+        v.stop()
+      } catch (e) {
+        // Already stopped.
+      }
+    }
+    this.videos = []
     if (this.root) this.root.destroy()
     this.root = null
     this.parts = []

@@ -31,10 +31,21 @@
     camera: false
     font: false
     material: false
+    media1Id: false
+    media1Texture: false
+    media2Id: false
+    media2Texture: false
+    media3Id: false
+    media3Texture: false
+    media4Id: false
+    media4Texture: false
+    mediaHeightCm: false
+    mediaMaterial: false
     panelGapCm: false
     panelHeightCm: false
     panelWidthCm: false
     riseCm: false
+    showMedia: false
     tiltToViewer: false
     titleSize: false
   ScriptTypesHidden:
@@ -57,6 +68,17 @@
       titleSize: !<float> 48.000000
       bodySize: !<float> 32.000000
       tiltToViewer: true
+      showMedia: true
+      mediaMaterial: !<reference.Material> 00000000-0000-0000-0000-000000000000
+      media1Id: ""
+      media1Texture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
+      media2Id: ""
+      media2Texture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
+      media3Id: ""
+      media3Texture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
+      media4Id: ""
+      media4Texture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
+      mediaHeightCm: !<float> 14.000000
   ScriptTypes:
     -
       {}
@@ -73,3 +95,14 @@
     - '// @input float titleSize = 120 {"hint":"Largest text size; text wraps, then shrinks only if it overflows its box. A map label is about 135 at scale 1."}'
     - // @input float bodySize = 72
     - '// @input bool tiltToViewer = true {"hint":"Turn fully toward the wearer (on) or only around the vertical axis (off)"}'
+    - '// @input bool showMedia = true {"hint":"Show artist illustrations / animations above the card. Turn off to compare with the plain card."}'
+    - '// @input Asset.Material mediaMaterial {"hint":"Material with a baseTex texture slot (e.g. Assets/Materials/CaptureTexture.mat). Cloned per item."}'
+    - // @input string media1Id
+    - // @input Asset.Texture media1Texture
+    - // @input string media2Id
+    - // @input Asset.Texture media2Texture
+    - // @input string media3Id
+    - // @input Asset.Texture media3Texture
+    - // @input string media4Id
+    - // @input Asset.Texture media4Texture
+    - '// @input float mediaHeightCm = 14 {"hint":"Height of the media row above the card (world cm)"}'
