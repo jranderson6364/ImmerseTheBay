@@ -1,0 +1,122 @@
+- !<AssetImportMetadata/f6425eec-7a92-4d82-9739-d8a22ed794e6>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 2f9fac94-155a-4f37-a9b9-c33985eff4ba
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 2f9fac94-155a-4f37-a9b9-c33985eff4ba
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 3fd210a0-c064-49dc-99f9-b49b4f4db8d6
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/3fd210a0-c064-49dc-99f9-b49b4f4db8d6>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  ComponentUid: 9546529f-874b-4498-ac1c-d8e74224a413
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    backgroundDim: false
+    backgroundScale: false
+    bikeLaneWidthCm: false
+    bikeWidthCm: false
+    focusInSec: false
+    focusLiftCm: false
+    focusOutSec: false
+    focusScale: false
+    footWidthCm: false
+    labelPrefab: false
+    labelScale: false
+    material: false
+    outlineWidthCm: false
+    radiusM: false
+    roadWidthCm: false
+    scaleDenominator: false
+    showBikePaths: false
+    showCornerLines: false
+    showFocusHalo: false
+    showFootpaths: false
+    showOutlines: false
+    showRoads: false
+    sightlineLabelPerCm: false
+    useLandmarkModels: false
+    verticalExaggeration: false
+    wallInsetCm: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - material: !<reference.Material> 00000000-0000-0000-0000-000000000000
+      labelPrefab: !<reference.ObjectPrefab> 00000000-0000-0000-0000-000000000000
+      scaleDenominator: !<float> 1350.000000
+      verticalExaggeration: !<float> 3.000000
+      radiusM: !<float> 1000.000000
+      showOutlines: true
+      outlineWidthCm: 0.200000
+      showCornerLines: true
+      wallInsetCm: 0.040000
+      showRoads: true
+      showBikePaths: true
+      showFootpaths: false
+      roadWidthCm: 1.300000
+      bikeWidthCm: 0.650000
+      footWidthCm: 0.400000
+      bikeLaneWidthCm: 0.400000
+      labelScale: 0.350000
+      useLandmarkModels: true
+      sightlineLabelPerCm: 0.009000
+      focusScale: 1.800000
+      focusLiftCm: 1.200000
+      backgroundScale: 0.350000
+      backgroundDim: 0.350000
+      focusInSec: 0.600000
+      focusOutSec: 0.600000
+      showFocusHalo: true
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - '// @ui {"widget":"label", "label":"<span style=\"color: #60A5FA;\">Retrospecs Map</span><br/><span style=\"color: #94A3B8; font-size: 11px;\">Builds the campus from Data/CampusData.ts at runtime.</span>"}'
+    - '// @input Asset.Material material {"hint":"Any material with a Base Color (e.g. Assets/Materials/White.mat). It is cloned per color."}'
+    - '// @input Asset.ObjectPrefab labelPrefab {"hint":"Assets/Prefabs/WorldLabel.prefab"}'
+    - '// @input float scaleDenominator = 600 {"hint":"Map scale 1:N. 600 -> 700 m is about 117 cm, so the disc is about 2.3 m across."}'
+    - '// @input float verticalExaggeration = 4 {"hint":"Vertical exaggeration so 3-storey buildings are visible at map scale"}'
+    - '// @input float radiusM = 700 {"hint":"Map radius in real metres. Hoover (662 m) and Cantor (641 m) need at least 670. Landmarks beyond it are pinned to the edge."}'
+    - '// @input bool showOutlines = true {"hint":"Bright outline along every roof edge"}'
+    - '// @input float outlineWidthCm = 0.2 {"hint":"Roof outline width in map cm (0.15-0.25 reads well)"}'
+    - '// @input bool showCornerLines = true {"hint":"Thin vertical lines at sharp building corners (part of the outline mesh)"}'
+    - '// @input float wallInsetCm = 0.04 {"hint":"Pull walls this far (cm) inside the roof edge so roofs and outlines overhang them"}'
+    - '// @input bool showRoads = true {"hint":"Roads (OSM, Data/PathsData.ts) as flat ribbons under the buildings"}'
+    - '// @input bool showBikePaths = true {"hint":"Bike paths, plus dashed stripes on roads with painted bike lanes"}'
+    - '// @input bool showFootpaths {"hint":"Foot paths and sidewalks (dense; faint)"}'
+    - '// @input float roadWidthCm = 1.3 {"hint":"Road width in map cm (8 m at 1:600 is about 1.3)"}'
+    - '// @input float bikeWidthCm = 0.65 {"hint":"Bike path width in map cm (4 m at 1:600 is about 0.65)"}'
+    - '// @input float footWidthCm = 0.4 {"hint":"Foot path width in map cm (2.5 m at 1:600 is about 0.4)"}'
+    - '// @input float bikeLaneWidthCm = 0.4 {"hint":"Width of the dashed bike-lane stripe down roads, map cm"}'
+    - '// @input float labelScale = 1.2 {"hint":"Map label size. The status caption is 0.6 at 70 cm; map labels are 1.5-3 m away."}'
+    - '// @input bool useLandmarkModels = true {"hint":"Draw recognisable models for key landmarks (Hoover, Memorial Church, Main Quad, Huang...) instead of plain extrusions"}'
+    - '// @input float sightlineLabelPerCm = 0.009 {"hint":"Real-direction beacon label size per cm of distance (0.009 matches the status caption)"}'
+    - '// @ui {"widget":"group_start", "label":"Focus mode (a selected building)"}'
+    - "// @input float focusScale = 1.8 {\"hint\":\"Focused building's scale (1.6-2 reads well)\"}"
+    - '// @input float focusLiftCm = 1.2 {"hint":"Extra lift of the focused building (map cm)"}'
+    - '// @input float backgroundScale = 0.35 {"hint":"Height scale of every other building while focused. Smaller, not gone."}'
+    - '// @input float backgroundDim = 0.35 {"hint":"Brightness of everything else while focused (additive display: lower = more see-through)"}'
+    - '// @input float focusInSec = 0.6 {"hint":"Seconds to go into focus"}'
+    - '// @input float focusOutSec = 0.6 {"hint":"Seconds to come back out"}'
+    - "// @input bool showFocusHalo = true {\"hint\":\"Soft ring at the focused building's base\"}"
+    - '// @ui {"widget":"group_end"}'

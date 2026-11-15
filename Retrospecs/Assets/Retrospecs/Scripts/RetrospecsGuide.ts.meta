@@ -1,0 +1,57 @@
+- !<AssetImportMetadata/61c4ac9c-c417-4bf9-8f11-9e20c4c7f49f>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> e82a0ddc-8e67-4f15-954b-634fcac0986c
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> e82a0ddc-8e67-4f15-954b-634fcac0986c
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> f954392d-6d28-4d94-b19d-83017202e0c3
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/f954392d-6d28-4d94-b19d-83017202e0c3>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  ComponentUid: dd079da6-8eeb-46e7-8a11-b4164576aadf
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    logTimings: false
+    model: false
+    speakResponses: false
+    timeoutSec: false
+    ttsVoice: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - model: gemini-2.5-flash
+      speakResponses: true
+      ttsVoice: coral
+      timeoutSec: !<float> 8.000000
+      logTimings: true
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - "// @ui {\"widget\":\"label\", \"label\":\"<span style=\\\"color: #60A5FA;\\\">Retrospecs Guide</span><br/><span style=\\\"color: #94A3B8; font-size: 11px;\\\">Needs a Remote Service Gateway token on the scene's credentials object.</span>\"}"
+    - '// @input string model = "gemini-2.5-flash"'
+    - // @input bool speakResponses = true
+    - '// @input string ttsVoice = "coral"'
+    - '// @input float timeoutSec = 8 {"hint":"Seconds before an unanswered question falls back to a local fact"}'
+    - // @input bool logTimings = true

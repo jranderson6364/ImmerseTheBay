@@ -1,8 +1,0 @@
-{
-  "name": "sightlines-tools",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "earcut": "3.0.1"
-  }
-}

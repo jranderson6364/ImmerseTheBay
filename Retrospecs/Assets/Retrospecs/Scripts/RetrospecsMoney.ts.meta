@@ -1,0 +1,63 @@
+- !<AssetImportMetadata/1be1d12d-1c15-4df4-843e-3de0181465b8>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> b7119c1e-105f-44c8-bf7b-35f3f886f4e4
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> b7119c1e-105f-44c8-bf7b-35f3f886f4e4
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> b70a6b60-a8a9-4516-997e-e65cb22b1e74
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/b70a6b60-a8a9-4516-997e-e65cb22b1e74>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  ComponentUid: 212d05ec-6f05-46ee-905e-82c9e5efcb41
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    camera: false
+    captionScale: false
+    figureHeightCm: false
+    growSeconds: false
+    labelPrefab: false
+    mapCaptionScale: false
+    material: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - material: !<reference.Material> 00000000-0000-0000-0000-000000000000
+      labelPrefab: !<reference.ObjectPrefab> 00000000-0000-0000-0000-000000000000
+      camera: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      growSeconds: !<float> 2.000000
+      figureHeightCm: !<float> 175.000000
+      captionScale: 1.600000
+      mapCaptionScale: 0.350000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - "// @ui {\"widget\":\"label\", \"label\":\"<span style=\\\"color: #60A5FA;\\\">Retrospecs Money</span><br/><span style=\\\"color: #94A3B8; font-size: 11px;\\\">Real-scale pile of $1 bills for a building's sourced gift.</span>\"}"
+    - '// @input Asset.Material material {"hint":"Any material with a Base Color (e.g. Assets/Materials/White.mat). It is cloned per colour."}'
+    - '// @input Asset.ObjectPrefab labelPrefab {"hint":"Assets/Prefabs/WorldLabel.prefab (optional caption)"}'
+    - '// @input SceneObject camera {"hint":"Camera object, so the caption keeps facing the wearer. Optional."}'
+    - '// @input float growSeconds = 2 {"hint":"Seconds for the pile to grow in"}'
+    - '// @input float figureHeightCm = 175 {"hint":"Person for scale, cm"}'
+    - '// @input float captionScale = 1.6 {"hint":"Caption scale in world mode"}'
+    - '// @input float mapCaptionScale = 0.35 {"hint":"Caption scale on the map"}'
