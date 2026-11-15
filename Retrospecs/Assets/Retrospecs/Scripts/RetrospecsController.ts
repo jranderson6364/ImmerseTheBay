@@ -6,7 +6,7 @@
  *                bearing comes from the building's OSM footprint (Huang's walls run at 15/105/195/285 deg), and
  *                `facingHint` picks which face you're looking at.
  *  2. TOUR       The fixed map unfolds on the floor with the wearer inside its back half. Right pinch =
- *                "tell me about what I'm looking at" (real building or one on the map). Left pinch = ask by voice.
+ *                "tell me about what I'm looking at" (real building or one on the map). Ask (the button on the card) = ask by voice or tap a suggested question.
  *  3. GUESS      (disabled: QUIZ_ENABLED) After each building: "Point to where you think X is, then pinch." Scored in
  *                degrees; the true direction arcs out on the map and a sightline pillar appears in the room.
  *
@@ -39,11 +39,11 @@ import {PanelButton} from "./RetrospecsInfoPanel"
 import {isNextSpotIntent, nextSpot, spotTier} from "../Core/NextSpot"
 import {CENTERPIECES, isCenterpiece} from "../Core/Centerpieces"
 import {COACH_FIRST, CoachAim, CoachEvent, CoachStep, DONE_HOLD_SEC, coachAim, coachAllowsPick, coachHint, coachLine, coachNext, coachWrongPickLine, suggestedBuilding} from "../Core/Coach"
-import {DEMO_ASK_TIMEOUT_SEC, DEMO_SKIP_HOLD_SEC, demoSkipHint, isRestartDemoIntent, DemoEvent, DemoState, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget, demoSegment, demoStart, demoStopId} from "../Core/DemoScript"
+import {DEMO_ASK_LATER_LINE, DEMO_ASK_TIMEOUT_SEC, DEMO_SKIP_HOLD_SEC, DEMO_SUGGESTED_QUESTION, demoSkipHint, isRestartDemoIntent, DemoEvent, DemoState, demoHasNextStop, demoHint, demoIsLastCard, demoLine, demoNext, demoNudgeLine, demoPickTarget, demoSegment, demoStart, demoStopId} from "../Core/DemoScript"
 import {TV_WALL, sharedWall} from "../Core/Focus"
 import {RespawnRules, farFromMap, newRespawnState, stepRespawn} from "../Core/Respawn"
 import {LIVE_PREFIX_GENERAL, LIVE_PREFIX_WEB, LOOKING_UP_LINE, LiveTurn, isAskFurtherIntent, presentLive, stripAskFurtherCommand} from "../Core/AskLive"
-import {buildingMentioned, chatHeading} from "../Core/AskBubble"
+import {SuggestedQuestion, buildingMentioned, chatHeading, isTourCommand, suggestedQuestions} from "../Core/AskBubble"
 import {AskChat} from "./AskChat"
 import {setBubbleTarget} from "./AskBridge"
 
@@ -212,16 +212,16 @@ export class RetrospecsController extends BaseScriptComponent {
     this.load()
     this.bindHands()
     if (this.asr) {
-      // One ASR serves both the left-pinch "listen" and the floating mic bubble; the bubble's questions go to the chat.
+      // The card's Ask button is the only thing that opens the mic; what it hears goes to the chat window.
       this.asr.onFinalVoiceEvent.add((t) => (this.bubbleListening ? this.askFromBubble(t) : this.handleUtterance(t)))
       this.asr.onPartialVoiceEvent.add((t) => {
-        if (this.bubbleListening && this.chat) this.chat.showListening(this.chatTitle(), t === "Listening..." ? "" : t)
+        if (this.bubbleListening && this.chat) this.chat.showListening(this.chatTitle(), t === "Listening..." ? "" : t, this.chipLabels())
         else this.setStatus("“" + t + "”")
       })
       // onErrorEvent exists only in the patched ASRController; the stock 5.15.4 one doesn't have it.
       const errEvent = (this.asr as any).onErrorEvent
       if (errEvent && errEvent.add) errEvent.add((e: string) => {
-        if (this.bubbleListening && this.chat) this.chat.showError(this.chatTitle(), "", "I couldn't hear that. Tap the bubble and try again.")
+        if (this.bubbleListening && this.chat) this.chat.showError(this.chatTitle(), "", "I couldn't hear that. Tap a question, or pinch Ask and try again.", this.chipLabels())
         this.bubbleListening = false
         this.setStatus("Voice error: " + e)
       })
@@ -360,8 +360,8 @@ export class RetrospecsController extends BaseScriptComponent {
     if (this.respawnOffered()) return
     // The ask chat's X (and the window itself) come before everything else, coach steps included.
     if (which === "right" && this.chatPinch()) return
-    // A pinch on another button (the floating mic bubble) is that button's: it must not also page the card, talk,
-    // start a left-hand "listen", or pick a building behind it.
+    // A pinch on another scene button is that button's: it must not also page the card, talk, or pick a building
+    // behind it.
     if (this.rayOnOtherButton(which === "left" ? InteractorInputType.LeftHand : InteractorInputType.RightHand)) return
     if (this.mode === "calibrate") {
       if (this.useStartPoint || this.indoorDemo || this.demoMode) return this.finishCalibration(this.viewHorizontal())
@@ -374,10 +374,10 @@ export class RetrospecsController extends BaseScriptComponent {
       if (which === "right") this.coachPick()
       return
     }
-    // The card's own buttons come first: X closes, "Next spot" moves on. A pinch elsewhere on the card is "more".
+    // The card's own buttons come first: X closes, "Next spot" moves on, Ask opens the mic. Elsewhere on it is "more".
     if (which === "right" && this.cardPinch()) return
-    // Left pinch always means "listen", so a question is never blocked by a pending quiz.
-    if (which === "left" && this.asr) return this.listen()
+    // The left hand does nothing on its own: asking is the card's Ask button (one way to ask, and you can see it).
+    if (which === "left") return
     if (this.mode === "guess") return this.lockGuess(toV3(hand.indexKnuckle.position))
     // Decide what was aimed at the moment the fingers touch (the ray drifts as they close): the hovered building,
     // else the map building under the cursor, else the real building the hand ray (or head) points at. Once a
@@ -438,6 +438,7 @@ export class RetrospecsController extends BaseScriptComponent {
     this.rightDownAt = -1 // the release must not run a selection or the locator
     if (btn === "close") this.closeCard()
     else if (btn === "next") this.showNextSpot()
+    else if (btn === "ask") this.startAsk()
     else if (this.focusMode) this.tellAbout(this.focusMode)
     return true
   }
@@ -477,12 +478,9 @@ export class RetrospecsController extends BaseScriptComponent {
     this.tellAbout(id)
   }
 
+  /** Opens the mic (for voice commands the tour itself asks for); a question normally goes through startAsk(). */
   listen() {
-    if (!this.asr) return
-    this.bubbleListening = false // a left-pinch question goes the normal voice path
-    this.guide.stopSpeaking()
-    this.setStatus("Listening…")
-    this.asr.startListening()
+    this.startAsk()
   }
 
   // -------------------------------------------------------------------------
@@ -547,7 +545,7 @@ export class RetrospecsController extends BaseScriptComponent {
     if (this.indoorDemo) return this.coachEvent("mapOpened")
     if (here) this.map.setState(here, "focus")
     const hereName = here ? cardById(here).name : "Stanford"
-    this.say(`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, `You're at ${hereName}. Look at a building and pinch. Left pinch to ask.`)
+    this.say(`Welcome to Stanford. You're at ${hereName}. Look at any building and pinch to hear about it.`, `You're at ${hereName}. Look at a building and pinch. Pinch Ask on its card to ask.`)
   }
 
   /** Puts the map on the floor centred on the wearer, or at table height in front of them. */
@@ -611,7 +609,7 @@ export class RetrospecsController extends BaseScriptComponent {
 
   /**
    * Landmark under the SIK cursor on the map ("" = none). Right-hand ray on device, the mouse in Editor Preview;
-   * the left hand is for "listen" and doesn't steer selection.
+   * the left hand doesn't steer selection.
    */
   private cursorLandmark(only = "", slackCm = this.pickSlackCm): string {
     const target = this.map.cursorTarget
@@ -1188,7 +1186,7 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   /**
-   * One live, web-grounded answer about building `id` ("" = a general Stanford question). `toChat`: the bubble's
+   * One live, web-grounded answer about building `id` ("" = a general Stanford question). `toChat`: the Ask
    * path, which answers in the chat window and leaves the building's normal card alone; otherwise the answer replaces
    * the focus card (the left-pinch "look it up" path). Both speak it and share the follow-up history.
    */
@@ -1212,7 +1210,7 @@ export class RetrospecsController extends BaseScriptComponent {
           this.focusActiveAt = getTime()
         }
         if (toChat) {
-          if (this.chat) this.chat.showAnswer(chatHeading(label), question, a.speech, this.chatSource(a))
+          if (this.chat) this.chat.showAnswer(chatHeading(label), question, a.speech, this.chatSource(a), this.chipLabels())
         } else if (id) {
           // Show the answer on the focus card, with where it came from. Never marked heard or lit: no validator here.
           if (this.focusMode !== id && card && this.map.landmarks[id]) {
@@ -1231,7 +1229,7 @@ export class RetrospecsController extends BaseScriptComponent {
         if (token !== this.liveToken) return
         print("[Retrospecs] live lookup failed (" + e + ")")
         if (toChat) {
-          if (this.chat) this.chat.showError(chatHeading(card ? card.label : ""), question, "I couldn't reach the web just now. Tap the bubble to try again.")
+          if (this.chat) this.chat.showError(chatHeading(card ? card.label : ""), question, "I couldn't reach the web just now. These ones I can answer:", this.chipLabels())
           this.say("I couldn't reach the web just now.", "Web lookup failed")
           return
         }
@@ -1245,11 +1243,14 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   // -------------------------------------------------------------------------
-  // The mic bubble: ask anything, see it in the chat window, X to close
+  // Ask: the card's Ask button opens the chat with the mic on and suggested questions; X to close
 
   private chat: AskChat = null
-  /** True from a bubble press until its transcript arrives, so that transcript goes to the chat. */
+  /** True from an Ask press until its transcript arrives, so that transcript goes to the chat. */
   private bubbleListening = false
+  /** The chips showing in the chat, and the questions already asked about each building (so follow-ups are new). */
+  private chips: SuggestedQuestion[] = []
+  private askedChips: Record<string, string[]> = {}
 
   private setupChat() {
     try {
@@ -1260,13 +1261,73 @@ export class RetrospecsController extends BaseScriptComponent {
     }
   }
 
-  /** Bubble pressed (AskBridge): stop all talking and any pending lookup, and get ready for the question. */
+  /** Legacy mic bubble (AskBridge): the same as pressing Ask. The bubble is hidden while Retrospecs runs. */
   bubbleListenStart() {
-    this.bubbleListening = true
+    this.openAsk()
+  }
+
+  /** Ask pressed: stop all talking and any pending lookup, open the chat listening with chips, and start the mic. */
+  startAsk() {
+    this.openAsk()
+    if (this.asr) this.asr.startListening()
+  }
+
+  private openAsk() {
+    this.bubbleListening = !!this.asr
     this.liveToken++
     this.guide.stopSpeaking()
-    if (this.chat) this.chat.showListening(this.chatTitle())
-    this.setStatus("Listening… ask me anything.")
+    if (this.infoPanel) this.infoPanel.setPulse("")
+    this.refreshChips()
+    if (this.chat) {
+      if (this.asr) this.chat.showListening(this.chatTitle(), "", this.chipLabels())
+      else this.chat.showError(this.chatTitle(), "", "The mic isn't available. Tap a question:", this.chipLabels())
+      this.chat.setPulseChip(this.demoActive() ? this.demoChip() : -1)
+    }
+    this.setStatus(this.asr ? "Listening… say anything, or tap a question." : "Tap a question.")
+  }
+
+  /** Chips for the building in focus, leaving out the ones already asked about it. */
+  private refreshChips() {
+    const id = this.focusMode || ""
+    this.chips = suggestedQuestions(id ? cardById(id) : null, this.state.heard, this.askedChips[id] || [])
+  }
+
+  private chipLabels(): string[] {
+    return this.chips.map((c) => c.label)
+  }
+
+  /** Locked demo: the suggested question's chip (it blinks), else the first. */
+  private demoChip(): number {
+    const i = this.chips.findIndex((c) => c.label === DEMO_SUGGESTED_QUESTION)
+    return this.chips.length ? Math.max(0, i) : -1
+  }
+
+  /**
+   * A chip tapped: answered from the checked card fact, instantly and offline. Closes the mic first, so a late
+   * transcript can't replace this answer.
+   */
+  private answerChip(i: number) {
+    const q = this.chips[i]
+    const f = q ? factById(q.factId) : null
+    if (!q || !f) return
+    if (this.bubbleListening && this.asr) this.asr.stopListening()
+    this.bubbleListening = false
+    this.liveToken++
+    if (this.demoActive()) {
+      if (this.demo.step !== "ask") return this.demoNudge()
+      this.demoMarkAsked()
+    }
+    const id = f.card.id
+    if (this.mode === "tour") this.selectQuietly(id)
+    this.askedChips[id] = (this.askedChips[id] || []).concat([q.label])
+    this.markHeard(f.fact.id)
+    this.save()
+    this.refreshChips()
+    if (this.chat) {
+      this.chat.showAnswer(chatHeading(f.card.label), q.label, f.fact.text, "From my checked notes", this.chipLabels())
+      this.chat.setPulseChip(-1)
+    }
+    this.say([f.fact.text], f.card.label)
   }
 
   private chatTitle(): string {
@@ -1281,19 +1342,29 @@ export class RetrospecsController extends BaseScriptComponent {
   }
 
   /**
-   * A bubble question: select the building it names (or keep the one in focus) exactly as a pinch would, without
-   * the narration, then answer it live in the chat window.
+   * A spoken question after Ask: tour commands ("next spot", "what's that") go to the tour; anything else selects
+   * the building it names (or keeps the one in focus) exactly as a pinch would, without the narration, then is
+   * answered live in the chat window.
    */
   private askFromBubble(raw: string) {
     this.bubbleListening = false
+    const question = (raw || "").trim()
+    // Presenter: "restart demo" works at any step, free roam included (the mic only opens from Ask now).
+    if (this.demoMode && isRestartDemoIntent(question)) {
+      if (this.chat) this.chat.hide()
+      return this.handleUtterance(question)
+    }
     if (this.demoActive()) {
       if (this.demo.step !== "ask") return this.demoNudge()
-      this.demoMarkAsked()
+      if (question) this.demoMarkAsked()
     }
-    const question = (raw || "").trim()
     if (!question) {
-      if (this.chat) this.chat.showError(this.chatTitle(), "", "I didn't catch that. Tap the bubble and ask again.")
+      if (this.chat) this.chat.showError(this.chatTitle(), "", "I didn't catch that. Tap a question, or pinch Ask and try again.", this.chipLabels())
       return
+    }
+    if (!this.demoActive() && isTourCommand(question)) {
+      if (this.chat) this.chat.hide()
+      return this.handleUtterance(question)
     }
     const named = buildingMentioned(question, CARDS)
     const id = named || this.focusMode || ""
@@ -1326,7 +1397,7 @@ export class RetrospecsController extends BaseScriptComponent {
 
   /**
    * True if the hand's ray (or the Preview mouse) is on an interactable that isn't ours: not the map, the focus card
-   * or the ask chat. In this scene that is the mic bubble's button.
+   * or the ask chat (the hidden mic bubble included).
    */
   private rayOnOtherButton(mask: number): boolean {
     let interactors
@@ -1350,7 +1421,14 @@ export class RetrospecsController extends BaseScriptComponent {
   private chatPinch(): boolean {
     if (!this.chat || !this.chat.isOpen() || !this.chat.rayOnWindow()) return false
     this.rightDownAt = -1 // the release must not run a selection or the locator
+    const now = getTime()
+    if (this.lastSelectAt >= 0 && now - this.lastSelectAt < 0.3) return true // bounce
+    this.lastSelectAt = now
     if (this.chat.closeUnderRay()) this.closeChat()
+    else {
+      const i = this.chat.chipUnderRay()
+      if (i >= 0) this.answerChip(i)
+    }
     return true
   }
 
@@ -1364,7 +1442,7 @@ export class RetrospecsController extends BaseScriptComponent {
     if (this.bubbleListening && this.asr) this.asr.stopListening()
     this.bubbleListening = false
     const c = this.focusMode ? cardById(this.focusMode) : null
-    this.setStatus(c ? c.label : "Point at a building and pinch, or tap the bubble to ask.")
+    this.setStatus(c ? c.label : "Point at a building and pinch. Pinch Ask on its card to ask.")
   }
 
   private askGuide(question: string) {
@@ -1850,15 +1928,17 @@ export class RetrospecsController extends BaseScriptComponent {
     this.lastSelectAt = now
     this.rightDownAt = -1
     const step = this.demo.step
+    if (which !== "right") return this.demoNudge()
+    const btn: PanelButton = this.infoPanel ? this.infoPanel.buttonUnderRay() : ""
     if (step === "ask") {
-      if (which === "left" && this.asr) {
-        this.listen()
-        this.setStatus("Listening… ask your question.")
-        return
-      }
+      if (btn === "ask") return this.startAsk()
       return this.demoNudge()
     }
-    if (which !== "right") return this.demoNudge()
+    if (btn === "ask") {
+      // Ask is on every card, but in the demo it comes last.
+      if (!this.guide.isSpeaking()) this.guide.speakParts([DEMO_ASK_LATER_LINE])
+      return this.setStatus(this.caption)
+    }
     if (step === "aim") {
       const target = demoPickTarget(this.demo)
       if (target && this.cursorLandmark(target, this.pickSlackCm * 1.5) === target) return this.demoEvent("picked")
@@ -1919,6 +1999,7 @@ export class RetrospecsController extends BaseScriptComponent {
       this.demoAskedAt = -1
       this.demoHeardAnswer = false
       this.say(demoLine(s, label), label)
+      if (this.infoPanel) this.infoPanel.setPulse("ask")
       return
     }
     if (s.step === "end") this.endDemo(demoLine(s, label), demoHint(s, label))
@@ -1945,7 +2026,7 @@ export class RetrospecsController extends BaseScriptComponent {
       this.resetLights()
       this.focus = ""
     }
-    this.endDemo("Guided demo skipped. Point at any building and pinch.", "Free roam  ·  Point at a building and pinch  ·  Left pinch to ask")
+    this.endDemo("Guided demo skipped. Point at any building and pinch.", "Free roam  ·  Point at a building and pinch  ·  Pinch Ask on a card to ask")
   }
 
   /** "restart demo": the guided path again from the Main Quad, for the next judge. */

@@ -1,16 +1,17 @@
 /**
- * The "ask" chat window: a sticky panel in front of the wearer, above the focus card, showing the question asked
- * through the bubble and the live answer, with a big X to close it.
+ * The "ask" chat window: a sticky panel in front of the wearer, above the focus card. The card's Ask button opens it
+ * listening (a pulsing mic and the live transcript) with suggested-question chips to tap instead of speaking; it then
+ * shows the question and the answer, with a big X to close it.
  *
  * Plain class (no scene wiring): the controller creates it with a material and the camera, calls update() every
- * frame, and routes right pinches / Preview taps to closeUnderRay() / rayOnWindow(). It follows lazily: it stays put
+ * frame, and routes right pinches / Preview taps to closeUnderRay() / chipUnderRay() / rayOnWindow(). It follows lazily: it stays put
  * while the wearer looks around a little, and glides back in front of them after they turn or walk away.
  *
  * Every string on it is the visitor's own question, the answer text, its source line, or a fixed UI label.
  */
 import {Rect2, frameRects, quadsChunk} from "../Core/Focus"
 import {MeshChunk} from "../Core/MapMesh"
-import {crossChunk, inRect} from "../Core/CardLayout"
+import {crossChunk, inRect, micGlyphRects} from "../Core/CardLayout"
 import {SIK} from "SpectaclesInteractionKit.lspkg/SIK"
 import {InteractorInputType} from "SpectaclesInteractionKit.lspkg/Core/Interactor/Interactor"
 import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable"
@@ -32,7 +33,14 @@ const C = {
   closeFillHover: [0.95, 0.25, 0.28, 1],
   closeMark: [1, 0.92, 0.9, 1],
   rim: [0.95, 0.82, 0.58, 1],
-  rimHover: [0.7, 1.0, 1.0, 1]
+  rimHover: [0.7, 1.0, 1.0, 1],
+  mic: [0.55, 0.95, 1.0, 1],
+  chipFill: [0.07, 0.22, 0.3, 1],
+  chipFillHover: [0.18, 0.55, 0.75, 1],
+  chipRim: [0.45, 0.8, 0.95, 1],
+  chipRimHover: [0.85, 1.0, 1.0, 1],
+  chipText: [0.9, 0.97, 1.0, 1],
+  chipTextHover: [1, 1, 1, 1]
 }
 
 /** Layout knobs (cm, at the window's own distance). */
@@ -83,6 +91,13 @@ export class AskChat {
   private parts: Part[] = []
   private closeParts: {part: Part; base: number[]; hover: number[]}[] = []
   private closeHit: Rect2 = null
+  /** Suggested-question chips: hit boxes (window cm) and their parts, for hover and the demo's pulse. */
+  private chipHits: Rect2[] = []
+  private chipParts: {part: Part; base: number[]; hover: number[]}[][] = []
+  private pulseChip = -1
+  private clock = 0
+  /** The listening mic's parts: they pulse while the mic is open. */
+  private micParts: Part[] = []
   private hitTarget: Interactable = null
   private hovered = false
   private open = false
@@ -108,10 +123,12 @@ export class AskChat {
     return this.open
   }
 
-  showListening(heading: string, partial = "") {
-    const line = partial ? `“${partial}”` : "Listening… ask me anything."
+  /** The mic is open. `chips`: suggested questions to tap instead of speaking. */
+  showListening(heading: string, partial = "", chips: string[] = []) {
+    const line = partial ? `“${partial}”` : chips.length ? "Listening… say anything, or tap one:" : "Listening… ask me anything."
     // Partials arrive several times a second: update the text in place instead of rebuilding the window.
-    if (this.open && this.state === "listening" && this.root && this.questionText && heading === this.heading) {
+    const sameChips = chips.length === this.chipHits.length
+    if (this.open && this.state === "listening" && this.root && this.questionText && heading === this.heading && sameChips) {
       try {
         this.questionText.text = line
         return
@@ -119,19 +136,33 @@ export class AskChat {
         // Fall through to a rebuild.
       }
     }
-    this.render("listening", heading, line, "", "")
+    this.render("listening", heading, line, "", "", chips)
   }
 
   showThinking(heading: string, question: string) {
     this.render("thinking", heading, question, "Looking that up…", "")
   }
 
-  showAnswer(heading: string, question: string, answer: string, source: string) {
-    this.render("answer", heading, question, answer, source)
+  /** `chips`: follow-up questions to tap. */
+  showAnswer(heading: string, question: string, answer: string, source: string, chips: string[] = []) {
+    this.render("answer", heading, question, answer, source, chips)
   }
 
-  showError(heading: string, question: string, message: string) {
-    this.render("error", heading, question, message, "")
+  showError(heading: string, question: string, message: string, chips: string[] = []) {
+    this.render("error", heading, question, message, "", chips)
+  }
+
+  /** The chip under the ray (index), or -1. */
+  chipUnderRay(): number {
+    const p = this.hitPoint()
+    if (!p) return -1
+    for (let i = 0; i < this.chipHits.length; i++) if (inRect(this.chipHits[i], p.x, p.y)) return i
+    return -1
+  }
+
+  /** Locked demo: chip `i` blinks to show what to tap (-1 = none). */
+  setPulseChip(i: number) {
+    this.pulseChip = i
   }
 
   hide() {
@@ -158,14 +189,24 @@ export class AskChat {
       return
     }
     this.follow(dt)
+    this.clock += dt
     const hov = this.open && this.closeUnderRay()
     if (hov !== this.hovered) {
       this.hovered = hov
       for (const c of this.closeParts) c.part.rgba = hov ? c.hover : c.base
     }
+    const chip = this.open ? this.chipUnderRay() : -1
+    const blink = this.pulseChip >= 0 && Math.floor(this.clock / 0.6) % 2 === 0
+    for (let i = 0; i < this.chipParts.length; i++) {
+      const on = i === chip || (blink && i === this.pulseChip)
+      for (const c of this.chipParts[i]) c.part.rgba = on ? c.hover : c.base
+    }
+    // The open mic breathes, so it's obvious it is listening.
+    const breathe = this.state === "listening" ? 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(this.clock * 5)) : 1
     const k = this.fade
     for (const p of this.parts) {
-      const c = new vec4(p.rgba[0] * k, p.rgba[1] * k, p.rgba[2] * k, p.rgba[3] * k)
+      const m = this.micParts.indexOf(p) >= 0 ? k * breathe : k
+      const c = new vec4(p.rgba[0] * m, p.rgba[1] * m, p.rgba[2] * m, p.rgba[3] * m)
       try {
         if (p.material) p.material.mainPass.baseColor = c
         if (p.text) p.text.textFill.color = c
@@ -219,7 +260,7 @@ export class AskChat {
   // -------------------------------------------------------------------------
   // Content
 
-  private render(state: ChatState, heading: string, question: string, answer: string, source: string) {
+  private render(state: ChatState, heading: string, question: string, answer: string, source: string, chips: string[] = []) {
     if (!this.material || !this.camera) return
     const keepPos = this.root ? this.pos : null
     this.destroyRoot()
@@ -246,7 +287,10 @@ export class AskChat {
     const aH = answer ? textHeight(answer, textW, sizes.answer) * 1.08 : 0
     const sH = source ? textHeight(source, textW, sizes.source) * 1.08 : 0
     const gap = 0.9
-    const H = pad + headH + gap + qH + (aH ? gap + aH : 0) + (sH ? gap * 0.6 + sH : 0) + pad
+    // Chips: one full-width row each, about 3 degrees tall at the window's distance.
+    const chipH = 5.6, chipGap = 0.8
+    const chipsH = chips.length ? gap * 1.4 + chips.length * chipH + (chips.length - 1) * chipGap : 0
+    const H = pad + headH + gap + qH + (aH ? gap + aH : 0) + (sH ? gap * 0.6 + sH : 0) + chipsH + pad
     const card = {x0: -W / 2, y0: -H / 2, x1: W / 2, y1: H / 2}
 
     this.quads([card], C.fill, -0.05)
@@ -267,8 +311,17 @@ export class AskChat {
     this.closePart(() => this.chunk(crossChunk(close, 0.9, 0.05), C.closeMark), C.closeMark, [1, 1, 1, 1])
     this.hovered = false
     y -= headH + gap
+    this.micParts = []
     if (qH) {
-      this.questionText = this.text(qText, 0, y - qH / 2, textW, qH, sizes.question, C.question)
+      if (state === "listening") {
+        // A big mic left of the transcript; it breathes in update().
+        const m = Math.min(qH, 4.6)
+        const n = this.parts.length
+        this.quads(micGlyphRects(card.x0 + pad + m / 2, y - m / 2, m), C.mic, 0.03)
+        for (let i = n; i < this.parts.length; i++) this.micParts.push(this.parts[i])
+        const w = textW - m - 1
+        this.questionText = this.text(qText, card.x0 + pad + m + 1 + w / 2, y - qH / 2, w, qH, sizes.question, C.question)
+      } else this.questionText = this.text(qText, 0, y - qH / 2, textW, qH, sizes.question, C.question)
       y -= qH
     }
     if (aH) {
@@ -279,6 +332,28 @@ export class AskChat {
     if (sH) {
       y -= gap * 0.6
       this.text(source, 0, y - sH / 2, textW, sH, sizes.source, C.source)
+      y -= sH
+    }
+    this.chipHits = []
+    this.chipParts = []
+    if (chips.length) {
+      y -= gap * 1.4
+      for (let i = 0; i < chips.length; i++) {
+        const r = {x0: card.x0 + pad, y0: y - chipH, x1: card.x1 - pad, y1: y}
+        const parts: {part: Part; base: number[]; hover: number[]}[] = []
+        const add = (fn: () => void, base: number[], hover: number[]) => {
+          const n = this.parts.length
+          fn()
+          for (let j = n; j < this.parts.length; j++) parts.push({part: this.parts[j], base, hover})
+        }
+        add(() => this.quads([r], C.chipFill, 0.02), C.chipFill, C.chipFillHover)
+        add(() => this.quads(frameRects(r, 0.25), C.chipRim, 0.03), C.chipRim, C.chipRimHover)
+        add(() => this.text("›  " + chips[i], 0, (r.y0 + r.y1) / 2, textW - 2, chipH * 0.62, sizes.question, C.chipText), C.chipText, C.chipTextHover)
+        this.chipParts.push(parts)
+        // Hit boxes split the gaps between rows, so there's no dead strip between chips.
+        this.chipHits.push({x0: r.x0 - 1, y0: r.y0 - chipGap / 2, x1: r.x1 + 1, y1: r.y1 + chipGap / 2})
+        y -= chipH + chipGap
+      }
     }
     this.makeHitTarget({x0: card.x0 - 1, y0: card.y0 - 1, x1: card.x1 + grow, y1: card.y1 + grow})
     this.update(0)
@@ -377,6 +452,9 @@ export class AskChat {
     this.questionText = null
     this.parts = []
     this.closeParts = []
+    this.chipHits = []
+    this.chipParts = []
+    this.micParts = []
     this.closeHit = null
     this.hitTarget = null
     if (this.root && !isNull(this.root)) this.root.destroy()

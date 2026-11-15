@@ -6,7 +6,7 @@
  *   cards  "Pinch the card for the next one"            each card pinch shows the stop's next scripted card;
  *                                                        on the last card, a pinch moves on (Next Stop glows)
  *          ... the same aim + cards for Huang ...
- *   ask    "Pinch your LEFT hand and ask a question"    only the left hand (or the mic bubble) does anything
+ *   ask    "Pinch Ask on the card"                       only the glowing Ask button (then a question chip or voice)
  *   end    "Now it's all yours"                         the guided part is over: everything unlocks (free roam)
  *
  * Presenter controls: hold BOTH pinches for 5 s at any step to skip straight to free roam (for filming), and say
@@ -33,7 +33,11 @@ export const DEMO_STOPS: DemoStop[] = [
 ]
 
 /** A question the checked cards answer, so it works even when the venue Wi-Fi doesn't. */
-export const DEMO_SUGGESTED_QUESTION = "Who is this building named after?"
+/** The first chip in the chat: answered from the checked card, offline, so it works even when the Wi-Fi doesn't. */
+export const DEMO_SUGGESTED_QUESTION = "Who's it named after?"
+
+/** Spoken when Ask is pinched before the ask step. */
+export const DEMO_ASK_LATER_LINE = "Questions come at the end. Pinch the card for the next one."
 
 /** The ask step moves on once the answer finishes speaking, or after this long whatever happens (s). */
 export const DEMO_ASK_TIMEOUT_SEC = 25
@@ -146,9 +150,9 @@ export function demoHint(s: DemoState, label: string, onTarget = false, stops: D
       return demoHasNextStop(s, stops) ? `${count}  ·  Pinch Next Stop on the card to move on` : `${count}  ·  Pinch the card when you're ready for the last step`
     }
     case "ask":
-      return `Pinch your LEFT hand, then ask out loud. Try: "${DEMO_SUGGESTED_QUESTION}"`
+      return `Pinch the glowing Ask button on the card, then tap a question or say one. Try "${DEMO_SUGGESTED_QUESTION}"`
     case "end":
-      return "Now it's all yours: point at any building and pinch  ·  Left pinch to ask"
+      return "Now it's all yours: point at any building and pinch  ·  Pinch Ask on a card to ask"
     default:
       return ""
   }
@@ -165,9 +169,9 @@ export function demoLine(s: DemoState, label: string): string {
         ? `Raise your right hand. The ray from your hand is your cursor. Aim it at ${t}, the big gold building. When it turns blue, pinch.`
         : `Next stop: ${t}. Follow the arc and aim at the gold building, then pinch.`
     case "ask":
-      return `Last thing. You can ask me anything. Pinch your left hand and ask, for example: ${DEMO_SUGGESTED_QUESTION}`
+      return "Last thing. You can ask me anything. Pinch the glowing Ask button on the card, then tap a question, or just say it out loud."
     case "end":
-      return "That's the guided part. Now it's all yours. Point at any building on the map and pinch, or pinch your left hand to ask me anything."
+      return "That's the guided part. Now it's all yours. Point at any building on the map and pinch, and pinch Ask on its card to ask me anything."
     default:
       return ""
   }
@@ -181,7 +185,7 @@ export function demoNudgeLine(s: DemoState, label: string): string {
     case "cards":
       return "Point your right hand at the card, then pinch."
     case "ask":
-      return "Use your left hand: pinch it, then ask your question."
+      return "Pinch the glowing Ask button on the card."
     default:
       return ""
   }

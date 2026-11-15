@@ -37,6 +37,9 @@ export interface CompactLayout {
   /** Next spot button: drawn pill and hit box. */
   next: Rect2
   nextHit: Rect2
+  /** Ask button (mic + "Ask"), left of Next spot: drawn pill and hit box. */
+  ask: Rect2
+  askHit: Rect2
   /** Top y of each text piece (cm) in the text column. */
   titleTop: number
   namesakeTop: number
@@ -52,6 +55,7 @@ export const COMPACT = {
   hitPadCm: 2.5,
   nextW: 20,
   nextH: 6,
+  askW: 13,
   gap: 0.8,
   artColumnFrac: 0.4,
   creditH: 2.6,
@@ -97,11 +101,20 @@ export function compactLayout(c: CompactInput): CompactLayout {
   }
   const textX1 = textX0 + textW
   const close: Rect2 = {x0: x1 - P - COMPACT.closeCm, y0: top - COMPACT.closeCm, x1: x1 - P, y1: top}
-  const next: Rect2 = {x0: x1 - P - COMPACT.nextW, y0: y0 + P, x1: x1 - P, y1: y0 + P + COMPACT.nextH}
+  // Bottom row of the text column: [Ask] [Next spot], both shrunk alike when the column is too narrow for their
+  // full widths (a card with art), never past the column's left edge. Heights stay, so targets stay >= minimum.
+  const rowGap = 2 * COMPACT.gap
+  const room = x1 - P - textX0
+  const k = Math.min(1, (room - rowGap) / (COMPACT.nextW + COMPACT.askW))
+  const nextW = COMPACT.nextW * k, askW = COMPACT.askW * k
+  const next: Rect2 = {x0: x1 - P - nextW, y0: y0 + P, x1: x1 - P, y1: y0 + P + COMPACT.nextH}
   // Generous toward the card edges, tight toward the text, so a pinch on the words never hits a button.
   const hp = COMPACT.hitPadCm, inward = COMPACT.gap * 0.4
   const closeHit: Rect2 = {x0: close.x0 - inward, y0: close.y0 - inward, x1: close.x1 + hp, y1: close.y1 + hp}
   const nextHit: Rect2 = {x0: next.x0 - inward, y0: next.y0 - hp, x1: next.x1 + hp, y1: next.y1 + inward}
+  const askX1 = next.x0 - rowGap
+  const ask: Rect2 = {x0: askX1 - askW, y0: next.y0, x1: askX1, y1: next.y1}
+  const askHit: Rect2 = {x0: ask.x0 - inward, y0: ask.y0 - hp, x1: ask.x1 + inward * 0.9, y1: ask.y1 + inward}
 
   const titleTop = top
   const namesakeTop = top - titleRow - COMPACT.gap * 0.5
@@ -114,6 +127,7 @@ export function compactLayout(c: CompactInput): CompactLayout {
     art, artBox, credit,
     close, closeHit,
     next, nextHit,
+    ask, askHit,
     titleTop, namesakeTop, bodyTop, sourceTop
   }
 }
@@ -210,6 +224,42 @@ export function storyCardHits(minLocalCm: number): {close: Rect2; more: Rect2; n
     more: px(88, 1100, 545, 1210),
     next: px(920, 1000, 1182, 1142)
   }
+}
+
+/**
+ * The Ask button on the illustrated story card, drawn as a mesh (it isn't in the texture): in the empty right-hand
+ * column, directly above the baked Next Stop button and the same width. Taller than Next Stop, so it is already past
+ * the minimum target size and its hit box stays clear of Next Stop's grown one. Card-local cm.
+ */
+export function storyAskButton(minLocalCm: number): {drawn: Rect2; hit: Rect2} {
+  const next = storyCardHits(0).next
+  const drawn: Rect2 = {x0: next.x0, x1: next.x1, y0: -18.4, y1: -8.4}
+  const g = growToMin(drawn, minLocalCm)
+  // Extra reach outward (right, up), never down toward Next Stop.
+  return {drawn, hit: {x0: g.x0, y0: g.y0, x1: g.x1 + 1.5, y1: g.y1 + 1.5}}
+}
+
+/**
+ * A microphone drawn from rectangles inside the square of side `s` centred on (cx, cy): capsule, the U-shaped
+ * cradle, stem and base. Used on the Ask button and the chat's listening line.
+ */
+export function micGlyphRects(cx: number, cy: number, s: number): Rect2[] {
+  const r = (x0: number, y0: number, x1: number, y1: number): Rect2 => ({x0: cx + x0 * s, y0: cy + y0 * s, x1: cx + x1 * s, y1: cy + y1 * s})
+  return [
+    r(-0.17, -0.04, 0.17, 0.48), // capsule
+    r(-0.34, -0.14, -0.25, 0.16), // cradle left
+    r(0.25, -0.14, 0.34, 0.16), // cradle right
+    r(-0.34, -0.23, 0.34, -0.14), // cradle bottom
+    r(-0.045, -0.4, 0.045, -0.23), // stem
+    r(-0.22, -0.48, 0.22, -0.4) // base
+  ]
+}
+
+/** True when two rects overlap (touching edges don't count). */
+export function rectsOverlap(a: Rect2, b: Rect2): boolean {
+  const ax0 = Math.min(a.x0, a.x1), ax1 = Math.max(a.x0, a.x1), ay0 = Math.min(a.y0, a.y1), ay1 = Math.max(a.y0, a.y1)
+  const bx0 = Math.min(b.x0, b.x1), bx1 = Math.max(b.x0, b.x1), by0 = Math.min(b.y0, b.y1), by1 = Math.max(b.y0, b.y1)
+  return ax0 < bx1 && bx0 < ax1 && ay0 < by1 && by0 < ay1
 }
 
 /** True when the card-local point (cm) is inside `r`. */

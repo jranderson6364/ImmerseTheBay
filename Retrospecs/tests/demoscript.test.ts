@@ -93,9 +93,10 @@ describe("locked judge demo", () => {
     const last = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.slice(1).map(() => "cardPinch" as const)])
     expect(demoHint(last, "Main Quad")).toMatch(/Next Stop/)
     const ask = run(["mapOpened", "picked", ...DEMO_STOPS[0].cards.map(() => "cardPinch" as const), "picked", ...DEMO_STOPS[1].cards.map(() => "cardPinch" as const)])
-    expect(demoHint(ask, "Huang")).toMatch(/LEFT hand/)
-    expect(demoNudgeLine(ask, "Huang")).toMatch(/left hand/i)
+    expect(demoHint(ask, "Huang")).toMatch(/Ask button/)
+    expect(demoNudgeLine(ask, "Huang")).toMatch(/Ask button/)
     expect(demoHint(demoNext(ask, "answered"), "")).toMatch(/all yours/i)
+    expect(demoHint(demoNext(ask, "answered"), "")).not.toMatch(/left/i)
   })
 
   test("presenter controls: restart phrases and the skip countdown", () => {

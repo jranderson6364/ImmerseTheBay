@@ -5,7 +5,7 @@
  *   pick   "Aim your hand's ray at the Main Quad, pinch."  ONLY the suggested building can be picked, so the visitor
  *                                                         proves they can steer the cursor before anything else
  *   card   "Pinch the card for more · Next spot · X"      after the Main Quad opens
- *   done   "That's it. Left pinch to ask a question."     after one more action, then it fades out
+ *   done   "That's it. Pinch Ask on a card to ask."     after one more action, then it fades out
  *
  * Pure TypeScript (no Lens Studio APIs), unit-tested in tests/coach.test.ts.
  */
@@ -55,7 +55,7 @@ export function coachHint(step: CoachStep, aim: CoachAim, target: string, other 
     case "card":
       return "Pinch the card for more  ·  Next spot for another  ·  X to close"
     case "done":
-      return "You've got it. Pick any building, or left pinch to ask a question."
+      return "You've got it. Pick any building, or pinch Ask on its card to ask a question."
     default:
       return ""
   }

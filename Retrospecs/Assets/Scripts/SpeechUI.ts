@@ -84,7 +84,24 @@ export class SpeechUI extends BaseScriptComponent {
   }
 
   activateSpeechButton(activate: boolean) {
+    // Retrospecs in the scene: its card's Ask button is the one way to ask, so the floating mic stays off.
+    if (bubbleTarget()) activate = false
     this.speechButtonCollider.enabled = activate
+  }
+
+  private hiddenForRetrospecs = false
+
+  /** Retrospecs registered (AskBridge): hide the mic and its tap area. The shared ASR keeps running untouched. */
+  private hideForRetrospecs() {
+    if (this.hiddenForRetrospecs || !bubbleTarget()) return
+    this.hiddenForRetrospecs = true
+    this.speechButtonCollider.enabled = false
+    try {
+      this.micRend.getSceneObject().enabled = false
+    } catch (e) {
+      // Mic visual missing: the collider is off, which is what matters.
+    }
+    this.speechBubbleTrans.setLocalScale(vec3.zero())
   }
 
   onSpeechButtonDown() {
@@ -107,6 +124,8 @@ export class SpeechUI extends BaseScriptComponent {
 
   @bindUpdateEvent
   private onUpdate() {
+    this.hideForRetrospecs()
+    if (this.hiddenForRetrospecs) return
     const camPos = this.mainCamTrans.getWorldPosition()
     let desiredPosition = camPos.add(this.mainCamTrans.forward.uniformScale(-UI_CAM_DISTANCE))
     desiredPosition = desiredPosition.add(this.mainCamTrans.up.uniformScale(UI_CAM_HEIGHT))

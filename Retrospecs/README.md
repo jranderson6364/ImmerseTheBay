@@ -33,7 +33,7 @@ Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is th
 1. **Open** `Retrospecs/Retrospecs.esproj`.
 2. **Gateway token:** Window → Remote Service Gateway Token → Generate. Paste it into the scene's `RemoteServiceGatewayCredentials` object. Never commit the token.
 3. **Experimental APIs:** Project Settings → enable Experimental APIs, so internet and microphone work together in an unpublished Lens.
-4. **Disable the sample's flow:** on the object with `SceneController`, uncheck that component. Leave everything else on. The sample's floating mic button still works and feeds Retrospecs' voice commands, and `DepthCache` is harmless.
+4. **Disable the sample's flow:** on the object with `SceneController`, uncheck that component. Leave everything else on. The sample's floating mic button hides itself while Retrospecs runs (the card's Ask button replaces it), and `DepthCache` is harmless.
 5. **Add Retrospecs:** create a SceneObject named `Retrospecs` with three script components:
 
    | Component | Inputs |
@@ -67,7 +67,7 @@ Built for **original Spectacles (2024) with Lens Studio 5.15.4**. The base is th
 | **Right pinch (short)** | Only with `showExplodedModels` / `showMoneyPiles` on (both OFF by default, so each place shows just its card, animation, person hologram and diagram). If the fact has a product (Huang: graphics card or toy-block server; Gates: server; Spilker: GPS satellite; Packard/HP Garage: audio oscillator), an exploded model floats in front of you while it speaks. If the building has a sourced gift, a pile of $1 bills with a 1.75 m person for scale appears: on the map indoors, or life-size outdoors. |
 | **Right pinch (hold ≥ 0.6 s)** or say "what's that" | Outdoors: GPS plus Gemini identify the real building in view. It gets a nametag and roofline sweep: solid cyan when the camera confirms it, dashed amber when it's only a GPS estimate. Its fact is spoken and its gift pile stands beside it. |
 | "explode" / "take it apart" · "hide" | Replays the exploded model · clears the models, money pile and tags. |
-| **Left pinch** | Ask by voice. |
+| **Ask** (the cyan mic button on every card) | The one way to ask. Opens the chat window with a pulsing mic and two or three suggested questions for that building. Tap a question for an instant answer from the checked card facts (works offline), or say anything: tour commands ("next spot", "what's that") go to the tour, other questions get a live web answer. The left hand does nothing on its own, and the sample's floating mic is hidden while Retrospecs runs. |
 | **Point and pinch** (in a quiz; the quiz is off for the demo, `QUIZ_ENABLED` in the controller) | Stretch your arm toward the building, then pinch. You're scored in degrees, the true direction arcs out, and a new fact unlocks. |
 | **Both hands pinch and twist** | Nudges the map's rotation if it's misaligned. |
 | "lift" / "table" · "floor" | Map at table height in front of you · back on the floor. |
@@ -120,7 +120,7 @@ Paths come from `Data/PathsData.ts`, baked by `bun Retrospecs/tools/bake-paths.t
 
 - **Map mesh layout:** generated meshes now include `texture0` UVs for `White.mat`. If the map is still invisible, check the Preview camera angle and Logger for mesh warnings.
 - **Progress resets every launch** (`persistProgress` is off) so each judge starts fresh. Turn it on for personal use.
-- **The point-to-guess quiz is off** (`QUIZ_ENABLED = false`). With it on, the quiz starts 1.5 s after narration ends, and left pinch still opens the mic during a quiz.
+- **The point-to-guess quiz is off** (`QUIZ_ENABLED = false`). With it on, the quiz starts 1.5 s after narration ends, and Ask still opens the mic during a quiz.
 - **Calibration** defaults to a known outdoor start point and facing direction. The wall-pinch method remains available with `useStartPoint` off.
 - **Labels** use the sample's WorldLabel prefab. They pop in with a random delay of up to 1.7 s, which is the prefab's own animation.
 - **Voice:** card narration plays pre-rendered ElevenLabs clips (`Audio/narration`, listed in `Data/NarrationClips.ts`). Live answers use the gateway's OpenAI text-to-speech.

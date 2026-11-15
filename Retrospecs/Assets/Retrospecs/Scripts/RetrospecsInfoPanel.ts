@@ -22,7 +22,7 @@ import {
 import {MeshChunk} from "../Core/MapMesh"
 import {
   CompactLayout, SPECTACLES, STORY_CARD, cmForDeg, compactCardSize, compactLayout, compactTextWidth, crossChunk, degForCm, inRect,
-  storyCardHits, storyCardScale
+  micGlyphRects, storyAskButton, storyCardHits, storyCardScale
 } from "../Core/CardLayout"
 import {SIK} from "SpectaclesInteractionKit.lspkg/SIK"
 import {InteractorInputType} from "SpectaclesInteractionKit.lspkg/Core/Interactor/Interactor"
@@ -32,7 +32,7 @@ import {storyHologram} from "./StoryHolograms"
 import {peopleHologram} from "./PeopleHolograms"
 
 /** What the card's buttons do (the controller acts on it). */
-export type PanelButton = "close" | "next" | "more" | ""
+export type PanelButton = "close" | "next" | "more" | "ask" | ""
 
 // Compact card text sizes (the scene's saved title/body sizes are for the old tall card).
 const COMPACT_SIZES = {title: 64, namesake: 44, body: 52, small: 38, button: 46}
@@ -42,11 +42,15 @@ const BUTTON_COLORS = {
   closeMark: [1, 0.92, 0.9, 1], closeMarkHover: [1, 1, 1, 1],
   nextFill: [0.36, 0.26, 0.1, 1], nextFillHover: [0.75, 0.55, 0.2, 1],
   nextText: [1.0, 0.88, 0.62, 1], nextTextHover: [1, 1, 1, 1],
-  rim: [0.95, 0.82, 0.58, 1], rimHover: [1.0, 0.96, 0.82, 1]
+  rim: [0.95, 0.82, 0.58, 1], rimHover: [1.0, 0.96, 0.82, 1],
+  // Ask: the chat window's cyan, so the button and the window it opens read as one thing.
+  askFill: [0.07, 0.28, 0.4, 1], askFillHover: [0.18, 0.58, 0.8, 1],
+  askRim: [0.55, 0.9, 1.0, 1], askRimHover: [0.85, 1.0, 1.0, 1],
+  askMark: [0.85, 0.97, 1.0, 1], askMarkHover: [1, 1, 1, 1]
 }
 
 interface ButtonView {
-  kind: "close" | "next" | "more"
+  kind: "close" | "next" | "more" | "ask"
   hit: {x0: number; y0: number; x1: number; y1: number}
   parts: {part: FadePart; base: number[]; hover: number[]}[]
   /** Objects shown only while the button is hovered (or pulsing): the story card's outline. */
@@ -613,7 +617,8 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
       }
     }
     // Hit areas grown to at least minTargetDeg (the drawn buttons in the art are smaller; Snap counts the collider).
-    const hits = storyCardHits(cmForDeg(Math.max(SPECTACLES.minTargetDeg, this.minTargetDeg), D) / this.cardScale)
+    const minLocal = cmForDeg(Math.max(SPECTACLES.minTargetDeg, this.minTargetDeg), D) / this.cardScale
+    const hits = storyCardHits(minLocal)
     this.buttons = [
       {kind: "close", hit: hits.close, parts: []},
       {kind: "more", hit: hits.more, parts: []},
@@ -635,6 +640,9 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
         b.toggles = [rim]
       }
     }
+    // Ask isn't in the texture: drawn as a mesh button in the empty column above Next Stop, so it can glow.
+    const ask = storyAskButton(minLocal)
+    this.buttons.push(this.buildAskButton(ask.drawn, ask.hit, 84))
     this.hovered = ""
     this.blockHeight = STORY_CARD.heightCm
     this.lift = 0
@@ -721,12 +729,38 @@ export class RetrospecsInfoPanel extends BaseScriptComponent {
     const nw = L.next.x1 - L.next.x0, nh = L.next.y1 - L.next.y0
     this.text("next_label", "Next spot  >", (L.next.x0 + L.next.x1) / 2, (L.next.y0 + L.next.y1) / 2, nw - 1, nh * 0.7, S.button, BUTTON_COLORS.nextText, HorizontalAlignment.Center)
     this.buttonPart(next, n, BUTTON_COLORS.nextText, BUTTON_COLORS.nextTextHover)
-    this.buttons = [close, next]
+    this.buttons = [close, next, this.buildAskButton(L.ask, L.askHit, S.button)]
     this.hovered = ""
 
     if (L.art && L.artBox) this.buildCompactArt(art, L)
     // Ray target over the whole card, plus the hit boxes' overhang past the edge.
     this.makeHitTarget({x0: L.card.x0 - 3, y0: L.card.y0 - 3, x1: L.card.x1 + 3, y1: L.card.y1 + 3})
+  }
+
+  /**
+   * The Ask button: a cyan pill with a microphone and "Ask". The one way to ask a question; it opens the chat's mic
+   * and its suggested-question chips. `size` is the label's text size.
+   */
+  private buildAskButton(r: Rect2, hit: Rect2, size: number): ButtonView {
+    const C = BUTTON_COLORS
+    const b: ButtonView = {kind: "ask", hit, parts: []}
+    let n = this.parts.length
+    this.quads("ask_fill", [r], C.askFill, 0.03)
+    this.buttonPart(b, n, C.askFill, C.askFillHover)
+    n = this.parts.length
+    this.quads("ask_rim", frameRects(r, 0.35), C.askRim, 0.04)
+    this.buttonPart(b, n, C.askRim, C.askRimHover)
+    const h = r.y1 - r.y0
+    const s = h * 0.62
+    const gx = r.x0 + Math.max(0.6, h * 0.14) + s / 2, cy = (r.y0 + r.y1) / 2
+    n = this.parts.length
+    this.quads("ask_mic", micGlyphRects(gx, cy, s), C.askMark, 0.05)
+    this.buttonPart(b, n, C.askMark, C.askMarkHover)
+    const lx0 = gx + s / 2 + h * 0.08, lx1 = r.x1 - h * 0.1
+    n = this.parts.length
+    this.text("ask_label", "Ask", (lx0 + lx1) / 2, cy, Math.max(1, lx1 - lx0), h * 0.7, size, C.askMark, HorizontalAlignment.Center)
+    this.buttonPart(b, n, C.askMark, C.askMarkHover)
+    return b
   }
 
   /** Art column of the compact card: one piece at a time (cycling), framed, with the credit under it. */
